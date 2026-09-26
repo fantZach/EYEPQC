@@ -1,0 +1,240 @@
+{
+  "schema": 1,
+  "test_only": true,
+  "vectors": [
+    {
+      "base": "boundary_0_aad_40",
+      "expected": "InvalidTag",
+      "field": "key",
+      "replacement": "e0ddfb724f5d78e2b7e5c991514defed"
+    },
+    {
+      "base": "boundary_0_aad_40",
+      "expected": "InvalidTag",
+      "field": "nonce",
+      "replacement": "01e813265bdb77d4de6a6fce"
+    },
+    {
+      "base": "boundary_0_aad_40",
+      "expected": "InvalidTag",
+      "field": "aad",
+      "replacement": "bd2ce2e28db2d718ca8e1fa3b448bc4744e17e339ac1bae32d637335fdce6575bec393b70139c18e"
+    },
+    {
+      "base": "boundary_0_aad_40",
+      "expected": "InvalidTag",
+      "field": "tag",
+      "replacement": "766a3d912cd550d657d253d421660347"
+    },
+    {
+      "base": "boundary_1_aad_40",
+      "expected": "InvalidTag",
+      "field": "key",
+      "replacement": "a238d0a335331141fd39f0586ce3ecd8"
+    },
+    {
+      "base": "boundary_1_aad_40",
+      "expected": "InvalidTag",
+      "field": "nonce",
+      "replacement": "1e3b67435d44f42cced82f75"
+    },
+    {
+      "base": "boundary_1_aad_40",
+      "expected": "InvalidTag",
+      "field": "aad",
+      "replacement": "ffe4dc27ff9a60c357f4e86d9c54167d3c093848928311ea18ba765692d38b79a14d4826f31daf80"
+    },
+    {
+      "base": "boundary_1_aad_40",
+      "expected": "InvalidTag",
+      "field": "ciphertext",
+      "replacement": "57"
+    },
+    {
+      "base": "boundary_1_aad_40",
+      "expected": "InvalidTag",
+      "field": "tag",
+      "replacement": "9fc9018274412bf24ffaf9f2b46921ac"
+    },
+    {
+      "base": "boundary_15_aad_40",
+      "expected": "InvalidTag",
+      "field": "key",
+      "replacement": "990c37e788bc59e324fdfddbcb840af5"
+    },
+    {
+      "base": "boundary_15_aad_40",
+      "expected": "InvalidTag",
+      "field": "nonce",
+      "replacement": "01328043e2bee70885f4b3bb"
+    },
+    {
+      "base": "boundary_15_aad_40",
+      "expected": "InvalidTag",
+      "field": "aad",
+      "replacement": "b7930129fcfd93fdde788eaef3a95d654a4cf86f74801cd9d31406c49e8f8aad85bfe00a59d014ff"
+    },
+    {
+      "base": "boundary_15_aad_40",
+      "expected": "InvalidTag",
+      "field": "ciphertext",
+      "replacement": "f17d84128cd1a61a406d07c0ee3bd2"
+    },
+    {
+      "base": "boundary_15_aad_40",
+      "expected": "InvalidTag",
+      "field": "tag",
+      "replacement": "da90124fe3eb4255ed16336c5c22f656"
+    },
+    {
+      "base": "boundary_16_aad_40",
+      "expected": "InvalidTag",
+      "field": "key",
+      "replacement": "1618b9b41e4338e5444d0b03ce608c65"
+    },
+    {
+      "base": "boundary_16_aad_40",
+      "expected": "InvalidTag",
+      "field": "nonce",
+      "replacement": "65f09bb929951fd2956cad46"
+    },
+    {
+      "base": "boundary_16_aad_40",
+      "expected": "InvalidTag",
+      "field": "aad",
+      "replacement": "a65cdc312144d94692bddf88a842503282aefaff99aaceaebc4f21824011913fffcf2b923aeb32e7"
+    },
+    {
+      "base": "boundary_16_aad_40",
+      "expected": "InvalidTag",
+      "field": "ciphertext",
+      "replacement": "7f43b346a0c2002b09071dde8727a52c"
+    },
+    {
+      "base": "boundary_16_aad_40",
+      "expected": "InvalidTag",
+      "field": "tag",
+      "replacement": "a446d546d6ebc13b151ed06951d8e377"
+    },
+    {
+      "base": "boundary_17_aad_40",
+      "expected": "InvalidTag",
+      "field": "key",
+      "replacement": "002ce586a752a463d9ba9adbad8e6ea1"
+    },
+    {
+      "base": "boundary_17_aad_40",
+      "expected": "InvalidTag",
+      "field": "nonce",
+      "replacement": "5a51bf44149524a7906d733e"
+    },
+    {
+      "base": "boundary_17_aad_40",
+      "expected": "InvalidTag",
+      "field": "aad",
+      "replacement": "f87a061531945ddd28912fd19e2f1509599f5a87da254520bb9bd1dd066c4f8411f0abb0e6a116d5"
+    },
+    {
+      "base": "boundary_17_aad_40",
+      "expected": "InvalidTag",
+      "field": "ciphertext",
+      "replacement": "3c43a390de7d9a6ba85b6b6ddf1e1afad7"
+    },
+    {
+      "base": "boundary_17_aad_40",
+      "expected": "InvalidTag",
+      "field": "tag",
+      "replacement": "46bbb1fb2f524ba7e7aa0e3cb4a71f92"
+    },
+    {
+      "base": "boundary_31_aad_40",
+      "expected": "InvalidTag",
+      "field": "key",
+      "replacement": "ef0df91cb0abd549cb61b6194ac7e773"
+    },
+    {
+      "base": "boundary_31_aad_40",
+      "expected": "InvalidTag",
+      "field": "nonce",
+      "replacement": "0a939df52ecab1cf6b88402e"
+    },
+    {
+      "base": "boundary_31_aad_40",
+      "expected": "InvalidTag",
+      "field": "aad",
+      "replacement": "731b337ef4dc533c8b76757cac9f3f2c8563584859de969700695d186ec7edbfaad442e51182a441"
+    },
+    {
+      "base": "boundary_31_aad_40",
+      "expected": "InvalidTag",
+      "field": "ciphertext",
+      "replacement": "3d88163be86be9e54d53931aa5cf068a5e7d2d7e8d15805bf6c50623f068fb"
+    },
+    {
+      "base": "boundary_31_aad_40",
+      "expected": "InvalidTag",
+      "field": "tag",
+      "replacement": "f8fea2ed0b28e3d2224b82849eab8540"
+    },
+    {
+      "base": "boundary_32_aad_40",
+      "expected": "InvalidTag",
+      "field": "key",
+      "replacement": "7bb10cbd9854b2d95df059584abe45c2"
+    },
+    {
+      "base": "boundary_32_aad_40",
+      "expected": "InvalidTag",
+      "field": "nonce",
+      "replacement": "979f1bf5dee343d474ecf386"
+    },
+    {
+      "base": "boundary_32_aad_40",
+      "expected": "InvalidTag",
+      "field": "aad",
+      "replacement": "d4dfc9fa0359d3fc67a5a4ff18fc65fc55c51e618f8f671d8f02958bf2c21366f10a1bb85e0a47c2"
+    },
+    {
+      "base": "boundary_32_aad_40",
+      "expected": "InvalidTag",
+      "field": "ciphertext",
+      "replacement": "c7b69aa71f9adff7ea26c9938618234c7e60fe6a25474367e4b9a062235e1b28"
+    },
+    {
+      "base": "boundary_32_aad_40",
+      "expected": "InvalidTag",
+      "field": "tag",
+      "replacement": "d91719287a3428ff933dbe04d0cd5491"
+    },
+    {
+      "base": "boundary_1400_aad_40",
+      "expected": "InvalidTag",
+      "field": "key",
+      "replacement": "bfa5075e3d8d1278c9a0c735a846d85a"
+    },
+    {
+      "base": "boundary_1400_aad_40",
+      "expected": "InvalidTag",
+      "field": "nonce",
+      "replacement": "1175e4c87403cef60ac1efe3"
+    },
+    {
+      "base": "boundary_1400_aad_40",
+      "expected": "InvalidTag",
+      "field": "aad",
+      "replacement": "a74ecd8bffccc4e7dc355358a9ab108a02e6569a266e3a6da3c99063917a142d09638aa2549d7b04"
+    },
+    {
+      "base": "boundary_1400_aad_40",
+      "expected": "InvalidTag",
+      "field": "ciphertext",
+      "replacement": "c8ba1800fc189ffb23f0c7ed0a2206719e81712813612630310bc9f96d56f64b0fa1dbb0c6d4e3497e45cf5c249c3b121ed3601257970fce33240fb062ceb7475ceb62938a0b52689673906c4721657f2e41ae17c7b7965209630ed640708f08937d766c23cecf455873243ba88892b9e5b247d8b90fad16629eb881bcf477054d8f66c8682117d46003acb0602415b463fdf02f0b10cc95c58bb1180fb72f4c4f1f577be713278a82a52c16ce7df69eab687cac7804df9d93e0c53fd8ff7c54bdf156723f144c47944c36539dcb115595e821f304b55da2e233c539cffc04d2f171f7e4748c784e9326e8408d08dad34d1550627db740c9ee0cdf0afb246744aef1dee47484bc878b42366649240878a1b98def1fcbfb969aa12376dadcf66264d733494591f084be055589ddd188afd3848aa085dcbb76b6e39d40d8f045d403db42dc3e0a85f76cbec8ae4ac7da34f3bd99b9596bb87d510346b651fd20ca74786011262e38050f10c2b7f306b215a36734c0567b95579d0367f9c5b822b4d6a83d1547d635120654240c327aad7e414264944517dabda088302b0893174710c3fc2dc29a1eb2c4f2a8480728f1c6c428794ac8f84ed4add456b6feea65b5cb83bf89e56fc36d824aeeafd2ca0c6095910df477f6e1c1f131f4e7abae4850e05e3bbbf3b74071a845e70880a76045da1561b054777a81fa15079261d6a617f4f3a7a554bd73b733afe755b0a9aaee9c6b054438a7037ebdd8d76df01145914fb343a856c65589caa852005c261ea9e22ed1ac5963f5f6828e3419a23d8f6962379600eb0d409c31c1e53f410ee3f7bc78dbd9cd1ceffea08bcfcb9a5e3e10b4b5a3b9a7a00d46434d13f92c1d20d056396b7b7c089ae8c2f088456e94b5e38eefac9355a1cc88488e5956ec1bb478c6b873af9a4448fb0001c8876aedcc35ed59922803332daed8315d2d0a625d641004072d7a6f1f708add3802c6b3812bd7ea87ac6a3b726a47bf55071173a31b2db2c9aaf8f1aaac9ede9405023e2e09e628aaf47bdf658ace1f6718c9e7ae710e88f262eccf556dd7c2e90255fb67b7ad787765204d6f85e45e44f0641c08c86858586d2552ac56df4ce2f617af33a65f63c974a0b54996222f2479437a769c9fbbcada3b7abd23da3f3e0817b20fedc16d13245b4163c3246b46b8df1ff33578942ffa364d478b7e9edaccd0be991819b288de6b5189713d022c55664fcb0b87967fb4c4245a377594addd4ce70c4bc42aaf621092b8e79357e1193adc047ab76dcd4e837590c67deb494716d4291de7e4125de74a1c9695a57168dbf9de58b333343103df9bd2754a25bebeb47296b3aa28c2e92f1ea771b24e5a5f5ba760a4a8f8a8916f1f98452c37f01b2cb77c4aab1342f2cd44bfbe2fba2d565549226c0ed26b9c1d0e966753692dfd4de065ed608dd9db60570bd4d9cc94bb80beb21ce65a3c214c40e81adc30be2d819a744f353fa0ba02c3988da70d88f16bf2c9972fd460771927b666950bebbc8498c43399fa7f3aa6d124edde2f525b5a4761c7a83e17e8b98522c46b0668f5d16aee2b74fcedf8d79d5e89aa9befefd26ffa769197671fe2fdca2593b7ceede3095237873cf7c9db2972597a00250e592df166856b7c3d934d678a2df424c3d2b5b3417bc15e8ad075045ebd6434c7541ceaa99415416667e330865af6ade31326be09933a2a1084d036a5fec4cc486434e6ba87c9239c703cf0c1ca29a23f451825e85baa354a29a99c74ebd2799f6d3f63a32c676d0f684a594b8248c16fe09064907d60d6e454bedc7503b0cc40d038f8d62405418feb2de3429a982e10819536fbe470c91ab08fe5feae72853c01cce6b38980864d815e9506235421c5d70fddb913de235f6b82bdc6fbb0a0d26f36eec3d5e83dcb1b68c821e53525316cbbf9b6f639a8ec461f853d80567dbf360dbba04a4e735933d531"
+    },
+    {
+      "base": "boundary_1400_aad_40",
+      "expected": "InvalidTag",
+      "field": "tag",
+      "replacement": "25ed1e01fdab1318fc8e1036c4df3d06"
+    }
+  ]
+}

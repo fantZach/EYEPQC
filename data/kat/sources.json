@@ -1,0 +1,21 @@
+{
+  "files": {
+    "nist_gcm.json": "68ce9582dca60bec5a07e1a03bac07677250bf8e3c9e5f571a89268697522f54",
+    "nist_mlkem512.json": "607ac855308f8028542bd42763e3b60bc9a21586536341a0e727a7fbc5e7725f"
+  },
+  "original_gcm": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/mac/gcmtestvectors.zip",
+  "sources": {
+    "gcm": {
+      "sha256": "30156236f768b0d81e58a3e5bd3bd79ce294cf9ef0ba0a84cf7b869c89ebd9fd",
+      "url": "https://raw.githubusercontent.com/pyca/cryptography/8e03e30e3aae01632a697e903e3593c924f0139d/vectors/cryptography_vectors/ciphers/AES/GCM/gcmEncryptExtIV128.rsp"
+    },
+    "kem": {
+      "sha256": "4b5afd6c7075b1ffebc099a70dcf907b189daadd42921223127732e3ec83c333",
+      "url": "https://raw.githubusercontent.com/usnistgov/ACVP-Server/65370b861b96efd30dfe0daae607bde26a78a5c8/gen-val/json-files/ML-KEM-encapDecap-FIPS203/internalProjection.json"
+    },
+    "keygen": {
+      "sha256": "0fdca41ed30f49c828af80c73a6424ece3accc1e3430ae14492363aaadeb0e48",
+      "url": "https://raw.githubusercontent.com/usnistgov/ACVP-Server/65370b861b96efd30dfe0daae607bde26a78a5c8/gen-val/json-files/ML-KEM-keyGen-FIPS203/internalProjection.json"
+    }
+  }
+}

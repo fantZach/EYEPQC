@@ -1,0 +1,5 @@
+# M00 offline golden references; kyber-py is not a production KEM backend.
+cryptography==48.0.0
+kyber-py==1.2.0
+cffi==2.1.1
+pycparser==3.0

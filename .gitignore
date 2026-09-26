@@ -1,1 +1,23 @@
 tmp/
+
+# Local runtimes and generated FPGA/software products.
+.venv/
+__pycache__/
+*.py[cod]
+build/
+.Xil/
+*.jou
+*.log
+*.str
+*.wdb
+*.vcd
+*.vvp
+*.bit
+*.xsa
+*.elf
+*.bin
+data/captures/*
+!data/captures/.gitkeep
+board/output/*
+!board/output/.gitkeep
+board/vendor/
