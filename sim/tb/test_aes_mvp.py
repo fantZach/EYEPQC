@@ -106,6 +106,18 @@ class AesMvp(unittest.TestCase):
             payload, tag = (byte * 17)(*range(17)), (byte * 16)(*range(16))
             self.assertEqual(lib.mvp_gcm_encrypt(payload, 17, iv, aad, len(a), tag, failing, None), 1)
             self.assertEqual(bytes(payload), bytes(17)); self.assertEqual(bytes(tag), bytes(16))
+            calls = 0
+            def fail_after_first_block(_, source, dest):
+                nonlocal calls
+                calls += 1
+                if calls == 4: return 1
+                ctypes.memmove(dest, aes_block(k, ctypes.string_at(source, 16)), 16)
+                return 0
+            payload, tag = (byte * 17)(*range(17)), (byte * 16)(*range(16))
+            self.assertEqual(lib.mvp_gcm_encrypt(payload, 17, iv, aad, len(a), tag,
+                             callback_type(fail_after_first_block), None), 1)
+            self.assertEqual(calls, 4)
+            self.assertEqual(bytes(payload), bytes(17)); self.assertEqual(bytes(tag), bytes(16))
             self.assertEqual(lib.mvp_gcm_encrypt(payload, LIMIT + 1, iv, aad, 0, tag, failing, None), 2)
             self.assertEqual(lib.mvp_gcm_encrypt(payload, 17, iv, aad, 65, tag, failing, None), 2)
 

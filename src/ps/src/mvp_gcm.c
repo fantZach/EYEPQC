@@ -10,19 +10,23 @@ void mvp_zero(void *data, size_t length)
 
 static void ghash_block(uint8_t state[16], const uint8_t h[16], const uint8_t block[16])
 {
-    uint8_t x[16], v[16], z[16] = {0};
+    uint32_t x[4] = {0}, v[4] = {0}, z[4] = {0};
     unsigned int i, j;
-    for (i = 0; i < 16; i++) { x[i] = state[i] ^ block[i]; v[i] = h[i]; }
+    /* Explicit big-endian packing: no alignment assumptions or secret-indexed tables. */
+    for (i = 0; i < 16; i++) {
+        x[i / 4] |= (uint32_t)(state[i] ^ block[i]) << (24U - (i % 4) * 8);
+        v[i / 4] |= (uint32_t)h[i] << (24U - (i % 4) * 8);
+    }
     /* Fixed work and no secret-dependent branches/table addresses. */
     for (i = 0; i < 128; i++) {
-        uint8_t mask = (uint8_t)(0U - ((x[i / 8] >> (7U - i % 8)) & 1U));
-        uint8_t reduce = (uint8_t)(0U - (v[15] & 1U));
-        for (j = 0; j < 16; j++) z[j] ^= v[j] & mask;
-        for (j = 15; j > 0; j--) v[j] = (uint8_t)((v[j] >> 1) | (v[j - 1] << 7));
-        v[0] = (uint8_t)((v[0] >> 1) ^ (0xe1U & reduce));
+        uint32_t mask = 0U - ((x[i / 32] >> (31U - i % 32)) & 1U);
+        uint32_t reduce = 0U - (v[3] & 1U);
+        for (j = 0; j < 4; j++) z[j] ^= v[j] & mask;
+        for (j = 3; j > 0; j--) v[j] = (v[j] >> 1) | (v[j - 1] << 31);
+        v[0] = (v[0] >> 1) ^ (0xe1000000U & reduce);
     }
-    memcpy(state, z, 16);
-    mvp_zero(x, 16); mvp_zero(v, 16); mvp_zero(z, 16);
+    for (i = 0; i < 16; i++) state[i] = (uint8_t)(z[i / 4] >> (24U - (i % 4) * 8));
+    mvp_zero(x, sizeof x); mvp_zero(v, sizeof v); mvp_zero(z, sizeof z);
 }
 
 static void put64(uint8_t *p, uint64_t value)

@@ -160,6 +160,21 @@ M01 离线测试增加极性配置回归（共 5 项）。修正硬件 `aes_mvp_
 Vivado 100 MHz 时序 WNS 0.767 ns / WHS 0.089 ns，2987 LUT / 3094 FF，无 BRAM/DSP。
 无摄像头/网口/全 PL GHASH 或视频吞吐验收，G0 和正式后续门禁仍未通过。
 
+### MVP 性能优化
+
+用户要求优化 4.65 秒的板端处理。未换 AES 核或重建硬件；Vitis 明确启用并核对 `-O2`，
+GHASH 改为固定循环的 32-bit 字运算，无秘密索引表或未对齐整数强转。
+同一原始 JPG：`-O0` 4652657 us → `-O2`/byte GHASH 512107 us →
+`-O2`/word GHASH 首次 239584 us。AES/MMIO 调用 22875 次约 51039 us，
+PS 其余约 188544 us（含 GHASH/CTR/XOR/初始化/探针，不是纯 GHASH）；仍不是 15 fps 验收。
+最终软件 `build/vitis/aes_mvp_o2_word_1`，构建清单新增真实优化级别与构建脚本哈希；
+旧记录保留。同图三次 239584 / 239072 / 239584 us，中位数 239584 us，约快 19.42 倍，
+板端约 12.22 Mbps / 同等大小 4.17 张每秒；不是视频或 15 fps 验收。
+512 KiB 上限 342481 us，也通过认证、密文/Tag/全部字节比对、SHA-256、五类篡改与密钥清理。
+原始 JPG 未压缩/裁剪；105 组离线黄金向量及全部 18 项 hook 检查通过。
+日志为 `data/captures/aes_mvp_word_profile_uart_1.log`，结果为 `aes_mvp_word_jpg_1..3/`
+和 `aes_mvp_word_boundary_1/`，均 Git 忽略；复现/计时边界见 MVP 文档。
+
 ## 复现
 
 ```powershell

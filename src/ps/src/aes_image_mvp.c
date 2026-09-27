@@ -20,6 +20,8 @@ volatile struct image_job mvp_job __attribute__((aligned(64)));
 _Static_assert(offsetof(struct image_job, state) == 4, "mailbox state offset");
 _Static_assert(offsetof(struct image_job, data) == 60, "mailbox payload offset");
 _Static_assert(sizeof(struct image_job) == MVP_MAX_IMAGE + 76, "mailbox ABI");
+static XTime aes_ticks;
+static unsigned int aes_calls;
 
 static uint32_t get32(const uint8_t *p)
 {
@@ -40,17 +42,23 @@ static int aes_wait(uint32_t required)
 
 static int aes_block(void *context, const uint8_t in[16], uint8_t out[16])
 {
+    XTime start, end;
+    int error;
     unsigned int i;
     (void)context;
+    XTime_GetTime(&start);
     for (i = 0; i < 4; i++) Xil_Out32(AES_BASE + 0x20 + i * 4, get32(in + i * 4));
     Xil_Out32(AES_BASE, 2);
-    if (aes_wait(6)) return 1;
-    for (i = 0; i < 4; i++) {
+    error = aes_wait(6);
+    for (i = 0; !error && i < 4; i++) {
         uint32_t value = Xil_In32(AES_BASE + 0x30 + i * 4);
         out[i * 4] = (uint8_t)(value >> 24); out[i * 4 + 1] = (uint8_t)(value >> 16);
         out[i * 4 + 2] = (uint8_t)(value >> 8); out[i * 4 + 3] = (uint8_t)value;
     }
-    return 0;
+    XTime_GetTime(&end);
+    aes_ticks += end - start;
+    aes_calls++;
+    return error;
 }
 
 static void fault(void *id)
@@ -95,6 +103,7 @@ int main(void)
             unsigned int i;
             int error = 2;
             uint32_t length = mvp_job.length;
+            aes_ticks = 0; aes_calls = 0;
             Xil_DCacheEnable(); // Input is complete; JTAG now only polls the unchanged state.
             mvp_job.status = 0;
             XTime_GetTime(&start);
@@ -123,6 +132,10 @@ int main(void)
             Xil_DCacheDisable(); // Flush ciphertext/tag and cleared secrets before DONE.
             xil_printf("MVP RESULT bytes=%u status=%u elapsed_us=%u\r\n", length,
                 (unsigned int)error, (unsigned int)((end - start) / (COUNTS_PER_SECOND / 1000000U)));
+            // PS-other includes GHASH, CTR/XOR, key setup and profiling overhead; not pure GHASH.
+            xil_printf("MVP PROFILE aes_calls=%u aes_us=%u ps_other_us=%u\r\n", aes_calls,
+                (unsigned int)(aes_ticks / (COUNTS_PER_SECOND / 1000000U)),
+                (unsigned int)((end - start - aes_ticks) / (COUNTS_PER_SECOND / 1000000U)));
             __asm__ volatile("dsb sy" ::: "memory");
             mvp_job.state = error ? 3 : 2; // Publish only after ciphertext/tag and zeroization.
         }

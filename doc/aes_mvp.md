@@ -51,8 +51,8 @@ JTAG 处理期间只能读取未变化的 state，不读写正在由 PS 处理�
 
 工具默认位于 `D:/AmdDesignTools/2026.1`；构建使用 `-ToolRoot`，主机使用 `--tool-root` 修改。
 构建必须使用新的 BuildName，不覆盖旧产物；主机输出同样要求新目录。
-当前硬件为 `build/vivado/aes_mvp_2`；512 KiB 软件为 `build/vitis/aes_mvp_3`，
-使用 `--workspace build/vitis/aes_mvp_3`。旧 64 KiB ELF 不兼容当前 mailbox ABI，禁止混用。
+当前硬件仍为 `build/vivado/aes_mvp_2`；优化版软件为 `build/vitis/aes_mvp_o2_word_1`，
+使用 `--workspace build/vitis/aes_mvp_o2_word_1`。旧 ELF/源码哈希不匹配时脚本拒绝下载，禁止混用。
 默认图片为标准库生成的 64×64 RGB PNG，不下载素材、不需要图像库。
 
 主机先校验源码、XSA、ELF、bit、PS init 哈希及 XSA 内部条目，才访问板卡。
@@ -97,7 +97,7 @@ AAD 为网络字节序 `MVP1 || version(u32=1) || image_length(u32) || reserved(
 Key/Nonce/AAD/密文/Tag 五类篡改均被主机拒绝，回读的板端 key/nonce 已零化。
 另实际测试 524288 字节合法 PNG，认证/全部字节/SHA-256 同样通过，验证新上限。
 
-实测命令与本地证据（图片、密钥和日志不提交 Git）：
+首次 MVP 的历史实测命令与本地证据（图片、密钥和日志不提交 Git，当前优化版复测见下节）：
 
 ```powershell
 & ./.venv/Scripts/python.exe src/host/aes_image_mvp.py 'D:/TEST/media/微信图片_20260910160056_203_3.jpg' --workspace build/vitis/aes_mvp_3 --output data/captures/aes_mvp_userjpg_1
@@ -130,6 +130,59 @@ MVP RESULT bytes=524288 status=0 elapsed_us=6820005
 
 软件产物路径均相对于 `build/vitis/`。构建清单的 `board_validated=false` 仅表示构建本身
 不验板；具体图片验证清单的 `board_validated=true` 才表示该次实际图片往返通过。
+
+## 性能优化（2026-09-27）
+
+只修改软件，保持 AES 核、bit/XSA、输入 JPG、Mailbox ABI、GCM/AAD/Tag 和密钥零化不变：
+
+1. Vitis 应用显式启用 `-O2`，并检查实际编译命令，构建清单记录优化级别与构建脚本哈希。
+2. GHASH 从 16-byte 数组操作改为 4 个 `uint32_t`，仍为固定 128 次乘法循环，
+   显式大端装载/输出；没有未对齐整数强转、秘密索引表或按秘密值分支。
+3. UART 增加 AES 调用次数和累计 AES/MMIO 时间，其余时间包含 GHASH、CTR/XOR、
+   密钥初始化及计时开销，标为 `ps_other_us`，不能当作纯 GHASH 测量。
+
+同一张 365954 字节 JPG（SHA-256 与上文一致），同一 100 MHz 硬件，测量窗口均为
+缓存启用后的板端处理，截止于最终缓存 flush 之前；不含启动、DDR 自检、JTAG 和主机处理。
+优化版计时探针自身开销包含在总时间中，旧 `-O0` 基线没有分项探针；不是视频端到端延迟。
+
+| 实现 | 板端处理 | AES/MMIO | PS 其余 |
+|---|---:|---:|---:|
+| 首次 MVP：`-O0`、byte GHASH | 4652657 us | 未分项 | 未分项 |
+| `-O2`、byte GHASH | 512107 us | 50626 us | 461480 us |
+| `-O2`、32-bit GHASH（首次） | 239584 us | 51039 us | 188544 us |
+
+最终版同图三次处理分别为 239584 / 239072 / 239584 us，中位数 239584 us，
+约为原版的 19.42 倍速度，板端处理吞吐约 12.22 Mbps，同等大小约 4.17 张/秒。
+仍未达到这张大图的 15 fps，不宣称摄像头/网络或持续视频验收通过。
+512 KiB 上限同样通过，板端 342481 us（AES/MMIO 73163 us、PS 其余 269317 us）。
+四次均通过独立主机 AES-GCM 认证、密文/Tag 比对、原图/还原逐字节和 SHA-256 比对、
+五类篡改拒绝与板端 key/nonce 清理检查。
+原图未压缩、裁剪或修改，三次使用新随机密钥与 Nonce。
+离线 105 组 C/GCM 黄金向量全部通过，额外验证已加密首块后 AES 故障时整个数据/Tag 清零。
+
+证据：`data/captures/aes_mvp_word_profile_uart_1.log`、
+`aes_mvp_word_jpg_1/`、`aes_mvp_word_jpg_2/`、`aes_mvp_word_jpg_3/`、
+`aes_mvp_word_boundary_1/`；仅日志/指标供性能分析，不输出密钥到终端或 Git。
+中间 `-O2`/byte 测量日志为 `aes_mvp_o2_profile_uart_1.log`，结果为 `aes_mvp_o2_jpg_1/`。
+
+优化版复测：在另一终端先运行 `capture_uart.ps1`，再执行：
+
+```powershell
+& ./.venv/Scripts/python.exe src/host/aes_image_mvp.py 'D:/TEST/media/微信图片_20260910160056_203_3.jpg' --workspace build/vitis/aes_mvp_o2_word_1
+```
+
+新机器可直接按前文完整构建；本次复用已验证 XSA，只重建了软件，原生 Vitis 命令为：
+
+```powershell
+$env:EYEPQC_MVP_XSA = (Resolve-Path build/vivado/aes_mvp_2/m01.xsa).Path
+$env:EYEPQC_MVP_VITIS = Join-Path (Get-Location).Path 'build/vitis/aes_mvp_optimized_new'
+$env:EYEPQC_TOOL_ROOT = 'D:/AmdDesignTools/2026.1'
+& 'D:/AmdDesignTools/2026.1/Vitis/bin/vitis.bat' -s prj/build_aes_mvp.py
+```
+
+须使用全新软件目录，并检查 `AES_MVP_ELF_OK` 和新 `build_manifest.json`，不能只相信 batch 退出码。
+最终 ELF SHA-256 为 `0576c34a2d10fec967018a2420b514fb72deb8cae0e51ede52969f4b78d18204`，
+bit/XSA/PS init 哈希与前文相同；不下载非易失镜像，不提交图片或密钥。
 
 ## 已知边界
 
