@@ -5,7 +5,7 @@
 - 每次只打通一条最短链路，不同时调试摄像头、DMA、密码和网络。
 - 每个 RTL 模块必须先通过独立仿真，再进入 Block Design 和上板联调。
 - 所有硬件输出都与软件黄金参考逐字节比对。
-- 先完成明文链路，再插入 AES-GCM；先完成固定密钥，再接入 ML-KEM 动态密钥。
+- 当前优先完成固定图片 AES-GCM MVP，再恢复摄像头明文链路和整机集成；先完成独立加密，再接入 ML-KEM 动态密钥。
 - 第一版使用 Vitis Standalone（裸机）+ lwIP + PS GEM，不安装 PetaLinux。
 - 第一版只在板端实现 AES-GCM 加密，解密、JPEG 解码、显示和录像均在主机完成。
 - 每完成一个集成门禁点，保存可复现脚本、测试数据、ILA 截图和性能结果。
@@ -66,6 +66,11 @@ M14 ML-KEM PL 加速与性能优化
 M15 可靠性测试、报告和竞赛交付
 ```
 
+2026-09-27 用户调整优先级：`M00 → M01 已验证的 UART/DDR/时钟 → M06 开源 AES 核
+→ 固定图片 AES-GCM MVP → 补齐 M01/G0 → M02～M05 → M07/M08 全 PL 数据通路`。
+模块编号保留，执行顺序不再按章节编号机械推进；M01 网口、LED 实测和冷启动
+30 分钟仍待验收，不因 MVP 提前而改成已通过。
+
 ## 4. M00：协议、数据格式与软件黄金参考
 
 ### 编程任务
@@ -123,6 +128,37 @@ M15 可靠性测试、报告和竞赛交付
 
 - 一条脚本或一份明确步骤可以从空工程生成 bitstream 和裸机程序。
 - 重新上电后可稳定运行 30 分钟，无异常复位和 DDR 错误。
+
+## 5.1 当前优先：固定图片 AES 加密 MVP
+
+### 最短链路
+
+```text
+主机图片 → JTAG 写入拥有的 DDR mailbox → PS 调度 PL AES-128
+         → PS GHASH / 128-bit Tag → JTAG 回读 → 主机认证解密 → 字节比对
+```
+
+- AES 核采用 GitHub [secworks/aes](https://github.com/secworks/aes)，固定提交
+  `80dc4718e1dcbbdb4b0dd1bdb393d8f7b98981dc`，保留 BSD-2-Clause 许可证与版权。
+- 固定 `encdec=1` / `keylen=0`，只使用 AES-128 Encrypt；不自行重写 S-box/密钥展开。
+- PS 通过 GP0 / AXI4-Lite 调用 AES；暂不接摄像头、DMA、网口或 ML-KEM。
+- 保持 AES-128-GCM：PL AES 生成 CTR keystream 和 Tag mask，PS 执行 GHASH。
+  不是 ECB 图片加密，也不是无认证 CTR；PS GHASH 后续在 M07/M08 移入 PL。
+- 单次图片最多 512 KiB，保留长度检查、超时、复位和密钥零化；JTAG 传输/空闲时关闭 DCache，
+  PS 独占处理期间启用缓存，完成后 flush/disable 再发布结果；不宣称视频吞吐已达标。
+- 主机每次生成新随机 key/nonce，密钥只保存本地测试输出目录，不放入日志或 Git。
+  JTAG 可读写密钥和内存，本演示不是安全部署或侧信道加固方案。
+
+### 完成判据
+
+- 原始开源 AES + AXI4-Lite 接口通过 NIST/随机块、通道错开/背压、复位与零化仿真。
+- PS GHASH/GCM 对照 M00/NIST 黄金向量，覆盖空输入、尾块、大图片和篡改拒绝。
+- 新 BD/bitstream/XSA/ELF 可重建，并在 CF7020B 上实际加密一张图片。
+- 主机认证解密后的图片与原图 SHA-256 和全部字节一致；输出密文、Tag、还原图片及实测记录。
+- 不能把软件模拟结果当作 FPGA 实测，不能把混合 PS/PL MVP 当作 M08 全 PL 已完成。
+
+2026-09-27：此独立 MVP 已在 CF7020B 上通过，包含用户提供的 365954 字节完整 JPG
+和 524288 字节 PNG 上限，认证解密后逐字节与 SHA-256 一致。实测与复现见 [图片 MVP](aes_mvp.md)。
 
 ## 6. M02：OV5640 SCCB 配置模块
 
@@ -244,14 +280,13 @@ M15 可靠性测试、报告和竞赛交付
 
 ### 建议文件
 
-- `src/rtl/crypto/aes_sbox.sv`
-- `src/rtl/crypto/aes_key_expand.sv`
-- `src/rtl/crypto/aes128_encrypt.sv`
-- `sim/tb/tb_aes128_encrypt.sv`
+- `src/rtl/crypto/secworks_aes/`：固定版本的开源 RTL 与 LICENSE。
+- `src/rtl/crypto/aes_axi_lite.sv`：最小寄存器接口、忙状态和零化。
+- `sim/tb/tb_aes_axi_lite.sv`：使用实际开源核验证。
 
 ### 编程任务
 
-- 只实现 AES-128 Encrypt；GCM 不需要 AES 解密轮。
+- 复用 GitHub 开源 AES 核，不重写 AES 算法；MVP 只启用 AES-128 Encrypt，GCM 不需要 AES 解密轮。
 - 明确 128 位数据、Key 和字节序映射，写入接口文档。
 - 支持密钥装载完成、忙、输出有效和密钥清零。
 - 优先采用资源适中的迭代结构，后续再根据吞吐率决定流水化程度。
@@ -423,7 +458,9 @@ M15 可靠性测试、报告和竞赛交付
 
 ## 17. M13：整机集成门禁
 
-必须按顺序通过以下门禁，前一门禁不稳定时不进入下一项。
+正式整机集成必须按顺序通过以下门禁，前一门禁不稳定时不进入下一项。
+用户授权的独立图片 MVP 可在 M01 已验证的 UART/DDR/时钟基线上先行；
+该分支不包含网络/摄像头，不把 G0 标为通过，也不提前宣称 G1～G7 通过。
 
 ### G0：工具和板级基础
 
@@ -526,15 +563,15 @@ M15 可靠性测试、报告和竞赛交付
 
 ## 20. 立即开始的工作清单
 
-按以下顺序开始，不跨步骤：
+按用户调整后的以下顺序执行：
 
 1. 建立工程目录和 Git 忽略规则。
 2. 收集领航者官方 OV5640 示例、XDC 和 Vivado 版本信息。
 3. 完成 M00 协议字段表和 AES-GCM 软件黄金参考。
-4. 完成 M01 最小硬件工程、UART、DDR 和 lwIP echo。
-5. 完成 M02 SCCB 芯片 ID 读取与 JPEG 初始化。
-6. 完成 M03/M04，以真实 JPEG 文件驱动仿真。
-7. 完成 M05 摄像头 JPEG 到 DDR 的上板采集。
-8. 并行推进 M06～M08 AES-GCM 硬件核及测试平台。
+4. 复用 M01 已验证的 UART、DDR 和时钟，M01 网口/LED/冷启动验收保留待办。
+5. 优先导入 M06 开源 AES 核，完成独立仿真、最小 AXI4-Lite 与固定图片 AES-GCM MVP。
+6. 补齐 M01/G0，再完成 M02 SCCB 芯片 ID 读取与 JPEG 初始化。
+7. 完成 M03/M04 仿真和 M05 摄像头 JPEG 到 DDR 的上板采集。
+8. 完成 M07/M08，将 MVP 的 PS GHASH 迁入全 PL AES-GCM 与 AXI4-Stream/DMA。
 9. 完成 M12 主机固定 JPEG 接收与显示程序。
 10. 依次通过 G1～G7，之后再进入 ML-KEM PL 加速。

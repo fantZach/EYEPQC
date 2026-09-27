@@ -15,6 +15,13 @@ from m01_probe import check_echo, run
 
 
 class M01(unittest.TestCase):
+    def test_board_reset_polarity(self):
+        script = (ROOT / "prj/build_m01.tcl").read_text()
+        self.assertIn("CONFIG.C_EXT_RESET_HIGH 0 CONFIG.C_AUX_RESET_HIGH 1", script)
+        self.assertIn("[get_bd_pins ps7/FCLK_RESET0_N] [get_bd_pins reset_0/ext_reset_in]", script)
+        self.assertIn("[get_bd_pins zero/dout] [get_bd_pins reset_0/aux_reset_in]", script)
+        self.assertIn('error "Reset polarity changed:', script)
+
     def test_yt8521_adapter(self):
         gcc = shutil.which("gcc")
         if not gcc and os.name == "nt" and Path("C:/msys64/ucrt64/bin/gcc.exe").is_file():

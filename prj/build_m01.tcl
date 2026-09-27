@@ -3,6 +3,7 @@
 # User confirmed two x16 chips: 32-bit / 1 GiB. Core V2.5 schematic uses 1.35 V.
 # Confirm physical revision/PHY and connect UART before board validation.
 set repo [file normalize [file join [file dirname [info script]] ..]]
+if {![info exists aes_mvp]} {set aes_mvp 0}
 set out [file join $repo build vivado m01]
 if {[llength $argv] == 1} {set out [file normalize [lindex $argv 0]]}
 if {[llength $argv] > 1} {error "Expected at most one output directory"}
@@ -13,6 +14,10 @@ if {[llength [get_parts -quiet xc7z020clg400-2]] != 1} {
 create_project m01 $out -part xc7z020clg400-2
 set_property target_language Verilog [current_project]
 add_files [file join $repo src rtl common heartbeat.sv]
+if {$aes_mvp} {
+    add_files [glob [file join $repo src rtl crypto secworks_aes *.v]]
+    add_files [file join $repo src rtl crypto aes_axi_lite.sv]
+}
 add_files -fileset constrs_1 [file join $repo board xdc m01.xdc]
 create_bd_design system
 set ps [create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.5 ps7]
@@ -23,7 +28,7 @@ set_property -dict [list \
     CONFIG.PCW_APU_PERIPHERAL_FREQMHZ {666.666667} \
     CONFIG.PCW_PRESET_BANK0_VOLTAGE {LVCMOS 3.3V} \
     CONFIG.PCW_PRESET_BANK1_VOLTAGE {LVCMOS 1.8V} \
-    CONFIG.PCW_USE_M_AXI_GP0 {0} \
+    CONFIG.PCW_USE_M_AXI_GP0 $aes_mvp \
     CONFIG.PCW_UART0_PERIPHERAL_ENABLE {1} \
     CONFIG.PCW_UART0_UART0_IO {MIO 14 .. 15} \
     CONFIG.PCW_UART0_BAUD_RATE {115200} \
@@ -76,6 +81,8 @@ set_property name DDR [get_bd_intf_ports DDR_0]
 set_property name FIXED_IO [get_bd_intf_ports FIXED_IO_0]
 create_bd_cell -type module -reference heartbeat heartbeat_0
 set rst [create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 reset_0]
+# FCLK_RESET0_N is active-low; the tied-zero auxiliary reset must be active-high.
+set_property -dict [list CONFIG.C_EXT_RESET_HIGH 0 CONFIG.C_AUX_RESET_HIGH 1] $rst
 set one [create_bd_cell -type inline_hdl -vlnv xilinx.com:inline_hdl:ilconstant:1.0 one]
 set zero [create_bd_cell -type inline_hdl -vlnv xilinx.com:inline_hdl:ilconstant:1.0 zero]
 set_property CONFIG.CONST_VAL 0 $zero
@@ -86,7 +93,23 @@ connect_bd_net [get_bd_pins zero/dout] [get_bd_pins reset_0/aux_reset_in] [get_b
 connect_bd_net [get_bd_pins reset_0/peripheral_aresetn] [get_bd_pins heartbeat_0/resetn]
 create_bd_port -dir O led
 connect_bd_net [get_bd_pins heartbeat_0/led] [get_bd_ports led]
+if {$aes_mvp} {
+    create_bd_cell -type module -reference aes_axi_lite aes_0
+    set conv [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_protocol_converter:2.1 axi_convert]
+    set_property -dict [list CONFIG.SI_PROTOCOL {AXI3} CONFIG.MI_PROTOCOL {AXI4LITE}] $conv
+    connect_bd_intf_net [get_bd_intf_pins ps7/M_AXI_GP0] [get_bd_intf_pins axi_convert/S_AXI]
+    connect_bd_intf_net [get_bd_intf_pins axi_convert/M_AXI] [get_bd_intf_pins aes_0/s_axi]
+    connect_bd_net [get_bd_pins ps7/FCLK_CLK0] [get_bd_pins ps7/M_AXI_GP0_ACLK] \
+        [get_bd_pins axi_convert/aclk] [get_bd_pins aes_0/s_axi_aclk]
+    connect_bd_net [get_bd_pins reset_0/peripheral_aresetn] \
+        [get_bd_pins axi_convert/aresetn] [get_bd_pins aes_0/s_axi_aresetn]
+    assign_bd_address -offset 0x43C00000 -range 4K [get_bd_addr_segs aes_0/s_axi/reg0]
+}
 validate_bd_design
+if {[get_property CONFIG.C_EXT_RESET_HIGH $rst] != 0 ||
+    [get_property CONFIG.C_AUX_RESET_HIGH $rst] != 1} {
+    error "Reset polarity changed: tied-zero aux_reset_in must not assert reset"
+}
 if {[get_property CONFIG.C_EXT_RESET_HIGH $rst] != 0} {
     error "PS reset is active-low; proc_sys_reset polarity propagation failed"
 }
