@@ -5,7 +5,8 @@
 
 ## 1. 来源与复现
 
-实际资料目录是 `D:/BaiduNetdiskDownload/4_Source_Code`。
+首次读取的资料目录为 `D:/BaiduNetdiskDownload/4_Source_Code`，现已迁移至
+`D:/BaiduNetdiskDownload/正点原子领航者/4_Source_Code`。新增完整硬件资料见第 7 节。
 已按需解压 8 个工程，保留原文件，不导入旧 BSP、可执行固件和实现结果。
 另有少量生成的 IP 源码/网表用于核对接口；它们不是新工程的构建输入。
 
@@ -17,11 +18,12 @@
 在空的 `board/vendor/` 中运行（现有文件不会被覆盖，重复导入会报错）：
 
 ```powershell
-& ./prj/import_vendor.ps1 -SourceRoot 'D:/BaiduNetdiskDownload/4_Source_Code'
+& ./prj/import_vendor.ps1 -SourceRoot 'D:/BaiduNetdiskDownload/正点原子领航者/4_Source_Code'
 ```
 
 本次核对 `board/vendor/manifest.json` 中 2267 个条目，全部存在。
 解压目录被 Git 忽略；保存此报告和导入脚本即可重现来源。
+迁移后的两份压缩包已重新计算 SHA-256，字节数和哈希与上表一致。
 官方文件保留原版权头；不能把“提供了源码”当作允许任意再分发的开源许可证。
 
 | 例程 | 用途 | 本项目取舍 |
@@ -60,7 +62,8 @@ DDR 有必须解决的差异：hello、GPIO、UART、timer、echo 这 5 个例�
 `MT41K256M16 RE-125` / `DDR 3 (Low Voltage)`；camera 例程使用
 `MT41J256M16 RE-125` / `DDR 3`。
 hello 和 camera 显式 DDR 参数比较仅这两项不同，但仍不能推断实物供电和芯片兼容性。
-M01 以 hello/echo 配置为待确认基线，不用 camera 的 DDR 类型覆盖它；上板前核对核心板丝印/原理图。
+M01 最初以 hello/echo 配置为待确认基线，不用 camera 的 DDR 类型覆盖它；
+用户提供海力士丝印与颗数后已改为 Custom 时序，见第 7 节。
 
 摄像头引脚在两个摄像头工程中完全一致，均配置 `LVCMOS33`。
 依据 [PS 摄像头 XDC](C:/Users/23976/Desktop/WorkingOn/EYEPQC/board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/ov5640_ps_eth_udp_pc.srcs/constrs_1/new/system_wrapper.xdc)。
@@ -191,5 +194,61 @@ echo 的平台已占用私有定时器/GIC，后续不要再初始化第二套�
 `git hook run pre-commit` 通过：5 份向量可复现、M00 10 项测试通过。
 导入脚本 PowerShell 语法检查和本报告本地源码链接检查通过。
 
-截至本次：原始源码未改写、未下载到板卡；没有检测到 Windows 串口，
-没有生成新的 XSA/bitstream/完整 Standalone 应用，M01/G0 仍未通过。
+最初研究结束时未生成新 XSA/bitstream；后续补装器件支持并完成 M01 离线构建，见下节。
+原始源码未改写、未下载到板卡，M01/G0 仍未通过。
+
+## 7. 新增硬件资料与海力士配置核对
+
+2026-09-27 用户新增目录 `D:/BaiduNetdiskDownload/正点原子领航者`。
+硬件目录为 `3_开发板原理图和硬件相关文件`，以下原始文件只读，未混入源码：
+
+| 文件（相对硬件目录） | SHA-256 |
+|---|---|
+| `ZYNQ7010_7020核心板原理图_2V5.pdf` | `1c8cf8105e91d762d29ad604e82b629b3921fa474d5a0311ed6c04237db107ea` |
+| `领航者ZYNQ底板原理图_V3.9.pdf` | `ec8b68eeb07e0743e6c60528444f6aeb457dc60e897ddf9eb86d5a56c1ab6a69` |
+| `硬件相关文件/核心板信号走线长度/ZYNQ7010_7020核心板信号走线长度.csv` | `574e22fe8f4fe40bc406b499d03b8b81ebadcaecaa09020fa0a05008da9e2f2b` |
+
+核对 PDF 的原理图连接，不仅依赖文本提取；关键页已渲染到忽略的 `tmp/pdfs/`。
+核心板改版说明称 V2.5 相对 V2.4 优化电源时序、连接器引脚兼容；该说明不证明
+用户实物的具体版本、替代料或供电测量结果。原理图事实如下：
+
+- 核心板第 4 页：PS 时钟 33.333333 MHz，UART0 MIO14=RX/MIO15=TX；
+  GEM0 MIO16..27，MDIO MIO52/53；MIO Bank0=3.3 V、Bank1=1.8 V。
+- 核心板第 5/8/10 页：DDR/PS DDR Bank502 供电 1.35 V，U3/U4 两颗 x16，
+  地址 A0..A14、BA0..BA2，32-bit 共享单 rank；图中芯片是 NT5CC256M16。
+- 底板第 2 页：SD0 经 TXS02612 电平转换到 SD 卡，MIO40..45 与 MIO10 卡检测
+  对应官方 echo preset。M01 已补齐 SD0，以便同平台 FSBL 支持 SD 冷启动。
+- 底板第 6 页：USB UART 为 CH340C，P5 的 1–3、2–4 接 PS UART；板上标注的
+  UART1 是连接器名称，接核心板 MIO14/15（软件 PS UART0）。另一侧是 UART3/PL。
+- 核心板第 11 页：PS PHY 为 YT8521SC-CA、RGMII 1.8 V、复位连接 PS_POR_B；
+  底板还有独立 PL PHY YT8531，不能把 PL 网口当作 M01 的 PS GEM0。
+
+用户确认实物为两颗 `H5TC4G63EFR-RDA`。对照
+[SK hynix Rev.1.3 数据手册](https://datasheet.lcsc.com/datasheet/pdf/aea45ff70742b3df7465cb4aa7642654.pdf?productCode=C37953994)，
+每颗 4 Gb / x16，合计 1 GiB / 32-bit；533 MHz 用非可选的 CL8/CWL6，
+保守 tRCD/tRP=15 ns、tRAS=36 ns、tRC=51 ns、tFAW=50 ns。
+本地原始手册 `tmp/pdfs/h5tc4g63efr.pdf` SHA-256：
+`7395cdfc47e3d3eed193b54f21b756f5c356623822f57cf54aca8f2b7cc97ba7`。
+`prj/build_m01.tcl` 使用 Custom 时序、显式 CLG400，封装长度来自本机
+`Vivado/data/PS/7series/data/zynqconfig/part/partno_preset.xml` 中
+`xc7z020clg400-2` preset（CK=80.4535），而非照搬旧 BD 的 54.563（对应 xc7z010）。
+PCB 延迟仍保留示例值，走线 CSV 的实际版本适用性待核对，不声称已完成校准。
+
+网络迁移新增风险：实际读取官方压缩包内 echo 的
+`lwip211_v1_3/src/contrib/ports/xilinx/netif/xemacpsif_physpeed.c`，
+并对照本次生成的 lwIP 2.2.0 同名文件，两者均无 YT8521 分支，未知型号进入
+Marvell 初始化。新资料中的 Motorcomm YT8521 数据手册第 39/47 页给出
+PHY ID `0x0000:0x011a` 与状态寄存器 `0x11`，模式/延迟控制则为扩展
+`0xA001/0xA003`，不能仅改厂商 ID 后沿用 Marvell 的寄存器写入。
+按此风险先做型号适配再下载；新适配只注入生成工作区的共用 PHY 分派，
+双 ID 校验、保留 1.8 V strap、RX 2 ns/TX 1.95 ns（保留校准参数），
+有界 reset/协商及重连失败检查，不安装 PetaLinux，也不复制整个旧 BSP。
+
+用户补充 CF7020B / COM4；规格书 V1.2 第 10–11 页将 CF7020B 对应到 7020 核心板，
+它是型号而非 PCB 修订号，不能直接据此确认走线 CSV 对应实物。
+当前实际结果：JTAG 已临时下载；COM4 读到 UART 启动、DDR scratch 及定时器正常日志。
+实际 MDIO 确认 YT8521 ID `0000:011A` / 地址 7，配置 `0x8160`。
+海力士配置的新 BD/bitstream/XSA、对应 ARM ELF 与 SD0/同平台 FSBL 离线构建通过。
+已按同一新 XSA 重新构建并下载含 PHY 适配的软件，细节与输出哈希见 `doc/m01.md`。
+用户确认尚未连接 PS 网口，当前 link=0 / 协商超时符合接线状态；ping/echo 尚未验证。
+尚未修改 PC 网卡或写 SD/Flash，也未完成冷启动 30 分钟验收。

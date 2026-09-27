@@ -1,6 +1,7 @@
 # Board inputs for M01
 
-已找到用户提供的官方例程目录 `D:/BaiduNetdiskDownload/4_Source_Code`，包含
+用户新增的完整资料位于 `D:/BaiduNetdiskDownload/正点原子领航者`；官方例程现位于其
+`4_Source_Code` 子目录（原目录 `D:/BaiduNetdiskDownload/4_Source_Code` 已迁移），包含
 `1_FPGA_Design/ZYNQ_7020_FPGA.rar`、`2_Embedded_Vitis/ZYNQ_Vitis_7020.rar`。
 已按需解压 FPGA LED/OV5640 和 Vitis UART/Timer/lwIP/JPEG 等 8 个工程，
 核对 XPR/BD：Vivado 2020.2，器件 `xc7z020clg400-2`。
@@ -8,9 +9,17 @@
 
 原始源码位于本地 `board/vendor/`（Git 忽略），清单保存在 `board/vendor/manifest.json`。
 导入脚本为 `prj/import_vendor.ps1`；仅在空目录使用，现有文件不会被覆盖。
-实物底板、7020 核心板和摄像头模组版本仍需确认，源码不能替代实物核对。
+用户确认核心板型号 CF7020B；底板/核心板 PCB 修订和摄像头模组版本仍需确认。
 特别注意：hello/echo 等工程配置 DDR3L `MT41K256M16`，摄像头工程配置 DDR3 `MT41J256M16`；
 未核对核心板丝印/供电前不能混用这两套 DDR 参数。
+
+用户已确认实物为两颗 SK hynix `H5TC4G63EFR-RDA`，合计 1 GiB、32-bit。
+已核对新增核心板 V2.5 原理图：DDR 1.35 V、UART0 MIO14/15、GEM0 MIO16..27、
+MDIO MIO52/53、SD0 MIO40..45 与 M01 一致；按海力士数据手册设置 Custom CL8/CWL6。
+原理图中的内存为 NT5CC256M16、PS PHY 为 YT8521SC-CA；实物 MDIO 已读到
+YT8521 ID `0000:011A` / 地址 7。AMD lwIP 与旧官方 echo BSP 无该分支，现已在
+新生成 BSP 中加入最小适配，不改原始例程或安装目录；实际收发尚未验证。
+原理图、走线 CSV 的路径和 SHA-256 见研究记录第 7 节。
 
 官方入口来自 [正点原子 Products 仓库](https://github.com/alientek-openedv/Products)，
 已核对提交 `d917adac269f72ea1fb008baaed4d25319fcdf0c`：
@@ -30,7 +39,9 @@
 
 2026-09-26 本机找到 `D:/AmdDesignTools/2026.1`，Vivado `-version` 报告 v2026.1，
 SW Build 6511674、IP Build 6504888、SharedData Build 6501428。
-这是本机版本；已解压的 XPR/BD 为 2020.2。设备支持与许可证需在创建实际工程时检查。
+这是本机版本；已解压的 XPR/BD 为 2020.2。实际创建工程时许可证有效，
+最初器件库缺少 Zynq-7000；2026-09-27 用户补装后，`get_parts xc7z020clg400-2`
+已找到器件，新的海力士配置工程实际完成综合/实现/bitstream/XSA/ELF。
 官方旧 Tcl 有 2020.2 版本守卫，camera BD 的 Video In 4.0 在本机为 5.0；不能直接照搬生成结果。
 
 本机 `xsct.bat` 明确报错“XSCT is disabled in Vitis 2026.1 release”。
@@ -45,5 +56,8 @@ CLI 示例位于安装目录的 `Vitis/cli/examples`；不使用旧 XSCT 项目�
 ```
 
 预检只列出工具、候选资料和串口，不下载固件、不改写板卡，也不能替代 G0 上板测试。
-下一步基于 hello/echo 的待确认 PS 基线创建最小 BD，生成 XSA，再编译 UART/DDR/lwIP echo。
-之后记录 LED、UART、DDR、ping/echo 和 30 分钟冷启动运行结果；通过 M01 后进入 M02。
+M01 已提供独立 Tcl BD、LED 心跳、Standalone 自检、lwIP echo 与主机探针，
+见 [构建和上板说明](../doc/m01.md)。新硬件/软件及 SD0/FSBL 离线构建已通过。
+JTAG 已临时下载，COM4 的 CH340 已采集到 UART 启动、DDR scratch 及定时器正常日志。
+V3.9 底板 P5 的 1–3、2–4 对应 PS 串口。当前 PHY link=0，继续确认 PS 网口接线/地址，
+验证 ping/echo、LED 和 30 分钟冷启动；通过 M01 后进入 M02。

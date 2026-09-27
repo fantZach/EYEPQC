@@ -1,4 +1,4 @@
-param([string]$SourceRoot = 'D:/BaiduNetdiskDownload/4_Source_Code')
+param([string]$SourceRoot = 'D:/BaiduNetdiskDownload/正点原子领航者/4_Source_Code')
 
 $ErrorActionPreference = 'Stop'
 $workspace = Split-Path -Parent $PSScriptRoot

@@ -3,7 +3,8 @@
 领航者 Zynq-7020 单向 JPEG 加密视频项目。实施顺序见 [doc/steps.md](doc/steps.md)，
 目标见 [doc/goals.md](doc/goals.md)，最新进度见 [report/progress.md](report/progress.md)。
 
-目前完成 M00 协议与离线黄金参考；已解压并研究官方 7020 例程，
+目前完成 M00 协议与离线黄金参考，已编写 M01 板级工程、自检和 echo；
+构建/上板步骤见 [M01](doc/m01.md)。已解压并研究官方 7020 例程，
 板级参数、JPEG 数据路径及迁移问题见 [研究记录](report/vendor_examples.md)。M01/G0 尚未上板通过。
 
 ## M00 复现
@@ -47,9 +48,9 @@ git config --local core.hooksPath .githooks
 git hook run pre-commit
 ```
 
-每次 `git commit` 会先检查暂存改动的空白错误，再验证向量可复现性并运行 M00 测试。
+每次 `git commit` 会先检查暂存改动的空白错误，再验证向量可复现性并运行 M00/M01 离线测试。
 任一步失败都会阻止提交；hook 不生成向量、不暂存文件、不自动创建提交。
-M00 校验使用当前工作区内容，部分暂存时需确保工作区与拟提交内容一致。
+校验使用当前工作区内容，部分暂存时需确保工作区与拟提交内容一致；M01 需要 Icarus/vvp 和原生 GCC。
 Linux/macOS 首次启用还需 `chmod +x .githooks/pre-commit`。
 
 ## M01 输入与预检
@@ -58,7 +59,7 @@ Linux/macOS 首次启用还需 `chmod +x .githooks/pre-commit`。
 在空的 `board/vendor/` 中按需导入用户提供的官方源码（保留原始文件，不覆盖已有文件）：
 
 ```powershell
-& ./prj/import_vendor.ps1 -SourceRoot 'D:/BaiduNetdiskDownload/4_Source_Code'
+& ./prj/import_vendor.ps1 -SourceRoot 'D:/BaiduNetdiskDownload/正点原子领航者/4_Source_Code'
 ```
 
 然后运行工具/资料预检：
@@ -66,6 +67,18 @@ Linux/macOS 首次启用还需 `chmod +x .githooks/pre-commit`。
 ```powershell
 & ./prj/check_environment.ps1 -ToolRoot 'D:/AmdDesignTools/2026.1'
 ```
+
+M01 离线自检与完整构建：
+
+```powershell
+& ./sim/scripts/run_m01.ps1
+& ./prj/build_m01.ps1 -ToolRoot 'D:/AmdDesignTools/2026.1'
+```
+
+Zynq-7000 器件支持已安装；按用户确认的两颗海力士 DDR，独立 BD、bitstream、
+XSA 和对应 ELF（含 SD0 / 同平台 FSBL）已构建通过。CF7020B / COM4 已临时 JTAG 验证
+UART、DDR scratch 和定时器；实物 YT8521 已识别并加入最小适配。当前 PS 网口 link=0，
+ping/echo、LED 实测及冷启动 30 分钟验收仍待完成，M01/G0 尚未通过。
 
 源码分别位于 `src/rtl/`、`src/ps/`、`src/host/`，仿真位于 `sim/`。
 生成工程统一放 `build/vivado/` 和 `build/vitis/`，捕获/固件输出分别放

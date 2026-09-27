@@ -10,11 +10,13 @@
 | 立即清单 1：目录与忽略规则 | 完成 | src/rtl、src/ps、src/host、sim、data、board、report、skill；build 生成目录已创建并忽略 |
 | 立即清单 2：官方资料与工具 | 源码研究完成，实物待确认 | 已提取 8 个官方工程并记录压缩包 SHA-256；XPR/BD 为 2020.2、xc7z020clg400-2；发现 DDR3/DDR3L 配置差异 |
 | M00：协议与黄金参考 | 完成（主机离线验证） | C/Python 协议实现、标准/随机/篡改向量、独立 GHASH 中间值和复现脚本 |
-| M01 / G0 | 已核对源码、未通过 | 摄像头 XDC、DDR/UART/GEM/FCLK/IRQ 已记录；实物 DDR/版本待确认；未检测到串口；未创建新 BD/bitstream/Standalone 应用 |
+| M01 / G0 | 部分上板通过、门禁未通过 | 新硬件/SD0/FSBL 构建通过；CF7020B / COM4 JTAG 验证 UART、DDR scratch、定时器；YT8521 ID 已确认并适配；M01 4 项、M00 10 项及 hook 通过；link=0，网络/LED/冷启动待验收 |
 | M02～M15 / G1～G7 | 未开始 | 按步骤继续，当前不越过板级门禁；ML-KEM PL 优化等 G0～G7 通过后进行 |
 
-板级资料已解压并完成源码研究；继续上板前必须核对实物 DDR/板卡版本并完成工程迁移。
-已有 `doc/steps.md` 是用户的未跟踪文件，未改写；没有提交 Git 或覆盖原有文档。
+板级资料已解压并完成源码研究；用户已提供 DDR 型号/颗数，新增原理图已核对。
+已临时 JTAG 下载并采集 COM4；需要确认 PS 网口接线/网络地址，继续网络和冷启动验收。
+M00 与官方研究已提交为 `e649634`；M01 代码和上板记录随本次里程碑提交，
+不包含官方例程或生成产物。没有改写 `doc/steps.md`。
 
 ## 已实现
 
@@ -52,7 +54,7 @@ NIST 原始 GCM ZIP 请求遭 HTTP 403/传输失败，导入脚本使用 pyca �
 ML-KEM 直接取 NIST ACVP 提交 `65370b861b96efd30dfe0daae607bde26a78a5c8`，
 原始 URL、文件哈希和筛选结果见 `data/kat/sources.json`。
 
-## 下一步：M01
+## M01 实现与待完成门禁
 
 用户提供的资料实际位于 `D:/BaiduNetdiskDownload/4_Source_Code`（不是 `4/_Source/_Code`）。
 已读取压缩包索引与源码说明，发现 `1_FPGA_Design/ZYNQ_7020_FPGA.rar`（1,519,052,295 字节）
@@ -71,12 +73,56 @@ ML-KEM 直接取 NIST ACVP 提交 `65370b861b96efd30dfe0daae607bde26a78a5c8`，
 
 原始官方源码未改写；没有向实物板卡下载；当前仍没有可见串口。
 官方 SCCB/采集两个独立 RTL 顶层的 Icarus 语法/展开检查通过（不是功能仿真）。
-本次提交前 hook 再次通过，M00 10 项测试通过；未创建 Git 提交。
+M00/官方研究提交前 hook 通过，M00 10 项测试通过。
 
-下一步：核对实物 DDR/版本 → 基于 hello/echo PS 配置重建最小 BD → 导出 XSA →
-Vitis Python 接口建立 Standalone/UART/DDR/lwIP echo → 实际板卡验证 30 分钟 → 进入 M02。
-本机 Vitis 2026.1 禁用 XSCT，后续构建使用 Python API。
-板级 pin/DDR/IO 参数未确认前，不能声称 bitstream 可用或通过 G0；需留存实际上板日志和测量结果。
+本次新增，详细说明见 [M01 构建与上板](../doc/m01.md)：
+
+- `prj/build_m01.ps1/.tcl/.py`：独立 PS7 BD、100 MHz PL LED 心跳、同步复位、实现/XSA、
+  Vitis Python Standalone/lwIP 构建；全新目录，不覆盖旧产物，不下载板卡。
+- `src/ps/src/m01.c`：UART、统一状态/始终启用的应用断言、异常、SCU tick 与全局计时器检查；
+  64 KiB 自有 DDR scratch 的非缓存/缓存读写；周期自检与统计；静态 IPv4 ping/TCP echo。
+- echo 检查完整 pbuf 链，发送空间不足时保留给 lwIP 重试，处理 FIN 关闭重试及连接计数。
+- `src/host/m01_probe.py`：标准库 echo 长包/分段读/重连探针，默认 1800 秒；失败不静默重试。
+- `sim/scripts/run_m01.ps1`：四项离线测试通过（含实际 PHY C 模型）；M00 十项回归通过；pre-commit 增加 M01 校验。
+
+历史构建（补装前）：Vivado 2026.1 识别有效 BASIC 许可证，但 `get_parts xc7z020clg400-2`
+为空，安装目录缺少 Zynq-7000 器件支持。脚本在创建项目之前明确失败，未用其他器件替代。
+当时没有新 BD 验证、综合、实现时序、bitstream 或 M01 XSA 的成功结果。
+
+为继续软件验证，单独提取官方 echo 的 `vitis/system_wrapper.xsa` 到忽略的 `build/reference/`，
+SHA-256 为 `0e27f6285f61cd8b56d7f3bf2fa2da309ce8ad1f87a20d2796d59709650f43d6`。
+实际运行 Vitis Python 脚本成功建立 Standalone、lwIP 2.2.0 BSP、FSBL 和 M01 Cortex-A9 ELF，
+应用 `-Wall -Wextra -Werror` 编译通过；上游 BSP/旧 XSA 生成代码仍有警告，不当作板级通过。
+最终参考工作区 `build/vitis/m01_reference_final/`，清单记录输入/源码/ELF 哈希。
+参考 ELF 的 DDR scratch 起始 `0x00200080`、64 KiB，与栈及其他 BSS 分离。
+DDR 测试只覆盖 scratch，不是全内存压力测试；应用测试和 localhost 探针不代表真实网口通过。
+
+后续实际验证（2026-09-27）：用户已安装 Zynq-7000 器件支持，
+`get_parts xc7z020clg400-2` 成功；两颗 H5TC4G63EFR-RDA 配为 1 GiB / 32-bit、
+Custom DDR3L-1066、CL8/CWL6。独立新工程 `m01_hynix_sd` 的 BD、综合、实现、
+bitstream/XSA、对应 Standalone/lwIP BSP/FSBL/ELF 全部成功，未回退到参考 XSA。
+PL 时序 WNS 6.068 ns / WHS 0.130 ns / WPWS 4.146 ns，DRC 0 项；
+25 LUT、60 FF、0 BRAM/DSP，LED 外部 output-delay 提示仍留存。
+SD0 及 setup/hold 失败检查已加入并验证；新 FSBL 实际链接 `InitSD` 与同平台
+`ps7_init`，新 ELF scratch 为 `0x00200080` / 64 KiB，与其他对象和堆栈分离。
+产物哈希见 M01 文档，清单 `board_validated=false`，未创建/写入 BOOT.BIN。
+应用继续使用 BSP/lwIP，按 Ponytail 不引入新驱动框架或依赖。
+
+新增资料目录 `D:/BaiduNetdiskDownload/正点原子领航者` 已核对，核心板 V2.5
+原理图标明 DDR 1.35 V；图中 PS PHY 为 YT8521SC-CA，而旧官方/新 AMD lwIP
+均无对应型号分支，不能盲用 Marvell 初始化。原理图、走线 CSV 与哈希见
+[官方例程研究第 7 节](vendor_examples.md)。用户确认 CF7020B / COM4；规格书可对应
+该型号，但不等同于已经确认 PCB 为 V2.5。实际 MDIO 读到 YT8521 `0000:011A` / 地址 7；
+已加入双 ID 分派、铜口/电平校验、RGMII 延迟和有界 reset/协商，不改官方源码或全局 BSP。
+临时 JTAG 下载成功，UART 启动、64 KiB DDR scratch 非缓存/缓存及 60 秒复测通过，
+50 ms tick 正常；已采集至应用 sec=70，DDR/异常/断言/滞后均为零。网络 PHY link=0，
+未通过 ping/echo，LED 频率仍需实物确认。当前 PC 有线网卡在 10.179.236.247，
+与板卡静态 192.168.1.10 不同网段，未擅自修改网络设置。
+
+下一步：确认 PS 网口接线/地址 → 实际 ping/echo、LED 验证 →
+基于同平台 SD 冷启动运行 30 分钟 → 确认 G0 后进入 M02。
+已易失性 JTAG 下载；未写 SD/Flash。用户确认 PS 网口未连接，协商超时符合当前接线状态。
+最终软件为 `m01_cf7020b_v2`，原始日志/输出哈希见 M01 文档。
 
 ## 复现
 
@@ -93,4 +139,5 @@ Vitis Python 接口建立 Standalone/UART/DDR/lwIP echo → 实际板卡验证 3
 已加入 `.githooks/pre-commit`，本仓库设置 `core.hooksPath=.githooks`。
 hook 顺序为暂存改动空白检查、生成向量一致性检查、M00 10 项测试。
 实际执行 `git hook run pre-commit` 通过；注入不存在的 C 编译器后返回非零并拒绝提交。
-hook 校验工作区文件，不自动暂存、生成向量或创建 Git 提交；尚未提交当前代码。
+M01 新增后顺序为暂存空白检查、向量一致性、M00 10 项、M01 4 项离线测试。
+hook 校验工作区文件，不自动暂存、生成向量或创建 Git 提交；本次按用户要求暂存并提交 M01。

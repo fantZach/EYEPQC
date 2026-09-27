@@ -13,4 +13,5 @@ else
 fi
 
 "$python" sim/scripts/generate_vectors.py --check
-exec "$python" sim/tb/test_m00.py
+"$python" sim/tb/test_m00.py
+exec "$python" sim/tb/test_m01.py
