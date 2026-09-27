@@ -14,7 +14,8 @@
 | M06 / 固定图片 MVP | 已上板通过（PS/PL 混合 MVP） | GitHub secworks/aes、AXI4-Lite、PL AES / PS GHASH；用户完整 365954 字节 JPG 与 524288 字节 PNG 上限认证往返通过；18 项离线检查/hook 通过；非 M08 全 PL |
 | M02：SCCB 摄像头配置 | RTL/仿真/实现通过；复电后串行 40/40 次配置通过，完整物理门禁待验收 | ID=5640；320×240/640×480 JPEG、16 项回读/质量/VTS 通过；复电后 ARM 调试恢复；历史 4300 超时未定位，真正冷启动/ILA/实际采集待完成；见 M02 文档 |
 | M03：DVP/JPEG 采集 | RTL/独立仿真/OOC 综合通过，未上板 | 连续 1000 帧逐字节、段内假标记、错误恢复、停 PCLK 复位/极性校准；用户 JPG 激励比对通过；184 LUT/394 FF，无 latch/BRAM/DSP；无实际摄像头采集或 DDR 保存 |
-| M04～M05、M07～M15 / G1～G7 | 未开始 | 下一步 FIFO/AXIS → DMA/DDR → 实拍保存；M11 以太网配置与联网门禁后置，M14 仍为全门禁通过后的可选优化 |
+| M04：异步 FIFO/AXIS | RTL/原生仿真/OOC 综合通过；未上板 | 原生 XPM 数据/帧提交 FIFO，32/64-bit 打包；错误/溢出整帧丢弃，统计握手快照；三配置各 1000 帧 DVP→M03→AXIS 比对；523 LUT/1374 FF/16 BRAM36；默认 64 KiB 帧上限；见 M04 文档 |
+| M05、M07～M15 / G1～G7 | 未开始 | 下一步 DMA/DDR → 实拍保存；M11 以太网配置与联网门禁后置，M14 仍为全门禁通过后的可选优化 |
 
 板级资料已解压并完成源码研究；用户已提供 DDR 型号/颗数，新增原理图已核对。
 已临时 JTAG 下载并采集 COM4；用户确认 PS 网口未连接，G0 网络和冷启动验收保留待办。
@@ -209,7 +210,8 @@ ELF text 增加 1008 字节，data/bss 不变，无新依赖、秘密索引表�
 已加入 `.githooks/pre-commit`，本仓库设置 `core.hooksPath=.githooks`。
 hook 顺序为暂存改动空白检查、生成向量一致性检查、M00 10 项测试。
 实际执行 `git hook run pre-commit` 通过；注入不存在的 C 编译器后返回非零并拒绝提交。
-当前顺序为暂存空白检查、向量一致性、M00 10 项、M01 5 项、图片 MVP 3 项、M02 4 项和 M03 2 项离线测试。
+当前顺序为暂存空白检查、向量一致性、M00 10 项、M01 5 项、图片 MVP 3 项、M02 4 项、M03 2 项和 M04 1 项离线测试。
+M04 调用已安装 Vivado 的 XSim/XPM 原生模型，没有工具时明确失败，不以简化 FIFO 替代。
 hook 校验工作区文件，不自动暂存、生成向量或创建 Git 提交；本次按用户要求暂存并提交图片 MVP。
 
 ## M02：代码/仿真与最小上板探针
@@ -264,3 +266,40 @@ JPEG 长度段内的 FF D8/FF D9 不作为标记，熵段处理 FF00、restart/f
 综合时序有 HD.CLK_SRC/缺少板级 IO delay 的范围限制，不作为实际采样时序通过；详细口径见 M03 文档。
 共享综合脚本的 M02 默认路径也重跑通过，421 LUT/250 FF、2 原生开漏 IOBUF，未改变 M02 RTL。
 复现、接口、哈希与独立综合证据见 [M03](../doc/m03.md)；下一步 M04 FIFO/AXIS，再 M05 DMA/DDR。
+
+## M04：原生异步 FIFO 与 AXIS
+
+按 steps 连接 M03 的投机字节输出，不下载板卡或建立临时 BRAM/JTAG 快照。
+采用已安装 AMD `xpm_fifo_async`：8-bit BRAM 数据 FIFO + 33-bit/16-entry LUTRAM 帧提交 FIFO。
+确认整帧后再交给 AXIS；错误/溢出帧按已存长度清理，不输出半帧，也不复位已提交的好帧。
+背压、描述符容量保护、下一 SOI 恢复、32/64-bit TKEEP/TLAST/TUSER、统计原子快照已实现。
+默认帧上限 65536 字节，未把协议/M03 的 2 MiB 上限标成片上缓存能力。
+此前用户 JPG 的 365930 字节 JPEG 帧超限；实际摄像头最大帧长待 M05 测量后选缓存预算。
+两个时钟须在 FIFO 初始化/复位恢复期间运行；M05 要协调 PCLK、M02 配置和 DMA 复位。
+
+实际 XSim/XPM 模型的三个配置（32-bit/1024、64-bit/1024、32-bit/65536）分别通过：
+1..17 字节尾包、200 组随机长度/异步频率相位抖动、最大长度/多一字节、旧帧错误与新 SOI
+同周期、帧外错误、强制背压 FIFO 溢出、描述符饱和、复位中断与全部统计恢复。
+各配置还通过真实自有 685-byte JPEG 的 1000 帧 DVP → M03 → FIFO → AXIS 字节记分板，
+以每批 25 帧连续发送验证，含 HREF 间隙与真实截断 JPEG 的 VSYNC 撤销。
+1..17 字节等接口激励不当作可解码 JPEG；1000 帧仿真不是实际板卡 FPS/稳定性验收。
+扩大至 64 KiB 后首次测试因固定 40000 周期排空预算不足而超时，已按深度修正测试预算；
+不是修改/放宽硬件丢帧策略，随后三个配置全部通过。
+没有新增 Python 包或复制 IP 源码；hook 新增这一个原生检查，详见 [M04](../doc/m04.md)。
+完整 hook 已通过：5 份向量一致性与 M00/M01/图片 MVP/M02/M03/M04 共 25 项离线测试。
+
+有效 OOC 综合 `build/vivado/m04_synth_5`（XC7Z020-2，默认 32-bit/64 KiB）：
+523 LUT（499 logic/24 memory）、1374 FF、16 BRAM36（11.43%），0 latch/DSP/黑盒。
+综合阶段 0 error/critical warning，58 个 warning 保留，包含未使用 IP 输出、内部裁剪与
+原生 FIFO FSM 安全状态提示；不宣称零警告。PCLK 13.888 ns / AXIS 10 ns 的综合估计
+WNS 4.818 ns、WHS 0.157 ns、WPWS 4.500 ns。
+原生约束覆盖的 CDC：PCLK→AXIS 37、AXIS→PCLK 3 个端点均 Safe，Unsafe/Unknown=0；
+报告保留无共同主时钟的结构提示与原生宏上下文 waiver，不是物理亚稳态验证。
+先加载 EARLY 的 `prj/m04_ooc.xdc`，再处理 XPM scoped 约束；保留原生 max-delay/bus-skew，
+不使用全局异步 clock-group 覆盖这些约束。灰码 bus-skew 需求为真实 10 ns，综合估计满足。
+早期 synth_2..4 先综合后创建时钟，导致原生约束采用 1000 ns 占位周期，保留作开发记录，
+不作最终 CDC 时序产物；synth_1 命令把其他选项放在 -tclargs 后导致参数数量错误，也不计通过。
+DCP SHA-256：`79dbece1a1b78863af624f3981b6ac43cda4ce2e47a810d7615f070b0b813c4f`。
+综合有 HD.CLK_SRC/无板级 IO delay 的范围限制，bus-skew 未布线；未改板上 M02、
+网络或 SD/Flash，未取得实际摄像头 JPEG，M04/G1 物理验收仍待 M05 集成。
+下一步 M05：短包发生器 → DMA/DDR → 缓存/错误恢复 → 实拍保存/解码；M11 网络仍最后接入。

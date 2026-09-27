@@ -10,7 +10,8 @@
 不依赖摄像头或未连接的 PS 网口。复现与验证状态见 [图片 MVP](doc/aes_mvp.md)。
 M02 SCCB/OV5640 初始化、失败保护和仿真已编写，复现及硬件状态见 [M02](doc/m02.md)。
 M03 DVP/JPEG 字节采集与帧边界检查已编写，连续 1000 帧和故障恢复仿真通过，见 [M03](doc/m03.md)。
-按 steps 继续 M04 FIFO/AXIS、M05 DMA/DDR 后再保存摄像头实拍图片；没有临时 BRAM 快照旁路。
+M04 原生异步 FIFO、整帧提交和 32/64-bit AXIS 已编写，默认帧长上限 64 KiB，见 [M04](doc/m04.md)。
+按 steps 继续 M05 DMA/DDR 后再保存摄像头实拍图片；没有临时 BRAM/JTAG 快照旁路。
 `tb_heartbeat.sv` 位于 `sim/tb/`，由 M01 回归执行，验证 PL LED 心跳的分频与复位。
 
 ## 优先：图片 AES MVP
@@ -73,9 +74,10 @@ git config --local core.hooksPath .githooks
 git hook run pre-commit
 ```
 
-每次 `git commit` 会先检查暂存改动的空白错误，再验证向量可复现性并运行 M00/M01/图片 MVP/M02/M03 离线测试。
+每次 `git commit` 会先检查暂存改动的空白错误，再验证向量可复现性并运行 M00/M01/图片 MVP/M02/M03/M04 离线测试。
 任一步失败都会阻止提交；hook 不生成向量、不暂存文件、不自动创建提交。
 校验使用当前工作区内容，部分暂存时需确保工作区与拟提交内容一致；M01 需要 Icarus/vvp 和原生 GCC。
+M04 需要已安装 Vivado 的 XSim/XPM，工具不在 PATH/默认位置时设置 `VIVADO_ROOT`；不需要板卡。
 Linux/macOS 首次启用还需 `chmod +x .githooks/pre-commit`。
 
 ## M01 输入与预检
