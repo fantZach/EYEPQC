@@ -70,7 +70,7 @@ class AesMvp(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as cleanup:
             library = Path(directory) / ("gcm.dll" if os.name == "nt" else "gcm.so")
             subprocess.run([tool("gcc", "C:/msys64/ucrt64/bin/gcc.exe"), "-shared", "-fPIC",
-                "-O2", "-Wall", "-Wextra", "-Werror", "-I", str(ROOT / "src/ps/include"),
+                "-O3", "-Wall", "-Wextra", "-Werror", "-I", str(ROOT / "src/ps/include"),
                 str(ROOT / "src/ps/src/mvp_gcm.c"), "-o", str(library)], check=True)
             lib = ctypes.CDLL(str(library))
             if os.name == "nt":

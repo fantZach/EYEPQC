@@ -35,13 +35,13 @@ try:
     app.import_files(from_loc=str(repo / "src/ps/src"), files=["aes_image_mvp.c", "mvp_gcm.c"], dest_dir_in_cmp="src")
     app.import_files(from_loc=str(repo / "src/ps/include"), files=["mvp_gcm.h"], dest_dir_in_cmp="src")
     app.set_app_config(key="USER_COMPILE_WARNINGS_AS_ERRORS", values="-Werror")
-    app.set_app_config(key="USER_COMPILE_OPTIMIZATION_LEVEL", values="-O2")
+    app.set_app_config(key="USER_COMPILE_OPTIMIZATION_LEVEL", values="-O3")
     if app.build() != BuildResponse.SUCCESS: raise RuntimeError("MVP application failed")
     commands = json.loads((workspace / "aes_mvp/src/compile_commands.json").read_text())
     for source in sources[:2]:
         own = [item for item in commands if Path(item["file"]).name == source.name]
-        if len(own) != 1 or "-O2" not in own[0]["command"].split():
-            raise RuntimeError("Expected actual -O2 compilation: " + source.name)
+        if len(own) != 1 or "-O3" not in own[0]["command"].split():
+            raise RuntimeError("Expected actual -O3 compilation: " + source.name)
     for path, digest in hashes.items():
         if hashlib.sha256((repo / path).read_bytes()).hexdigest() != digest:
             raise RuntimeError("Source changed during build: " + path)
@@ -53,7 +53,7 @@ try:
     if len(job) != 1 or int(job[0][1], 16) != job_size: raise RuntimeError("Unexpected mailbox ABI")
     artifacts = [elf, workspace / "aes_mvp/_ide/bitstream/m01.bit",
                  workspace / "aes_mvp/_ide/psinit/ps7_init.tcl"]
-    manifest = dict(optimization="-O2", xsa=str(xsa), xsa_sha256=hashlib.sha256(xsa.read_bytes()).hexdigest(),
+    manifest = dict(optimization="-O3", xsa=str(xsa), xsa_sha256=hashlib.sha256(xsa.read_bytes()).hexdigest(),
         sources=hashes, artifacts={str(p.relative_to(workspace)).replace("\\", "/"):
             hashlib.sha256(p.read_bytes()).hexdigest() for p in artifacts},
         mailbox_address=int(job[0][0], 16), mailbox_size=job_size, board_validated=False)

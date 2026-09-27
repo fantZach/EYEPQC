@@ -167,13 +167,24 @@ GHASH 改为固定循环的 32-bit 字运算，无秘密索引表或未对齐整
 同一原始 JPG：`-O0` 4652657 us → `-O2`/byte GHASH 512107 us →
 `-O2`/word GHASH 首次 239584 us。AES/MMIO 调用 22875 次约 51039 us，
 PS 其余约 188544 us（含 GHASH/CTR/XOR/初始化/探针，不是纯 GHASH）；仍不是 15 fps 验收。
-最终软件 `build/vitis/aes_mvp_o2_word_1`，构建清单新增真实优化级别与构建脚本哈希；
+第一轮软件 `build/vitis/aes_mvp_o2_word_1`，构建清单新增真实优化级别与构建脚本哈希；
 旧记录保留。同图三次 239584 / 239072 / 239584 us，中位数 239584 us，约快 19.42 倍，
 板端约 12.22 Mbps / 同等大小 4.17 张每秒；不是视频或 15 fps 验收。
 512 KiB 上限 342481 us，也通过认证、密文/Tag/全部字节比对、SHA-256、五类篡改与密钥清理。
 原始 JPG 未压缩/裁剪；105 组离线黄金向量及全部 18 项 hook 检查通过。
 日志为 `data/captures/aes_mvp_word_profile_uart_1.log`，结果为 `aes_mvp_word_jpg_1..3/`
 和 `aes_mvp_word_boundary_1/`，均 Git 忽略；复现/计时边界见 MVP 文档。
+
+第二轮仅将应用及 C 黄金向量检查改为 `-O3`，实际编译命令已核对；PS C/RTL 不变。
+ARM 反汇编确认 GHASH 的 4-word 内层移位循环展开，主循环仍固定 128 次；
+ELF text 增加 1008 字节，data/bss 不变，无新依赖、秘密索引表或手写汇编。
+同图三次 153440 / 153437 / 153401 us，中位数 153437 us，比第一轮再快 1.56 倍，
+比最初快 30.32 倍；AES/MMIO 49984 us、PS 其余 103453 us，不含 JTAG/最终缓存刷新。
+板端约 19.08 Mbps / 同等大小 6.52 张每秒，仍未通过 15 fps 或完整视频验收。
+512 KiB 上限 219779 us；四次认证/全部字节/SHA-256/五类篡改/板端密钥清理均通过。
+105 组 C 黄金向量及全部 18 项 hook 检查通过，当前软件 `build/vitis/aes_mvp_o3_word_1`。
+证据为 `data/captures/aes_mvp_o3_profile_uart_1.log`、`aes_mvp_o3_jpg_1..3/`、
+`aes_mvp_o3_boundary_1/`，不提交图片、日志或密钥；第一轮历史产物保留。
 
 ## 复现
 

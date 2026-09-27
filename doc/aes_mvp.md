@@ -51,8 +51,8 @@ JTAG 处理期间只能读取未变化的 state，不读写正在由 PS 处理�
 
 工具默认位于 `D:/AmdDesignTools/2026.1`；构建使用 `-ToolRoot`，主机使用 `--tool-root` 修改。
 构建必须使用新的 BuildName，不覆盖旧产物；主机输出同样要求新目录。
-当前硬件仍为 `build/vivado/aes_mvp_2`；优化版软件为 `build/vitis/aes_mvp_o2_word_1`，
-使用 `--workspace build/vitis/aes_mvp_o2_word_1`。旧 ELF/源码哈希不匹配时脚本拒绝下载，禁止混用。
+当前硬件仍为 `build/vivado/aes_mvp_2`；优化版软件为 `build/vitis/aes_mvp_o3_word_1`，
+使用 `--workspace build/vitis/aes_mvp_o3_word_1`。旧 ELF/源码哈希不匹配时脚本拒绝下载，禁止混用。
 默认图片为标准库生成的 64×64 RGB PNG，不下载素材、不需要图像库。
 
 主机先校验源码、XSA、ELF、bit、PS init 哈希及 XSA 内部条目，才访问板卡。
@@ -150,8 +150,9 @@ MVP RESULT bytes=524288 status=0 elapsed_us=6820005
 | 首次 MVP：`-O0`、byte GHASH | 4652657 us | 未分项 | 未分项 |
 | `-O2`、byte GHASH | 512107 us | 50626 us | 461480 us |
 | `-O2`、32-bit GHASH（首次） | 239584 us | 51039 us | 188544 us |
+| `-O3`、同一 32-bit GHASH（三次中位数） | 153437 us | 49984 us | 103453 us |
 
-最终版同图三次处理分别为 239584 / 239072 / 239584 us，中位数 239584 us，
+第一轮 `-O2` 版同图三次处理分别为 239584 / 239072 / 239584 us，中位数 239584 us，
 约为原版的 19.42 倍速度，板端处理吞吐约 12.22 Mbps，同等大小约 4.17 张/秒。
 仍未达到这张大图的 15 fps，不宣称摄像头/网络或持续视频验收通过。
 512 KiB 上限同样通过，板端 342481 us（AES/MMIO 73163 us、PS 其余 269317 us）。
@@ -165,10 +166,10 @@ MVP RESULT bytes=524288 status=0 elapsed_us=6820005
 `aes_mvp_word_boundary_1/`；仅日志/指标供性能分析，不输出密钥到终端或 Git。
 中间 `-O2`/byte 测量日志为 `aes_mvp_o2_profile_uart_1.log`，结果为 `aes_mvp_o2_jpg_1/`。
 
-优化版复测：在另一终端先运行 `capture_uart.ps1`，再执行：
+当前优化版复测：在另一终端先运行 `capture_uart.ps1`，再执行：
 
 ```powershell
-& ./.venv/Scripts/python.exe src/host/aes_image_mvp.py 'D:/TEST/media/微信图片_20260910160056_203_3.jpg' --workspace build/vitis/aes_mvp_o2_word_1
+& ./.venv/Scripts/python.exe src/host/aes_image_mvp.py 'D:/TEST/media/微信图片_20260910160056_203_3.jpg' --workspace build/vitis/aes_mvp_o3_word_1
 ```
 
 新机器可直接按前文完整构建；本次复用已验证 XSA，只重建了软件，原生 Vitis 命令为：
@@ -181,8 +182,35 @@ $env:EYEPQC_TOOL_ROOT = 'D:/AmdDesignTools/2026.1'
 ```
 
 须使用全新软件目录，并检查 `AES_MVP_ELF_OK` 和新 `build_manifest.json`，不能只相信 batch 退出码。
-最终 ELF SHA-256 为 `0576c34a2d10fec967018a2420b514fb72deb8cae0e51ede52969f4b78d18204`，
+第一轮 `-O2` ELF SHA-256 为 `0576c34a2d10fec967018a2420b514fb72deb8cae0e51ede52969f4b78d18204`，
 bit/XSA/PS init 哈希与前文相同；不下载非易失镜像，不提交图片或密钥。
+
+### 第二轮：编译器展开固定循环
+
+仅将应用及离线 C 黄金向量检查的优化级别改为 `-O3`，PS C/RTL/协议源码不变。
+原生构建核对两个 C 文件实际编译命令及清单为 `-O3`；ARM GHASH 反汇编显示
+4-word 内层移位循环已展开，主乘法循环仍固定 128 次，无新增查表算法或手写汇编。
+ELF 的 text 从 42781 增至 43789 字节（增加 1008），data/bss 不变。
+
+同一原始 JPG、相同计时窗口，三次实测 153440 / 153437 / 153401 us，
+中位数 153437 us：比第一轮再快 1.56 倍（耗时减少 35.96%），比最初约快 30.32 倍。
+中位数对应 AES/MMIO 49984 us（22875 次调用，约 32.6%），PS 其余 103453 us（约 67.4%）。
+后者包含 GHASH、CTR/XOR、初始化、清理及探针，仍非纯 GHASH 测量。
+板端处理吞吐约 19.08 Mbps，同等大小约 6.52 张/秒，仍未达到 15 fps 或持续视频验收。
+512 KiB 合法 PNG 上限 219779 us（AES/MMIO 71606 us、PS 其余 148172 us）。
+时间转换分别取整，部分分项之和与总时间相差 1 us。
+
+三次原图及上限四次均通过独立主机认证解密、密文/Tag/逐字节/SHA-256 比对、
+五类篡改拒绝与板端 key/nonce 零化；每次使用新随机 key/nonce，不压缩或裁剪原图。
+`-O3` 下 105 组离线黄金向量、AES 故障后的数据/Tag 清理及全部 18 项 hook 检查通过。
+串口证据为 `data/captures/aes_mvp_o3_profile_uart_1.log`，结果为
+`data/captures/aes_mvp_o3_jpg_1/`、`aes_mvp_o3_jpg_2/`、`aes_mvp_o3_jpg_3/`、
+`aes_mvp_o3_boundary_1/`，均 Git 忽略。第一轮历史产物保留；其构建脚本哈希已过期，
+当前源码不能直接下载旧工作区，须使用新构建或对应历史源码。
+
+当前软件为 `build/vitis/aes_mvp_o3_word_1`；最终 ELF SHA-256 为
+`c96518ff376869c1768f189a7a2e654260cfd1e9a172482d63c43a97d4548248`，
+硬件/bit/PS init 哈希不变，只做易失性 JTAG 下载，不写 SD/Flash。
 
 ## 已知边界
 

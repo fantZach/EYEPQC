@@ -13,7 +13,7 @@
 
 PL 使用固定版本的 [secworks/aes](https://github.com/secworks/aes)（BSD-2-Clause），
 PS 执行 GHASH，主机经 JTAG 传输并用独立 AES-GCM 认证解密。单张图片最多 512 KiB。
-默认 `-O2` 构建，GHASH 使用无秘密索引表的 32-bit 字运算；性能对比见 MVP 文档。
+默认 `-O3` 构建，GHASH 使用无秘密索引表的 32-bit 字运算；性能对比见 MVP 文档。
 无需新 Python 依赖；使用已有 cryptography、原生 Vivado/Vitis 和 Icarus/GCC。
 
 ```powershell
