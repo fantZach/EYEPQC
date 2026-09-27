@@ -4,6 +4,9 @@
 # Confirm physical revision/PHY and connect UART before board validation.
 set repo [file normalize [file join [file dirname [info script]] ..]]
 if {![info exists aes_mvp]} {set aes_mvp 0}
+if {![info exists camera_m02]} {set camera_m02 0}
+if {$aes_mvp && $camera_m02} {error "Choose AES MVP or camera probe, not both"}
+set use_axi [expr {$aes_mvp || $camera_m02}]
 set out [file join $repo build vivado m01]
 if {[llength $argv] == 1} {set out [file normalize [lindex $argv 0]]}
 if {[llength $argv] > 1} {error "Expected at most one output directory"}
@@ -18,6 +21,11 @@ if {$aes_mvp} {
     add_files [glob [file join $repo src rtl crypto secworks_aes *.v]]
     add_files [file join $repo src rtl crypto aes_axi_lite.sv]
 }
+if {$camera_m02} {
+    add_files [glob [file join $repo src rtl camera *.sv]]
+    add_files [file join $repo src rtl camera ov5640_jpeg.mem]
+    add_files -fileset constrs_1 [file join $repo board xdc m02.xdc]
+}
 add_files -fileset constrs_1 [file join $repo board xdc m01.xdc]
 create_bd_design system
 set ps [create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.5 ps7]
@@ -28,7 +36,7 @@ set_property -dict [list \
     CONFIG.PCW_APU_PERIPHERAL_FREQMHZ {666.666667} \
     CONFIG.PCW_PRESET_BANK0_VOLTAGE {LVCMOS 3.3V} \
     CONFIG.PCW_PRESET_BANK1_VOLTAGE {LVCMOS 1.8V} \
-    CONFIG.PCW_USE_M_AXI_GP0 $aes_mvp \
+    CONFIG.PCW_USE_M_AXI_GP0 $use_axi \
     CONFIG.PCW_UART0_PERIPHERAL_ENABLE {1} \
     CONFIG.PCW_UART0_UART0_IO {MIO 14 .. 15} \
     CONFIG.PCW_UART0_BAUD_RATE {115200} \
@@ -105,6 +113,28 @@ if {$aes_mvp} {
         [get_bd_pins axi_convert/aresetn] [get_bd_pins aes_0/s_axi_aresetn]
     assign_bd_address -offset 0x43C00000 -range 4K [get_bd_addr_segs aes_0/s_axi/reg0]
 }
+if {$camera_m02} {
+    set camera [create_bd_cell -type module -reference ov5640_probe camera_0]
+    set_property CONFIG.INIT_FILE [file join $repo src rtl camera ov5640_jpeg.mem] $camera
+    set gpio [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio:2.0 camera_gpio]
+    set_property -dict [list CONFIG.C_GPIO_WIDTH 32 CONFIG.C_ALL_OUTPUTS 1 \
+        CONFIG.C_IS_DUAL 1 CONFIG.C_GPIO2_WIDTH 32 CONFIG.C_ALL_INPUTS_2 1] $gpio
+    set conv [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_protocol_converter:2.1 axi_convert]
+    set_property -dict [list CONFIG.SI_PROTOCOL {AXI3} CONFIG.MI_PROTOCOL {AXI4LITE}] $conv
+    connect_bd_intf_net [get_bd_intf_pins ps7/M_AXI_GP0] [get_bd_intf_pins axi_convert/S_AXI]
+    connect_bd_intf_net [get_bd_intf_pins axi_convert/M_AXI] [get_bd_intf_pins camera_gpio/S_AXI]
+    connect_bd_net [get_bd_pins ps7/FCLK_CLK0] [get_bd_pins ps7/M_AXI_GP0_ACLK] \
+        [get_bd_pins axi_convert/aclk] [get_bd_pins camera_gpio/s_axi_aclk] [get_bd_pins camera_0/clk]
+    connect_bd_net [get_bd_pins reset_0/peripheral_aresetn] [get_bd_pins axi_convert/aresetn] \
+        [get_bd_pins camera_gpio/s_axi_aresetn] [get_bd_pins camera_0/resetn]
+    connect_bd_net [get_bd_pins camera_gpio/gpio_io_o] [get_bd_pins camera_0/cfg]
+    connect_bd_net [get_bd_pins camera_0/status] [get_bd_pins camera_gpio/gpio2_io_i]
+    foreach pin {cam_scl cam_sda cam_resetn cam_pwdn} {
+        make_bd_pins_external [get_bd_pins camera_0/$pin]
+        set_property name $pin [get_bd_ports ${pin}_0]
+    }
+    assign_bd_address -offset 0x41200000 -range 64K [get_bd_addr_segs camera_gpio/S_AXI/Reg]
+}
 validate_bd_design
 if {[get_property CONFIG.C_EXT_RESET_HIGH $rst] != 0 ||
     [get_property CONFIG.C_AUX_RESET_HIGH $rst] != 1} {
@@ -114,6 +144,10 @@ if {[get_property CONFIG.C_EXT_RESET_HIGH $rst] != 0} {
     error "PS reset is active-low; proc_sys_reset polarity propagation failed"
 }
 save_bd_design
+if {$camera_m02} {
+    # Preserve SCCB tristates through hierarchy until top-level IOBUF insertion.
+    set_property synth_checkpoint_mode None [get_files system.bd]
+}
 # Catch clock preset changes instead of silently retaining a wrong heartbeat/tick rate.
 foreach {property expected} {
     CONFIG.PCW_ACT_APU_PERIPHERAL_FREQMHZ 666.666667

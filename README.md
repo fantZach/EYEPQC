@@ -8,6 +8,8 @@
 板级参数、JPEG 数据路径及迁移问题见 [研究记录](report/vendor_examples.md)。M01/G0 门禁尚未通过。
 按用户要求，固定图片 AES-GCM MVP 已在步骤中提前并通过上板验证（完整 JPG/512 KiB PNG）；使用 GitHub 开源 AES 核，
 不依赖摄像头或未连接的 PS 网口。复现与验证状态见 [图片 MVP](doc/aes_mvp.md)。
+M02 SCCB/OV5640 初始化、失败保护和仿真已编写，复现及硬件状态见 [M02](doc/m02.md)。
+`tb_heartbeat.sv` 已移至 `sim/board/`，仍由 M01 回归执行。
 
 ## 优先：图片 AES MVP
 
@@ -69,7 +71,7 @@ git config --local core.hooksPath .githooks
 git hook run pre-commit
 ```
 
-每次 `git commit` 会先检查暂存改动的空白错误，再验证向量可复现性并运行 M00/M01/图片 MVP 离线测试。
+每次 `git commit` 会先检查暂存改动的空白错误，再验证向量可复现性并运行 M00/M01/图片 MVP/M02 离线测试。
 任一步失败都会阻止提交；hook 不生成向量、不暂存文件、不自动创建提交。
 校验使用当前工作区内容，部分暂存时需确保工作区与拟提交内容一致；M01 需要 Icarus/vvp 和原生 GCC。
 Linux/macOS 首次启用还需 `chmod +x .githooks/pre-commit`。

@@ -15,4 +15,5 @@ fi
 "$python" sim/scripts/generate_vectors.py --check
 "$python" sim/tb/test_m00.py
 "$python" sim/tb/test_m01.py
-exec "$python" sim/tb/test_aes_mvp.py
+"$python" sim/tb/test_aes_mvp.py
+exec "$python" sim/tb/test_m02.py

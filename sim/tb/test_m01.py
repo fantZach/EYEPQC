@@ -48,7 +48,7 @@ class M01(unittest.TestCase):
             output = str(Path(tmp) / "heartbeat.vvp")
             subprocess.run([iverilog, "-g2012", "-s", "tb_heartbeat", "-o", output,
                             str(ROOT / "src/rtl/common/heartbeat.sv"),
-                            str(ROOT / "sim/tb/tb_heartbeat.sv")], check=True)
+                            str(ROOT / "sim/board/tb_heartbeat.sv")], check=True)
             result = subprocess.run([vvp, output], check=True, capture_output=True, text=True)
             self.assertIn("HEARTBEAT_PASS", result.stdout)
 

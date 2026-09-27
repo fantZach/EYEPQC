@@ -59,5 +59,5 @@ CLI 示例位于安装目录的 `Vitis/cli/examples`；不使用旧 XSCT 项目�
 M01 已提供独立 Tcl BD、LED 心跳、Standalone 自检、lwIP echo 与主机探针，
 见 [构建和上板说明](../doc/m01.md)。新硬件/软件及 SD0/FSBL 离线构建已通过。
 JTAG 已临时下载，COM4 的 CH340 已采集到 UART 启动、DDR scratch 及定时器正常日志。
-V3.9 底板 P5 的 1–3、2–4 对应 PS 串口。当前 PHY link=0，继续确认 PS 网口接线/地址，
-验证 ping/echo、LED 和 30 分钟冷启动；通过 M01 后进入 M02。
+V3.9 底板 P5 的 1–3、2–4 对应 PS 串口。当前 PHY link=0；按用户调整，网络配置/验收后置。
+LED 和 30 分钟冷启动判据保留，独立 M02 编写/仿真不被未接网口阻塞；见 [M02](../doc/m02.md)。
