@@ -9,7 +9,7 @@
 按用户要求，固定图片 AES-GCM MVP 已在步骤中提前并通过上板验证（完整 JPG/512 KiB PNG）；使用 GitHub 开源 AES 核，
 不依赖摄像头或未连接的 PS 网口。复现与验证状态见 [图片 MVP](doc/aes_mvp.md)。
 M02 SCCB/OV5640 初始化、失败保护和仿真已编写，复现及硬件状态见 [M02](doc/m02.md)。
-`tb_heartbeat.sv` 已移至 `sim/board/`，仍由 M01 回归执行。
+`tb_heartbeat.sv` 位于 `sim/tb/`，由 M01 回归执行，验证 PL LED 心跳的分频与复位。
 
 ## 优先：图片 AES MVP
 
