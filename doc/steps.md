@@ -205,6 +205,13 @@ heartbeat 测试按用户最新要求统一放回 `sim/tb/`，保留 M01 回归�
 
 ## 7. M03：DVP/JPEG 字节采集模块
 
+2026-09-27：用户要求恢复按 steps 推进，不建立临时 BRAM 快照旁路。
+PCLK 域采样、JPEG 段长度/标记检查、2 MiB 帧长保护和错误统计已编写，
+真实 JPEG 激励连续 1000 帧逐字节仿真通过，含截断/空帧/超长/异常 VSYNC 与故障恢复；
+用户之前的 JPG 也已作 DVP 激励比对；OOC 综合为 184 LUT/394 FF，无 latch/BRAM/DSP。
+这些不是摄像头实拍或物理门禁结果，见 [M03](m03.md)。
+下一步 M04 FIFO/AXIS → M05 DMA/DDR，再验证真实 JPEG 保存及 ILA/实际 FPS。
+
 ### 建议文件
 
 - `src/rtl/camera/dvp_capture.sv`
