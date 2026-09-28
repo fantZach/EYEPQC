@@ -1,4 +1,4 @@
-# Extend the shared PS7/DDR platform. Native simple DMA; no SG descriptors or crypto RTL yet.
+# Extend the shared PS7/DDR platform. G3 optionally inserts M08 in the crypto stream.
 set_property XPM_LIBRARIES {XPM_CDC XPM_FIFO XPM_MEMORY} [current_project]
 set_property -dict [list CONFIG.PCW_USE_S_AXI_HP0 1 CONFIG.PCW_S_AXI_HP0_DATA_WIDTH 64 \
     CONFIG.PCW_USE_FABRIC_INTERRUPT 1 CONFIG.PCW_IRQ_F2P_INTR 1] $ps
@@ -18,6 +18,7 @@ foreach gpio_name {camera_gpio dma_gpio} {
 }
 set cap [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_dma:7.1 dma_capture]
 set crypto [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_dma:7.1 dma_crypto]
+if {$g3_m08} {set gcm [create_bd_cell -type module -reference aes_gcm_axis gcm_0]}
 foreach dma [list $cap $crypto] {
     set_property -dict [list CONFIG.c_include_sg 0 CONFIG.c_sg_length_width 23 \
         CONFIG.c_include_s2mm 1 CONFIG.c_m_axi_s2mm_data_width 64 CONFIG.c_s_axis_s2mm_tdata_width 32 \
@@ -27,14 +28,17 @@ set_property CONFIG.c_include_mm2s 0 $cap
 set_property -dict [list CONFIG.c_include_mm2s 1 CONFIG.c_m_axi_mm2s_data_width 64 \
     CONFIG.c_m_axis_mm2s_tdata_width 32 CONFIG.c_mm2s_burst_size 16 CONFIG.c_include_mm2s_dre 1] $crypto
 set regs [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 dma_regs]
-set_property CONFIG.NUM_MI 4 $regs
+set_property CONFIG.NUM_MI [expr {$g3_m08 ? 5 : 4}] $regs
 set memory [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 dma_memory]
 set_property -dict [list CONFIG.NUM_SI 3 CONFIG.NUM_MI 1] $memory
 connect_bd_intf_net [get_bd_intf_pins ps7/M_AXI_GP0] [get_bd_intf_pins dma_regs/S00_AXI]
-foreach {index name port offset} {00 camera_gpio S_AXI 0x41200000 01 dma_gpio S_AXI 0x41210000 \
-    02 dma_capture S_AXI_LITE 0x40400000 03 dma_crypto S_AXI_LITE 0x40410000} {
+set control_ports {00 camera_gpio S_AXI 0x41200000 01 dma_gpio S_AXI 0x41210000 \
+    02 dma_capture S_AXI_LITE 0x40400000 03 dma_crypto S_AXI_LITE 0x40410000}
+if {$g3_m08} {lappend control_ports 04 gcm_0 s_axi 0x43C00000}
+foreach {index name port offset} $control_ports {
     connect_bd_intf_net [get_bd_intf_pins dma_regs/M${index}_AXI] [get_bd_intf_pins $name/$port]
-    assign_bd_address -offset $offset -range 64K [get_bd_addr_segs $name/$port/*]
+    assign_bd_address -offset $offset -range [expr {$name eq "gcm_0" ? 4096 : 65536}] \
+        [get_bd_addr_segs $name/$port/*]
 }
 foreach {index port} {00 dma_capture/M_AXI_S2MM 01 dma_crypto/M_AXI_S2MM 02 dma_crypto/M_AXI_MM2S} {
     connect_bd_intf_net [get_bd_intf_pins dma_memory/S${index}_AXI] [get_bd_intf_pins $port]
@@ -42,19 +46,27 @@ foreach {index port} {00 dma_capture/M_AXI_S2MM 01 dma_crypto/M_AXI_S2MM 02 dma_
 connect_bd_intf_net [get_bd_intf_pins dma_memory/M00_AXI] [get_bd_intf_pins ps7/S_AXI_HP0]
 connect_bd_intf_net [get_bd_intf_pins dma_crypto/M_AXIS_MM2S] [get_bd_intf_pins camera_0/S_TEST_AXIS]
 connect_bd_intf_net [get_bd_intf_pins camera_0/M_CAPTURE_AXIS] [get_bd_intf_pins dma_capture/S_AXIS_S2MM]
-connect_bd_intf_net [get_bd_intf_pins camera_0/M_CRYPTO_AXIS] [get_bd_intf_pins dma_crypto/S_AXIS_S2MM]
+if {$g3_m08} {
+    connect_bd_intf_net [get_bd_intf_pins camera_0/M_CRYPTO_AXIS] [get_bd_intf_pins gcm_0/s_axis]
+    connect_bd_intf_net [get_bd_intf_pins gcm_0/m_axis] [get_bd_intf_pins dma_crypto/S_AXIS_S2MM]
+} else {
+    connect_bd_intf_net [get_bd_intf_pins camera_0/M_CRYPTO_AXIS] [get_bd_intf_pins dma_crypto/S_AXIS_S2MM]
+}
 connect_bd_net [get_bd_pins camera_gpio/gpio_io_o] [get_bd_pins camera_0/camera_cfg]
 connect_bd_net [get_bd_pins camera_0/camera_status] [get_bd_pins camera_gpio/gpio2_io_i]
 connect_bd_net [get_bd_pins dma_gpio/gpio_io_o] [get_bd_pins camera_0/dma_cfg]
 connect_bd_net [get_bd_pins camera_0/dma_status] [get_bd_pins dma_gpio/gpio2_io_i]
 set irqs [create_bd_cell -type inline_hdl -vlnv xilinx.com:inline_hdl:ilconcat:1.0 dma_irqs]
-set_property CONFIG.NUM_PORTS 3 $irqs
+set_property CONFIG.NUM_PORTS [expr {$g3_m08 ? 4 : 3}] $irqs
 foreach {index pin} {0 dma_capture/s2mm_introut 1 dma_crypto/mm2s_introut 2 dma_crypto/s2mm_introut} {
     connect_bd_net [get_bd_pins $pin] [get_bd_pins dma_irqs/In$index]
 }
+if {$g3_m08} {connect_bd_net [get_bd_pins gcm_0/irq] [get_bd_pins dma_irqs/In3]}
 connect_bd_net [get_bd_pins dma_irqs/dout] [get_bd_pins ps7/IRQ_F2P]
 connect_bd_net [get_bd_pins ps7/FCLK_CLK0] [get_bd_pins ps7/M_AXI_GP0_ACLK] [get_bd_pins ps7/S_AXI_HP0_ACLK]
-foreach cell {dma_regs dma_memory camera_gpio dma_gpio dma_capture dma_crypto camera_0} {
+set peripherals {dma_regs dma_memory camera_gpio dma_gpio dma_capture dma_crypto camera_0}
+if {$g3_m08} {lappend peripherals gcm_0}
+foreach cell $peripherals {
     foreach pin [get_bd_pins -of_objects [get_bd_cells $cell] -filter {TYPE == clk && DIR == I}] {
         if {$pin ne [get_bd_pins camera_0/cam_pclk]} {connect_bd_net [get_bd_pins ps7/FCLK_CLK0] $pin}
     }

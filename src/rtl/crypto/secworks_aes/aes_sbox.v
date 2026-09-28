@@ -325,3 +325,5 @@ endmodule // aes_sbox
 //======================================================================
 // EOF aes_sbox.v
 //======================================================================
+// Vivado may compile the generated BD in this Verilog unit after secworks.
+`default_nettype wire

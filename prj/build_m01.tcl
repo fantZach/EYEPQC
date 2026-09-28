@@ -7,7 +7,9 @@ if {![info exists aes_mvp]} {set aes_mvp 0}
 if {![info exists camera_m02]} {set camera_m02 0}
 if {![info exists camera_m05]} {set camera_m05 0}
 if {![info exists g2_m08]} {set g2_m08 0}
+if {![info exists g3_m08]} {set g3_m08 0}
 if {$aes_mvp + $camera_m02 + $camera_m05 + $g2_m08 > 1} {error "Choose one platform mode"}
+if {$g3_m08 && !$camera_m05} {error "G3 requires the M05 camera platform"}
 set use_axi [expr {$aes_mvp || $camera_m02 || $camera_m05 || $g2_m08}]
 set out [file join $repo build vivado m01]
 if {[llength $argv] == 1} {set out [file normalize [lindex $argv 0]]}
@@ -23,7 +25,7 @@ if {$aes_mvp} {
     add_files [glob [file join $repo src rtl crypto secworks_aes *.v]]
     add_files [file join $repo src rtl crypto aes_axi_lite.sv]
 }
-if {$g2_m08} {
+if {$g2_m08 || $g3_m08} {
     add_files [glob [file join $repo src rtl crypto secworks_aes *.v]]
     add_files [file join $repo src rtl common axis_byte_packer.sv]
     foreach source {gf128_mul ghash aes_gcm_encrypt aes_gcm_regs aes_gcm_axis} {
