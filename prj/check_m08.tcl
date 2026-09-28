@@ -7,6 +7,7 @@ if {[llength [get_parts -quiet xc7z020clg400-2]] != 1} {error "Zynq-7000 part mi
 foreach source {aes_sbox aes_inv_sbox aes_key_mem aes_encipher_block aes_decipher_block aes_core} {
     read_verilog [file join $repo src rtl crypto secworks_aes ${source}.v]
 }
+read_verilog -sv [file join $repo src rtl common axis_byte_packer.sv]
 foreach source {gf128_mul ghash aes_gcm_encrypt aes_gcm_regs aes_gcm_axis} {
     read_verilog -sv [file join $repo src rtl crypto ${source}.sv]
 }

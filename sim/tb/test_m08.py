@@ -69,6 +69,7 @@ class M08(unittest.TestCase):
             sources = [RTL / "secworks_aes" / name for name in (
                 "aes_core.v", "aes_key_mem.v", "aes_encipher_block.v",
                 "aes_decipher_block.v", "aes_sbox.v", "aes_inv_sbox.v")]
+            sources += [ROOT / "src/rtl/common/axis_byte_packer.sv"]
             sources += [RTL / name for name in (
                 "gf128_mul.sv", "ghash.sv", "aes_gcm_encrypt.sv",
                 "aes_gcm_regs.sv", "aes_gcm_axis.sv")]

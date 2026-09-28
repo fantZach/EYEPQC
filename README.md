@@ -10,7 +10,8 @@
 不依赖摄像头或未连接的 PS 网口。复现与验证状态见 [图片 MVP](doc/aes_mvp.md)。
 M06 开源 AES-128 核的独立判据、资源和每块周期数见 [M06](doc/m06.md)。
 M07 串行 GF(2¹²⁸) 与 GHASH 的逐块验证见 [M07](doc/m07.md)；已被 M08 复用。
-M08 全 PL AES-GCM AXIS 独立仿真与 OOC 综合见 [M08](doc/m08.md)；DMA/板级 G2 尚待接入。
+M08 全 PL AES-GCM AXIS 独立仿真与 OOC 综合见 [M08](doc/m08.md)；
+固定 DDR→DMA→M08→DMA→DDR 的 21 组板测已通过，见 [G2](doc/g2.md)。
 M02 SCCB/OV5640 初始化、失败保护和仿真已编写，复现及硬件状态见 [M02](doc/m02.md)。
 M03 DVP/JPEG 字节采集与帧边界检查已编写，连续 1000 帧和故障恢复仿真通过，见 [M03](doc/m03.md)。
 M04 原生异步 FIFO、整帧提交和 32/64-bit AXIS 已编写，默认帧长上限 64 KiB，见 [M04](doc/m04.md)。

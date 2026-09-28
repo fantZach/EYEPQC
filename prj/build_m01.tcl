@@ -6,8 +6,9 @@ set repo [file normalize [file join [file dirname [info script]] ..]]
 if {![info exists aes_mvp]} {set aes_mvp 0}
 if {![info exists camera_m02]} {set camera_m02 0}
 if {![info exists camera_m05]} {set camera_m05 0}
-if {$aes_mvp + $camera_m02 + $camera_m05 > 1} {error "Choose one platform mode"}
-set use_axi [expr {$aes_mvp || $camera_m02 || $camera_m05}]
+if {![info exists g2_m08]} {set g2_m08 0}
+if {$aes_mvp + $camera_m02 + $camera_m05 + $g2_m08 > 1} {error "Choose one platform mode"}
+set use_axi [expr {$aes_mvp || $camera_m02 || $camera_m05 || $g2_m08}]
 set out [file join $repo build vivado m01]
 if {[llength $argv] == 1} {set out [file normalize [lindex $argv 0]]}
 if {[llength $argv] > 1} {error "Expected at most one output directory"}
@@ -21,6 +22,13 @@ add_files [file join $repo src rtl common heartbeat.sv]
 if {$aes_mvp} {
     add_files [glob [file join $repo src rtl crypto secworks_aes *.v]]
     add_files [file join $repo src rtl crypto aes_axi_lite.sv]
+}
+if {$g2_m08} {
+    add_files [glob [file join $repo src rtl crypto secworks_aes *.v]]
+    add_files [file join $repo src rtl common axis_byte_packer.sv]
+    foreach source {gf128_mul ghash aes_gcm_encrypt aes_gcm_regs aes_gcm_axis} {
+        add_files [file join $repo src rtl crypto ${source}.sv]
+    }
 }
 if {$camera_m02 || $camera_m05} {
     add_files [glob [file join $repo src rtl camera *.sv]]
@@ -137,6 +145,7 @@ if {$camera_m02} {
     assign_bd_address -offset 0x41200000 -range 64K [get_bd_addr_segs camera_gpio/S_AXI/Reg]
 }
 if {$camera_m05} {source [file join $repo prj add_m05.tcl]}
+if {$g2_m08} {source [file join $repo prj add_g2.tcl]}
 validate_bd_design
 if {[get_property CONFIG.C_EXT_RESET_HIGH $rst] != 0 ||
     [get_property CONFIG.C_AUX_RESET_HIGH $rst] != 1} {

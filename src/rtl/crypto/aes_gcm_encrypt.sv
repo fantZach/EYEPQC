@@ -22,7 +22,7 @@ module aes_gcm_encrypt (
     localparam [4:0] IDLE=0, INIT=1, WAIT_INIT=2, H_AES=3, WAIT_H=4,
         GH_START=5, MASK_AES=6, WAIT_MASK=7, AAD=8, WAIT_AAD=9,
         INPUT=10, CTR_AES=11, WAIT_CTR=12, OUTPUT=13, CT_GH=14,
-        WAIT_CT=15, FINISH=16, WAIT_FINISH=17, TAG_OUTPUT=18, FAILED=19;
+        WAIT_CT=15, FINISH=16, WAIT_FINISH=17, TAG_OUTPUT=18, TAG_DRAIN=19, FAILED=20;
     reg [4:0] phase;
     reg [127:0] packet_key, hash_key, tag_mask, plain, cipher;
     reg [95:0] packet_nonce;
@@ -31,7 +31,7 @@ module aes_gcm_encrypt (
     reg [10:0] remaining;
     reg [31:0] counter;
     reg [4:0] fill, block_size;
-    reg [1:0] out_word;
+    reg [4:0] out_byte;
     reg last_block;
     wire aes_ready, aes_valid;
     wire [127:0] aes_result;
@@ -58,21 +58,20 @@ module aes_gcm_encrypt (
         .state(gh_state), .state_valid(gh_state_valid), .digest_valid(gh_digest_valid),
         .error(gh_error));
 
-    function automatic [31:0] axis_word(input [31:0] network_word);
-        axis_word = {network_word[7:0], network_word[15:8],
-                     network_word[23:16], network_word[31:24]};
-    endfunction
-    wire [31:0] selected_word = phase == TAG_OUTPUT ? tag[127 - 32*out_word -: 32] :
-                                                       cipher[127 - 32*out_word -: 32];
-    wire [4:0] output_left = block_size - {out_word, 2'b0};
+    wire byte_ready;
+    wire byte_valid = phase == OUTPUT || phase == TAG_OUTPUT;
+    wire [7:0] stream_byte = phase == TAG_OUTPUT ? tag[127 - 8*out_byte -: 8] :
+                                                  cipher[127 - 8*out_byte -: 8];
+    axis_byte_packer #(.DATA_WIDTH(32)) packer(
+        .clk(clk), .resetn(resetn && !zeroize), .s_data(stream_byte),
+        .s_valid(byte_valid), .s_last(phase == TAG_OUTPUT && out_byte == 15),
+        .s_first(1'b0), .s_ready(byte_ready),
+        .m_axis_tdata(m_axis_tdata), .m_axis_tkeep(m_axis_tkeep),
+        .m_axis_tvalid(m_axis_tvalid), .m_axis_tlast(m_axis_tlast),
+        .m_axis_tuser(), .m_axis_tready(m_axis_tready));
     assign ready = resetn && !zeroize && phase == IDLE;
     assign busy = phase != IDLE && phase != FAILED;
     assign s_axis_tready = resetn && !zeroize && phase == INPUT;
-    assign m_axis_tvalid = resetn && !zeroize && (phase == OUTPUT || phase == TAG_OUTPUT);
-    assign m_axis_tdata = axis_word(selected_word);
-    assign m_axis_tkeep = phase == TAG_OUTPUT || output_left >= 4 ? 4'hf :
-                          output_left == 3 ? 4'h7 : output_left == 2 ? 4'h3 : 4'h1;
-    assign m_axis_tlast = phase == TAG_OUTPUT && out_word == 3;
     wire [2:0] beat_bytes = s_axis_tkeep == 4'hf ? 3'd4 :
                             s_axis_tkeep == 4'h7 ? 3'd3 :
                             s_axis_tkeep == 4'h3 ? 3'd2 :
@@ -83,12 +82,12 @@ module aes_gcm_encrypt (
             phase <= IDLE; packet_key <= 0; packet_nonce <= 0; hash_key <= 0;
             tag_mask <= 0; aad_shift <= 0; aad_remaining <= 0; remaining <= 0;
             counter <= 0; plain <= 0; cipher <= 0; fill <= 0; block_size <= 0;
-            out_word <= 0; last_block <= 0; tag <= 0; done <= 0; error <= 0;
+            out_byte <= 0; last_block <= 0; tag <= 0; done <= 0; error <= 0;
         end else if (zeroize) begin
             phase <= IDLE; packet_key <= 0; packet_nonce <= 0; hash_key <= 0;
             tag_mask <= 0; aad_shift <= 0; aad_remaining <= 0; remaining <= 0;
             counter <= 0; plain <= 0; cipher <= 0; fill <= 0; block_size <= 0;
-            out_word <= 0; last_block <= 0; tag <= 0; done <= 0; error <= 0;
+            out_byte <= 0; last_block <= 0; tag <= 0; done <= 0; error <= 0;
         end else begin
             done <= 0;
             if (gh_error && phase != IDLE) begin phase <= FAILED; error <= 1; end
@@ -100,7 +99,7 @@ module aes_gcm_encrypt (
                         packet_key <= key; packet_nonce <= nonce; aad_shift <= aad;
                         aad_remaining <= aad_length; remaining <= payload_length;
                         counter <= 2; plain <= 0; cipher <= 0; fill <= 0;
-                        block_size <= 0; out_word <= 0; last_block <= 0;
+                        block_size <= 0; out_byte <= 0; last_block <= 0;
                         hash_key <= 0; tag_mask <= 0; tag <= 0; error <= 0;
                         phase <= INIT;
                     end
@@ -140,11 +139,11 @@ module aes_gcm_encrypt (
                 CTR_AES: phase <= WAIT_CTR;
                 WAIT_CTR: if (aes_valid) begin
                     cipher <= plain ^ aes_result; counter <= counter + 1;
-                    out_word <= 0; phase <= OUTPUT;
+                    out_byte <= 0; phase <= OUTPUT;
                 end
-                OUTPUT: if (m_axis_tready) begin
-                    if ({out_word, 2'b0} + 4 >= block_size) phase <= CT_GH;
-                    else out_word <= out_word + 1'b1;
+                OUTPUT: if (byte_ready) begin
+                    if (out_byte + 1 == block_size) phase <= CT_GH;
+                    else out_byte <= out_byte + 1'b1;
                 end
                 CT_GH: if (gh_block_ready) phase <= WAIT_CT;
                 WAIT_CT: if (gh_state_valid) begin
@@ -153,11 +152,14 @@ module aes_gcm_encrypt (
                 end
                 FINISH: if (gh_finish_ready) phase <= WAIT_FINISH;
                 WAIT_FINISH: if (gh_digest_valid) begin
-                    tag <= gh_state ^ tag_mask; out_word <= 0; phase <= TAG_OUTPUT;
+                    tag <= gh_state ^ tag_mask; out_byte <= 0; phase <= TAG_OUTPUT;
                 end
-                TAG_OUTPUT: if (m_axis_tready) begin
-                    if (out_word == 3) begin done <= 1; phase <= IDLE; end
-                    else out_word <= out_word + 1'b1;
+                TAG_OUTPUT: if (byte_ready) begin
+                    if (out_byte == 15) phase <= TAG_DRAIN;
+                    else out_byte <= out_byte + 1'b1;
+                end
+                TAG_DRAIN: if (m_axis_tvalid && m_axis_tready && m_axis_tlast) begin
+                    done <= 1; phase <= IDLE;
                 end
                 default: begin phase <= FAILED; error <= 1; end
             endcase

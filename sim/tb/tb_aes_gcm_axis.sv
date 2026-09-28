@@ -44,6 +44,8 @@ module tb_aes_gcm_axis;
         if (mvalid && mready) begin
             if (!(mkeep == 4'h1 || mkeep == 4'h3 || mkeep == 4'h7 || mkeep == 4'hf))
                 $fatal(1, "invalid output TKEEP=%h", mkeep);
+            if (!mlast && mkeep !== 4'hf)
+                $fatal(1, "non-final output beat is not contiguous for DMA: TKEEP=%h", mkeep);
             for (lane = 0; lane < 4; lane = lane + 1) if (mkeep[lane]) begin
                 observed = mdata[8*lane +: 8];
                 wanted = output_bytes < expected_length ?
