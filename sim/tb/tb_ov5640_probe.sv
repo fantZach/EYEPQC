@@ -29,7 +29,7 @@ module tb_ov5640_probe;
         cfg=32'h80000000; repeat(6) @(negedge clk);
         if (status[16] || status[17] || status[19] || !status[20]) $fatal(1,"cfg reset mapping failed");
         cfg=(1968<<9) | (1<<3) | 2; repeat(6) @(negedge clk);
-        cfg=cfg | 1; wait_result(0);
+        cfg=cfg | 1; @(negedge clk); wait_result(0);
         if (status[15:0] !== 16'h5640 || !status[16] || !status[19] || status[20] || !status[23] ||
             status[22:21] !== 2'b11 || sensor.memory[16'h3808] !== 1 || sensor.memory[16'h3809] !== 8'h40)
             $fatal(1,"probe 320x240 JPEG/status mapping failed");
@@ -43,7 +43,19 @@ module tb_ov5640_probe;
         wait_result(0);
         if (sensor.memory[16'h3808] !== 2 || sensor.memory[16'h3809] !== 8'h80 || sensor.memory[16'h4407] !== 12 ||
             sensor.memory[16'h380e] !== 9 || sensor.memory[16'h380f] !== 8'h60) $fatal(1,"640/quality/VTS mapping failed");
+        cfg=(1000<<9) | (1<<25) | (12<<3) | 4 | 2; repeat(6) @(negedge clk);
+        cfg=cfg | 1; @(negedge clk); wait_result(0);
+        if (sensor.memory[16'h3035] !== 8'h11 || sensor.memory[16'h3036] !== 8'h70 ||
+            sensor.memory[16'h380c] !== 8'h07 || sensor.memory[16'h380d] !== 8'h68 ||
+            sensor.memory[16'h380e] !== 8'h03 || sensor.memory[16'h380f] !== 8'he8 ||
+            sensor.memory[16'h3814] !== 8'h31 ||
+            sensor.memory[16'h3815] !== 8'h31 || sensor.memory[16'h3821] !== 8'h27 ||
+            sensor.memory[16'h3824] !== 8'h04)
+            $fatal(1,"fast-mode register mapping failed pll=%h hts=%h%h vts=%h%h inc=%h%h jpeg=%h dvp=%h",
+                sensor.memory[16'h3035], sensor.memory[16'h380c], sensor.memory[16'h380d],
+                sensor.memory[16'h380e], sensor.memory[16'h380f], sensor.memory[16'h3814],
+                sensor.memory[16'h3815], sensor.memory[16'h3821], sensor.memory[16'h3824]);
         $display("OV5640_PROBE_PASS"); $finish;
     end
-    initial begin #10000000; $fatal(1,"test watchdog"); end
+    initial begin #15000000; $fatal(1,"test watchdog"); end
 endmodule

@@ -29,7 +29,8 @@ module ov5640_probe #(
     ov5640_ctrl #(.INIT_FILE(INIT_FILE)) ctrl (
         .clk(clk), .resetn(local_resetn), .start(cfg[0] && !start_previous),
         .width(cfg[2] ? 16'd640 : 16'd320), .height(cfg[2] ? 16'd480 : 16'd240),
-        .hts(16'd2844), .vts(cfg[24:9]), .quality(cfg[8:3]), .jpeg_mode(cfg[1]),
+        .hts(cfg[25] ? 16'd1896 : 16'd2844), .vts(cfg[24:9]),
+        .quality(cfg[8:3]), .jpeg_mode(cfg[1]),
         .scl(cam_scl), .sda(cam_sda), .cam_resetn(cam_resetn), .cam_pwdn(cam_pwdn),
         .busy(busy), .done(done), .configured(configured), .failed(failed), .capture_resetn(capture_resetn),
         .error(error), .chip_id(chip_id), .last_reg(last_reg)

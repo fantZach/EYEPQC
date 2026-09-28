@@ -190,8 +190,9 @@ static unsigned run(void)
     unsigned cfg = g3_job.cfg;
     unsigned count = g3_job.requested_frames;
     if (g3_job.magic != MAGIC || !count || count > 1000U ||
-        (cfg & ~0x01fffffeU) || !(cfg & 2U) ||
-        (cfg >> 9) < 1000U || (cfg >> 9) > 5000U) return 1;
+        (cfg & ~0x03fffffeU) || !(cfg & 2U) ||
+        ((cfg >> 9) & 0xffffU) < 1000U ||
+        ((cfg >> 9) & 0xffffU) > 5000U) return 1;
     g3_job.completed_frames = g3_job.total_bytes = g3_job.capture_us = g3_job.encrypt_us = 0;
     g3_job.dropped = g3_job.overflows = g3_job.queued = g3_job.sent = 0;
     unsigned status = configure_camera(cfg);

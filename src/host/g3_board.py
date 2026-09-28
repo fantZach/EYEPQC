@@ -47,11 +47,13 @@ def main():
                         help="Frames captured/encrypted continuously in one board job")
     parser.add_argument("--size", choices=("320x240", "640x480"), default="320x240")
     parser.add_argument("--quality", type=int, default=12)
-    parser.add_argument("--vts", type=int, default=1968)
+    parser.add_argument("--vts", type=int, help="Camera frame lines; defaults to 1000 in fast mode")
+    parser.add_argument("--fast", action="store_true", help="Low-resolution subsampling mode")
     parser.add_argument("--tool-root", type=Path, default=Path("D:/AmdDesignTools/2026.1"))
     args = parser.parse_args()
+    vts = args.vts if args.vts is not None else (1000 if args.fast else 1968)
     if (not 1 <= args.count <= 100 or not 1 <= args.frames_per_run <= 1000 or
-        not 0 <= args.quality <= 63 or not 1000 <= args.vts <= 5000):
+        not 0 <= args.quality <= 63 or not 1000 <= vts <= 5000):
         parser.error("Invalid frame count or camera calibration")
     workspace = args.workspace.resolve()
     manifest = json.loads((workspace / "build_manifest.json").read_text())
@@ -69,7 +71,8 @@ def main():
         a = item["address"]
         if item["size"] != size or a % 64 or not 0x100000 <= a <= 0x40000000 - size:
             raise ValueError("Invalid ELF-owned DDR symbol: " + name)
-    sensor_cfg = args.vts << 9 | args.quality << 3 | (4 if args.size == "640x480" else 0) | 2
+    sensor_cfg = vts << 9 | args.quality << 3 | (4 if args.size == "640x480" else 0) | 2
+    if args.fast: sensor_cfg |= 1 << 25
     target = ROOT / "data/captures" / ("g3_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f"))
     target.mkdir(parents=True)
     records = []
@@ -142,7 +145,8 @@ def main():
                             jpeg_sha256=hashlib.sha256(frame).hexdigest()))
         print(f"G3_RUN_OK {index} frames={completed} fps={records[-1]['fps']} "
               f"dropped={dropped} overflows={overflows} last_jpeg={length}")
-    result = dict(workspace=str(workspace), bit_sha256=manifest["artifacts"][
+    result = dict(workspace=str(workspace), fast=args.fast, vts=vts,
+        bit_sha256=manifest["artifacts"][
         "g3_camera/_ide/bitstream/m01.bit"], runs=records,
         board_validated=all(not x["dropped"] and not x["overflows"] for x in records))
     (target / "result.json").write_text(json.dumps(result, indent=2) + "\n")

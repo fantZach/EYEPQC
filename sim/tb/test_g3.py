@@ -1,6 +1,7 @@
 """Small host-side check for G3 chunk framing and authenticated reassembly."""
 from pathlib import Path
 import struct
+import subprocess
 import sys
 
 from cryptography.exceptions import InvalidTag
@@ -28,4 +29,7 @@ for n in (4, 1399, 1400, 1401, 2801, 65536):
         pass
     else:
         raise AssertionError("G3 accepted a modified Tag")
-print("G3_HOST_PASS lengths=6 tamper=6")
+assert subprocess.run([sys.executable, str(Path(__file__).resolve().parents[2] / "src/host/g3_board.py"),
+                       "unused", "--fast", "--vts", "976"],
+                      capture_output=True).returncode == 2
+print("G3_HOST_PASS lengths=6 tamper=6 vts_floor=1000")
