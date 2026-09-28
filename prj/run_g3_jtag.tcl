@@ -6,7 +6,7 @@ if {[catch {
     lassign $argv workspace boot mailbox frame sealed request reply jpeg packets timeout
     set workspace [file normalize $workspace]
     foreach name {boot mailbox frame sealed timeout} {set $name [expr {[set $name]}]}
-    if {$boot ni {0 1} || $timeout < 1000 || $timeout > 60000 ||
+    if {$boot ni {0 1} || $timeout < 1000 || $timeout > 500000 ||
         $mailbox < 0x100000 || $mailbox + 128 > 0x40000000 || $mailbox % 64 ||
         $frame < 0x100000 || $frame + 65600 > 0x40000000 || $frame % 64 ||
         $sealed < 0x100000 || $sealed + 68096 > 0x40000000 || $sealed % 64 ||

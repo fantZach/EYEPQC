@@ -16,7 +16,7 @@ MAGIC = 0x33474345
 CHUNK = 1400
 
 
-def verify(frame, sealed, key, prefix):
+def verify(frame, sealed, key, prefix, nonce_start=0):
     if not 4 <= len(frame) <= 65536 or frame[:2] != b"\xff\xd8" or frame[-2:] != b"\xff\xd9":
         raise ValueError("Invalid captured JPEG")
     chunks = (len(frame) + CHUNK - 1) // CHUNK
@@ -29,7 +29,7 @@ def verify(frame, sealed, key, prefix):
         offset = index * CHUNK
         size = min(CHUNK, len(frame) - offset)
         aad = struct.pack(">4I", len(frame), offset, index, chunks)
-        nonce = prefix + index.to_bytes(4, "big")
+        nonce = prefix + (nonce_start + index).to_bytes(4, "big")
         part = sealed[cursor:cursor + size + 16]
         rebuilt.extend(aes.decrypt(nonce, part, aad))
         cursor += size + 16
@@ -42,13 +42,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("workspace", type=Path)
     parser.add_argument("--boot", action="store_true", help="Volatile bitstream/ELF load on first frame")
-    parser.add_argument("--count", type=int, default=8, help="Real camera frames to validate")
+    parser.add_argument("--count", type=int, default=1, help="Number of separate board jobs")
+    parser.add_argument("--frames-per-run", type=int, default=1,
+                        help="Frames captured/encrypted continuously in one board job")
     parser.add_argument("--size", choices=("320x240", "640x480"), default="320x240")
     parser.add_argument("--quality", type=int, default=12)
     parser.add_argument("--vts", type=int, default=1968)
     parser.add_argument("--tool-root", type=Path, default=Path("D:/AmdDesignTools/2026.1"))
     args = parser.parse_args()
-    if not 1 <= args.count <= 100 or not 0 <= args.quality <= 63 or not 1000 <= args.vts <= 5000:
+    if (not 1 <= args.count <= 100 or not 1 <= args.frames_per_run <= 1000 or
+        not 0 <= args.quality <= 63 or not 1000 <= args.vts <= 5000):
         parser.error("Invalid frame count or camera calibration")
     workspace = args.workspace.resolve()
     manifest = json.loads((workspace / "build_manifest.json").read_text())
@@ -71,13 +74,15 @@ def main():
     target.mkdir(parents=True)
     records = []
     used = set()
+    timeout_ms = max(30000, args.frames_per_run * 400 + 30000)
     for index in range(args.count):
         case = target / f"frame_{index:03d}"
         case.mkdir()
         key, prefix = secrets.token_bytes(16), secrets.token_bytes(8)
         if (key, prefix) in used: raise RuntimeError("Repeated test nonce/key pair")
         used.add((key, prefix))
-        request = struct.pack("<16I", MAGIC, 0, sensor_cfg, *([0] * 13)) + key + prefix + bytes(40)
+        request = (struct.pack("<16I", MAGIC, 0, sensor_cfg, *([0] * 13)) + key + prefix +
+                   struct.pack("<10I", args.frames_per_run, *([0] * 9)))
         request_path = case / "request.bin"
         request_path.write_bytes(request)
         reply_path, jpeg_path, sealed_path = case / "reply.bin", case / "frame.jpg", case / "packets.enc"
@@ -85,10 +90,10 @@ def main():
                 str(workspace), str(int(args.boot and index == 0)),
                 str(owned["g3_job"]["address"]), str(owned["g3_frame"]["address"]),
                 str(owned["g3_sealed"]["address"]), str(request_path), str(reply_path),
-                str(jpeg_path), str(sealed_path), "30000"]
+                str(jpeg_path), str(sealed_path), str(timeout_ms)]
         with subprocess.Popen(call, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as process:
             try:
-                stdout, stderr = process.communicate(timeout=210 if index == 0 else 75)
+                stdout, stderr = process.communicate(timeout=timeout_ms / 1000 + 180)
             except subprocess.TimeoutExpired:
                 if os.name == "nt":
                     subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], check=False)
@@ -112,22 +117,37 @@ def main():
         if reply[64:88] != bytes(24): raise RuntimeError("G3 Key/Nonce not cleared")
         frame = jpeg_path.read_bytes()[:length]
         sealed = sealed_path.read_bytes()[:sealed_length]
-        if len(frame) != length or len(sealed) != sealed_length or verify(frame, sealed, key, prefix) != chunks:
+        (requested, completed, total_bytes, dropped, overflows, queued, sent,
+         capture_us, encrypt_us, nonce_start) = struct.unpack_from("<10I", reply, 88)
+        if len(frame) != length or len(sealed) != sealed_length or verify(
+            frame, sealed, key, prefix, nonce_start) != chunks:
             raise RuntimeError(f"Frame {index} failed authenticated roundtrip")
-        if not 0 < elapsed_us < 30000000 or not 0 < pclk_hz <= 72000000:
+        if (requested != args.frames_per_run or completed != requested or
+            total_bytes < length or not 0 < elapsed_us <= timeout_ms * 1000 or
+            not 0 < pclk_hz <= 72000000 or nonce_start + chunks > 47000):
             raise RuntimeError("Invalid camera/timer witness")
         if not (cap_status & 0x1000) or not (tx_status & 0x1000) or not (rx_status & 0x1000):
             raise RuntimeError("DMA completion status missing")
-        if records and packet_count != records[-1]["packet_count"] + chunks:
+        if records and packet_count != records[-1]["packet_count"] + nonce_start + chunks:
             raise RuntimeError("GCM packet count did not advance")
-        records.append(dict(frame=index, length=length, chunks=chunks,
+        if sent != completed or queued < sent:
+            raise RuntimeError("Camera sent/queued counters disagree with completed frames")
+        records.append(dict(job=index, frames=completed, length=length, chunks=chunks,
                             sealed_length=sealed_length, elapsed_us=elapsed_us,
+                            fps=round(completed * 1_000_000 / elapsed_us, 3),
+                            total_bytes=total_bytes, dropped=dropped, overflows=overflows,
+                            queued=queued, sent=sent, capture_us=capture_us,
+                            encrypt_us=encrypt_us, nonce_start=nonce_start,
                             pclk_hz=pclk_hz, packet_count=packet_count,
                             jpeg_sha256=hashlib.sha256(frame).hexdigest()))
-        print(f"G3_FRAME_OK {index} jpeg={length} chunks={chunks} us={elapsed_us}")
+        print(f"G3_RUN_OK {index} frames={completed} fps={records[-1]['fps']} "
+              f"dropped={dropped} overflows={overflows} last_jpeg={length}")
     result = dict(workspace=str(workspace), bit_sha256=manifest["artifacts"][
-        "g3_camera/_ide/bitstream/m01.bit"], frames=records, board_validated=True)
+        "g3_camera/_ide/bitstream/m01.bit"], runs=records,
+        board_validated=all(not x["dropped"] and not x["overflows"] for x in records))
     (target / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+    if not result["board_validated"]:
+        raise RuntimeError(f"Camera drops/overflows recorded; see {target / 'result.json'}")
     print("G3_BOARD_OK", target)
 
 
