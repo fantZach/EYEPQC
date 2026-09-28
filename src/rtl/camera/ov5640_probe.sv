@@ -7,12 +7,13 @@ module ov5640_probe #(
     input wire resetn,
     input wire [31:0] cfg,
     output wire [31:0] status,
+    output wire capture_resetn,
     inout wire cam_scl, cam_sda,
     output wire cam_resetn, cam_pwdn
 );
     reg start_previous;
     wire local_resetn = resetn && !cfg[31];
-    wire busy, done, configured, failed, capture_resetn;
+    wire busy, done, configured, failed;
     wire [3:0] error;
     wire [15:0] chip_id, last_reg;
     (* ASYNC_REG = "TRUE" *) reg [1:0] scl_status_sync, sda_status_sync;

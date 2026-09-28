@@ -274,6 +274,9 @@ PCLK 域采样、JPEG 段长度/标记检查、2 MiB 帧长保护和错误统计
 
 ## 9. M05：AXI DMA 与 DDR 双缓冲
 
+本阶段的原生 DMA、缓存/所有权、复现及验证记录见 [M05](m05.md)。
+`dma_crypto` 暂以 MM2S→S2MM 回环验证传输；AES-GCM AXIS 在 M08 接入，回环不当作加密。
+
 ### 硬件结构
 
 - `dma_capture`：摄像头 AXI4-Stream 到 DDR，使用 S2MM。

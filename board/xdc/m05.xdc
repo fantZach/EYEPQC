@@ -1,0 +1,15 @@
+# P2 pin facts from the official CF7020 camera44 example. IO delays need sensor/board characterization.
+set_property -dict {PACKAGE_PIN W14 IOSTANDARD LVCMOS33} [get_ports cam_pclk]
+set_property -dict {PACKAGE_PIN T12 IOSTANDARD LVCMOS33} [get_ports cam_href]
+set_property -dict {PACKAGE_PIN U12 IOSTANDARD LVCMOS33} [get_ports cam_vsync]
+set_property PACKAGE_PIN R14 [get_ports {cam_data[0]}]
+set_property PACKAGE_PIN U13 [get_ports {cam_data[1]}]
+set_property PACKAGE_PIN V13 [get_ports {cam_data[2]}]
+set_property PACKAGE_PIN U15 [get_ports {cam_data[3]}]
+set_property PACKAGE_PIN U14 [get_ports {cam_data[4]}]
+set_property PACKAGE_PIN W13 [get_ports {cam_data[5]}]
+set_property PACKAGE_PIN V12 [get_ports {cam_data[6]}]
+set_property PACKAGE_PIN Y14 [get_ports {cam_data[7]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {cam_data[*]}]
+# W14 is not a dedicated clock input; required by the board connector, scoped to this net only.
+set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets cam_pclk_IBUF]

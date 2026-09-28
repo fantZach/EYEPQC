@@ -5,8 +5,9 @@
 set repo [file normalize [file join [file dirname [info script]] ..]]
 if {![info exists aes_mvp]} {set aes_mvp 0}
 if {![info exists camera_m02]} {set camera_m02 0}
-if {$aes_mvp && $camera_m02} {error "Choose AES MVP or camera probe, not both"}
-set use_axi [expr {$aes_mvp || $camera_m02}]
+if {![info exists camera_m05]} {set camera_m05 0}
+if {$aes_mvp + $camera_m02 + $camera_m05 > 1} {error "Choose one platform mode"}
+set use_axi [expr {$aes_mvp || $camera_m02 || $camera_m05}]
 set out [file join $repo build vivado m01]
 if {[llength $argv] == 1} {set out [file normalize [lindex $argv 0]]}
 if {[llength $argv] > 1} {error "Expected at most one output directory"}
@@ -21,7 +22,7 @@ if {$aes_mvp} {
     add_files [glob [file join $repo src rtl crypto secworks_aes *.v]]
     add_files [file join $repo src rtl crypto aes_axi_lite.sv]
 }
-if {$camera_m02} {
+if {$camera_m02 || $camera_m05} {
     add_files [glob [file join $repo src rtl camera *.sv]]
     add_files [file join $repo src rtl camera ov5640_jpeg.mem]
     add_files -fileset constrs_1 [file join $repo board xdc m02.xdc]
@@ -135,6 +136,7 @@ if {$camera_m02} {
     }
     assign_bd_address -offset 0x41200000 -range 64K [get_bd_addr_segs camera_gpio/S_AXI/Reg]
 }
+if {$camera_m05} {source [file join $repo prj add_m05.tcl]}
 validate_bd_design
 if {[get_property CONFIG.C_EXT_RESET_HIGH $rst] != 0 ||
     [get_property CONFIG.C_AUX_RESET_HIGH $rst] != 1} {
@@ -144,7 +146,7 @@ if {[get_property CONFIG.C_EXT_RESET_HIGH $rst] != 0} {
     error "PS reset is active-low; proc_sys_reset polarity propagation failed"
 }
 save_bd_design
-if {$camera_m02} {
+if {$camera_m02 || $camera_m05} {
     # Preserve SCCB tristates through hierarchy until top-level IOBUF insertion.
     set_property synth_checkpoint_mode None [get_files system.bd]
 }

@@ -29,10 +29,10 @@ module camera_axis_bridge #(
     // XPM reset is synchronous to wr_clk; both clocks must run during reset/recovery.
     reg fifo_reset = 1;
     always @(posedge pclk) fifo_reset <= !resetn;
-    (* ASYNC_REG = "TRUE" *) reg [1:0] axis_reset_sync;
-    always @(posedge axis_clk or negedge resetn)
-        if (!resetn) axis_reset_sync <= 0;
-        else axis_reset_sync <= {axis_reset_sync[0], 1'b1};
+    wire axis_resetn;
+    xpm_cdc_async_rst #(.DEST_SYNC_FF(2), .INIT_SYNC_FF(0), .RST_ACTIVE_HIGH(0)) axis_reset_cdc (
+        .src_arst(resetn), .dest_clk(axis_clk), .dest_arst(axis_resetn)
+    );
 
     wire data_full, data_empty, data_wr_busy, data_rd_busy, data_high;
     wire desc_full, desc_empty, desc_wr_busy, desc_rd_busy;
@@ -44,7 +44,7 @@ module camera_axis_bridge #(
     reg [32:0] descriptor;
     wire data_pop, desc_pop;
     wire write_ready = resetn && !fifo_reset && !data_wr_busy && !desc_wr_busy;
-    wire read_ready = axis_reset_sync[1] && !data_rd_busy && !desc_rd_busy;
+    wire read_ready = axis_resetn && !data_rd_busy && !desc_rd_busy;
 
     // ponytail: bounded store-and-forward, not a JTAG snapshot. Raise this BRAM budget only
     // after measuring JPEG lengths; larger-than-on-chip frames need a DDR commit design.
@@ -139,8 +139,8 @@ module camera_axis_bridge #(
     wire pack_ready;
     assign desc_pop = read_ready && remaining == 0 && !desc_empty;
     assign data_pop = read_ready && remaining != 0 && !data_empty && (!good || pack_ready);
-    always @(posedge axis_clk or negedge resetn) begin
-        if (!resetn) begin remaining <= 0; good <= 0; first_byte <= 0; frames_sent <= 0; end
+    always @(posedge axis_clk or negedge axis_resetn) begin
+        if (!axis_resetn) begin remaining <= 0; good <= 0; first_byte <= 0; frames_sent <= 0; end
         else if (read_ready) begin
             if (desc_pop) begin
                 remaining <= desc_out[31:0]; good <= desc_out[32]; first_byte <= 1;
@@ -174,11 +174,11 @@ module camera_axis_bridge #(
         .src_clk(pclk), .src_in(snapshot), .src_send(snapshot_send), .src_rcv(snapshot_received),
         .dest_clk(axis_clk), .dest_out(snapshot_axis), .dest_req(snapshot_valid), .dest_ack(1'b0)
     );
-    always @(posedge axis_clk or negedge resetn) begin
-        if (!resetn) begin
+    always @(posedge axis_clk or negedge axis_resetn) begin
+        if (!axis_resetn) begin
             frames_queued <= 0; frames_dropped <= 0; fifo_overflows <= 0;
             max_fifo_level <= 0; overflow_latched <= 0;
-        end else if (axis_reset_sync[1] && snapshot_valid)
+        end else if (axis_resetn && snapshot_valid)
             {frames_queued, frames_dropped, fifo_overflows, max_fifo_level, overflow_latched} <= snapshot_axis;
     end
     xpm_cdc_single #(.SRC_INPUT_REG(0), .DEST_SYNC_FF(2)) high_water_cdc (

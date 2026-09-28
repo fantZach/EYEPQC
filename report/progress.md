@@ -15,7 +15,8 @@
 | M02：SCCB 摄像头配置 | RTL/仿真/实现通过；复电后串行 40/40 次配置通过，完整物理门禁待验收 | ID=5640；320×240/640×480 JPEG、16 项回读/质量/VTS 通过；复电后 ARM 调试恢复；历史 4300 超时未定位，真正冷启动/ILA/实际采集待完成；见 M02 文档 |
 | M03：DVP/JPEG 采集 | RTL/独立仿真/OOC 综合通过，未上板 | 连续 1000 帧逐字节、段内假标记、错误恢复、停 PCLK 复位/极性校准；用户 JPG 激励比对通过；184 LUT/394 FF，无 latch/BRAM/DSP；无实际摄像头采集或 DDR 保存 |
 | M04：异步 FIFO/AXIS | RTL/原生仿真/OOC 综合通过；未上板 | 原生 XPM 数据/帧提交 FIFO，32/64-bit 打包；错误/溢出整帧丢弃，统计握手快照；三配置各 1000 帧 DVP→M03→AXIS 比对；523 LUT/1374 FF/16 BRAM36；默认 64 KiB 帧上限；见 M04 文档 |
-| M05、M07～M15 / G1～G7 | 未开始 | 下一步 DMA/DDR → 实拍保存；M11 以太网配置与联网门禁后置，M14 仍为全门禁通过后的可选优化 |
+| M05 | RTL/软件/离线回归及原生实现通过；短包上板通过，物理门禁未通过 | 32 次变长加 2 次错误恢复实测正确；缓存开关各 10000 次与真实 JPEG 待测，ARM DAP 当前超时 |
+| M07～M15 / G1～G7 | 未开始 | M11 以太网配置与联网门禁后置，M14 仍为全门禁通过后的可选优化 |
 
 板级资料已解压并完成源码研究；用户已提供 DDR 型号/颗数，新增原理图已核对。
 已临时 JTAG 下载并采集 COM4；用户确认 PS 网口未连接，G0 网络和冷启动验收保留待办。
@@ -303,3 +304,33 @@ DCP SHA-256：`79dbece1a1b78863af624f3981b6ac43cda4ce2e47a810d7615f070b0b813c4f`
 综合有 HD.CLK_SRC/无板级 IO delay 的范围限制，bus-skew 未布线；未改板上 M02、
 网络或 SD/Flash，未取得实际摄像头 JPEG，M04/G1 物理验收仍待 M05 集成。
 下一步 M05：短包发生器 → DMA/DDR → 缓存/错误恢复 → 实拍保存/解码；M11 网络仍最后接入。
+
+## M05：原生 DMA/DDR 集成
+
+新增两个 AMD AXI DMA Simple Mode，capture S2MM 与 crypto MM2S/S2MM，共享 PS HP0；
+crypto 本阶段为传输回环，不冒充 AES-GCM。JPEG 双缓冲、独立输出包、64 KiB 上限、
+缓存方向、原生 BSP 中断、有界完成/错误/复位处理、所有权与 UART 转储已编写。
+主机只读完成且保持 SENDING 的 ELF-owned DDR 帧，再显式 release，没有 BRAM/JTAG 快照旁路。
+已有环境完成 Icarus 4 模式/4000 组路由、C 10000 轮所有权、主机边界校验和实际 M05
+原生 XSim/XPM 停 PCLK 复位/背压/PCLK witness 检查；M02/M03/M04 回归通过。
+M04 桥读侧改用原生异步置低/AXIS 同步释放复位，其三配置各 1000 帧回归再次通过。
+
+开发产物保留但不当验收：m05_board_1 未同步 PS 配置/flush 到 PCLK，CDC/内部时序失败；
+首版 XDC 的 foreach 不属于 read_xdc 支持的语法，已展开管脚、分离 EARLY 时钟与仅实现约束。
+m05_board_1/2 被本助手停止，产物/日志未删；m05_board_3 完成内部布线时序 WNS 0.449/WHS 0.036 ns，
+但复位同步器前还有 CDC-10 组合逻辑提示，已将请求在源域寄存，重新构建 m05_board_4。
+旧 Vitis 构建因为期间 RTL 改动被源码哈希保护拒绝，无有效 manifest，没有下载旧版上板。
+实际原生 SDT 把 capture 唯一 S2MM 中断放在 IntrId[0]、[1]=ffff，已按配置修正，
+不套用双通道示例的 RX 索引；三个 GIC SPI 编码为 401d/401e/401f，使用原生同一套中断封装。
+
+最终 `m05_board_4` 原生实现 WNS +0.464 ns、WHS +0.043 ns，CDC 无 Critical，
+10 ns bus-skew 布线无违例，DRC 无 Error；bitstream SHA-256 为
+`bf9feae357dbbf17c182b6c4e2155c60b58ed633b819082720e95ad77026a73c`。
+同一版 bit/ELF 在 CF7020B 实测缓存关闭的 32 次变长传输及 2 次预期错误后的恢复，
+全部 34 次数据/实际长度检查通过，耗时 49166 us；RX IRQ 34、TX IRQ 35、
+错误 IRQ 1、预期超时 1、背压计数 211904，最大长度 65536。
+结果见 `data/captures/m05_20260927_231856_679327/result.json`。
+次日尝试 10000 次时，在下发邮箱命令前发生 ARM AP transaction timeout；
+JTAG 能枚举 xc7z020，但 DAP 报 transaction error，故不是 DMA 压测结果。
+等待板卡重上电，继续缓存开关各 10000 次及实际 JPEG 采集/保存；M05 未标记通过。
+复现、接口与容量/IO 验收范围见 [M05](../doc/m05.md)。网络仍最后，不写 SD/Flash。

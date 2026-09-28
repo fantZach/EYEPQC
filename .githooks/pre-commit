@@ -18,4 +18,5 @@ fi
 "$python" sim/tb/test_aes_mvp.py
 "$python" sim/tb/test_m02.py
 "$python" sim/tb/test_m03.py
-exec "$python" sim/tb/test_m04.py
+"$python" sim/tb/test_m04.py
+exec "$python" sim/tb/test_m05.py
