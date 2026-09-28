@@ -29,7 +29,7 @@ class M02(unittest.TestCase):
                  if line.strip() and not line.startswith("//")]
         self.assertEqual(len(words), 251)
         self.assertEqual(words[:3], ["300882", "300802", "310302"])
-        for index, expected in {52: "430030", 53: "501f00", 203: "303511", 227: "382120",
+        for index, expected in {52: "430030", 53: "501f00", 203: "303521", 227: "382120",
                                 238: "300200", 239: "3006ff", 240: "471303", 241: "440701", 250: "301900"}.items():
             self.assertEqual(words[index], expected)
         source = ROOT / "board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/vitis/ov5640_ps_eth_udp_pc/src/ov5640/ov5640_init.c"
@@ -43,6 +43,7 @@ class M02(unittest.TestCase):
                     continue  # Flash-on demonstration, not camera initialization.
                 data = int(value.strip(), 16) if value.strip().startswith("0x") else 0
                 expected.append(f"{addr.lower()}{data:02x}")
+            expected[203] = "303521"  # M05 halves the vendor system clock to keep measured PCLK below 72 MHz.
             self.assertEqual(words, expected)
 
     def simulate(self, name, marker):

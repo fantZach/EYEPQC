@@ -11,7 +11,9 @@
 M02 SCCB/OV5640 初始化、失败保护和仿真已编写，复现及硬件状态见 [M02](doc/m02.md)。
 M03 DVP/JPEG 字节采集与帧边界检查已编写，连续 1000 帧和故障恢复仿真通过，见 [M03](doc/m03.md)。
 M04 原生异步 FIFO、整帧提交和 32/64-bit AXIS 已编写，默认帧长上限 64 KiB，见 [M04](doc/m04.md)。
-M05 原生 AXI DMA、DDR 双缓冲、缓存/中断恢复和图片保存路径见 [M05](doc/m05.md)；没有临时 BRAM/JTAG 快照旁路。
+M05 原生 AXI DMA、DDR 双缓冲、缓存/中断恢复和图片保存已通过实物验证：
+缓存开关各 10000 次传输及 1000 帧真实 JPEG 采集；记录见 [M05](doc/m05.md)。
+没有临时 BRAM/JTAG 快照旁路。
 `tb_heartbeat.sv` 位于 `sim/tb/`，由 M01 回归执行，验证 PL LED 心跳的分频与复位。
 
 ## 优先：图片 AES MVP
