@@ -11,7 +11,7 @@
 | 立即清单 2：官方资料与工具 | 源码研究完成，实物待确认 | 已提取 8 个官方工程并记录压缩包 SHA-256；XPR/BD 为 2020.2、xc7z020clg400-2；发现 DDR3/DDR3L 配置差异 |
 | M00：协议与黄金参考 | 完成（主机离线验证） | C/Python 协议实现、标准/随机/篡改向量、独立 GHASH 中间值和复现脚本 |
 | M01 / G0 | 部分上板通过、门禁未通过 | 新硬件/SD0/FSBL 构建通过；CF7020B / COM4 JTAG 验证 UART、DDR scratch、定时器；YT8521 ID 已确认并适配；M01 4 项、M00 10 项及 hook 通过；link=0，网络/LED/冷启动待验收 |
-| M06 / 固定图片 MVP | 已上板通过（PS/PL 混合 MVP） | GitHub secworks/aes、AXI4-Lite、PL AES / PS GHASH；用户完整 365954 字节 JPG 与 524288 字节 PNG 上限认证往返通过；18 项离线检查/hook 通过；非 M08 全 PL |
+| M06 / 固定图片 MVP | M06 判据完成；PS/PL 混合图片 MVP 已上板通过 | GitHub secworks/aes、AXI4-Lite、PL AES / PS GHASH；13 向量、同 Key 连续块/更新/硬复位通过，53 周期/块；IP 综合 2600 LUT/2566 FF/0 BRAM；完整 JPG/512 KiB PNG 认证往返通过；非 M08 全 PL |
 | M02：SCCB 摄像头配置 | RTL/仿真/实现通过；完整物理门禁待验收 | ID=5640；复电后串行 40/40 配置成功，M05 再完成实拍；历史 4300 超时原因及 20 次真正冷启动/ILA 仍待验收 |
 | M03：DVP/JPEG 采集 | 独立仿真/OOC 综合通过，M05 集成实拍通过 | 仿真 1000 帧逐字节及故障恢复；与 M04/DMA 集成后上板实拍 1000 帧，未单独完成 DVP 输入 IO 时序验收 |
 | M04：异步 FIFO/AXIS | 原生仿真/OOC 综合通过，M05 集成实拍通过 | 三配置各 1000 帧仿真；与 M03/DMA 集成后上板实拍 1000 帧，无丢帧/溢出；默认 64 KiB 帧上限 |

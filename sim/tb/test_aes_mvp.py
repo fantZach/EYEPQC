@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -64,7 +65,11 @@ class AesMvp(unittest.TestCase):
             result = subprocess.run([tool("vvp", "C:/iverilog/bin/vvp.exe"),
                 str(work / "test.vvp"), f"+VECTORS={data}"], check=True,
                 text=True, capture_output=True, timeout=30)
-            self.assertIn("AES_AXI_PASS vectors=13", result.stdout)
+            match = re.search(r"AES_AXI_PASS vectors=13 core_cycles=(\d+) consecutive=2 key_update=1 hard_reset=1",
+                              result.stdout)
+            self.assertIsNotNone(match, result.stdout)
+            self.assertGreater(int(match.group(1)), 0)
+            print(match.group(0))
 
     def test_c_gcm_against_golden(self):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as cleanup:

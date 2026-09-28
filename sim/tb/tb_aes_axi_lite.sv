@@ -15,6 +15,20 @@ module tb_aes_axi_lite;
         .s_axi_bresp(bresp), .s_axi_bvalid(bvalid), .s_axi_bready(bready),
         .s_axi_araddr(araddr), .s_axi_arprot(3'b0), .s_axi_arvalid(arvalid), .s_axi_arready(arready),
         .s_axi_rdata(rdata), .s_axi_rresp(rresp), .s_axi_rvalid(rvalid), .s_axi_rready(rready));
+    integer ticks = 0, core_start = -1, core_cycles = 0, first_core_cycles = 0;
+    reg previous_core_valid = 0;
+    always @(posedge clk) begin
+        ticks = ticks + 1;
+        if (dut.core.next) core_start = ticks;
+        if (dut.core.result_valid && !previous_core_valid && core_start >= 0) begin
+            core_cycles = ticks - core_start;
+            if (first_core_cycles == 0) first_core_cycles = core_cycles;
+            else if (core_cycles != first_core_cycles)
+                $fatal(1, "variable core latency %0d != %0d", core_cycles, first_core_cycles);
+            core_start = -1;
+        end
+        previous_core_valid = dut.core.result_valid;
+    end
     initial begin #20000000; $fatal(1, "AES AXI test timeout"); end
     task automatic wr(input [11:0] addr, input [31:0] value, input [3:0] strb,
                       input integer skew, input [1:0] expected);
@@ -71,6 +85,34 @@ module tb_aes_axi_lite;
             if ((status & flags) !== flags) $fatal(1, "AES completion status=%h", status);
         end
     endtask
+    task automatic write_128(input [11:0] base, input [127:0] value);
+        integer j;
+        for (j = 0; j < 4; j = j + 1)
+            wr(base + j*4, value[127-j*32 -: 32], 15, 0, 0);
+    endtask
+    task automatic check_block(input [127:0] value, input [127:0] answer);
+        integer j;
+        reg [31:0] word_read;
+        reg [127:0] observed;
+        begin
+            write_128('h20, value);
+            wr(0, 2, 15, 0, 0); wait_done(6);
+            for (j = 0; j < 4; j = j + 1) begin
+                rd('h30 + j*4, word_read, 0);
+                observed[127-j*32 -: 32] = word_read;
+            end
+            if (observed !== answer) $fatal(1, "consecutive/key-update AES mismatch");
+        end
+    endtask
+    task automatic check_cleared;
+        integer j;
+        begin
+            if (dut.key !== 0 || dut.block !== 0 || dut.core.enc_block.new_block !== 0 ||
+                dut.core.result_valid !== 0) $fatal(1, "AES state not cleared");
+            for (j = 0; j < 15; j = j + 1)
+                if (dut.core.keymem.key_mem[j] !== 0) $fatal(1, "round key %0d not cleared", j);
+        end
+    endtask
     reg [127:0] key, block, expected, actual;
     reg [31:0] word_value;
     integer file, count, fields, i;
@@ -109,15 +151,42 @@ module tb_aes_axi_lite;
                 // Abort an active operation and check real upstream secret state.
                 wr(0, 2, 15, 0, 0); wr(0, 4, 15, 0, 0);
                 rd(4, word_value, 0);
-                if (word_value !== 0 || dut.key !== 0 || dut.core.keymem.key_mem[0] !== 0 ||
-                    dut.core.keymem.key_mem[10] !== 0 || dut.core.enc_block.block_w0_reg !== 0)
-                    $fatal(1, "zeroization failed");
+                if (word_value !== 0) $fatal(1, "zeroization status failed");
+                check_cleared();
                 wr(0, 2, 15, 0, 2);
                 count = count + 1;
             end else if (fields != -1) $fatal(1, "malformed vector");
         end
         $fclose(file);
         if (count < 3) $fatal(1, "insufficient vectors");
-        $display("AES_AXI_PASS vectors=%0d", count); $finish;
+        // Reuse one expanded key across consecutive blocks, then invalidate and replace it.
+        key = 128'h000102030405060708090a0b0c0d0e0f;
+        write_128('h10, key);
+        wr(0, 1, 15, 0, 0); wait_done(2);
+        check_block(128'h00112233445566778899aabbccddeeff,
+                    128'h69c4e0d86a7b0430d8cdb78070b4c55a);
+        check_block(0, 128'hc6a13b37878f5b826f4f8162a1c8d879);
+        wr('h10, 0, 15, 0, 0);
+        rd(4, word_value, 0);
+        if (word_value[2:1] != 0) $fatal(1, "key update left old key/result valid");
+        wr(0, 2, 15, 0, 2);
+        for (i = 1; i < 4; i = i + 1) wr('h10 + i*4, 0, 15, 0, 0);
+        wr(0, 1, 15, 0, 0); wait_done(2);
+        check_block(0, 128'h66e94bd4ef8a2c3b884cfa59ca342b2e);
+
+        write_128('h20, 128'h00112233445566778899aabbccddeeff);
+        wr(0, 2, 15, 0, 0);
+        rd(4, word_value, 0);
+        if (!word_value[0]) $fatal(1, "reset test did not interrupt busy AES");
+        @(negedge clk); resetn = 0;
+        repeat (4) @(negedge clk); resetn = 1;
+        rd(4, word_value, 0);
+        if (word_value !== 0) $fatal(1, "hard reset status failed");
+        check_cleared();
+        wr(0, 2, 15, 0, 2);
+        if (first_core_cycles < 1) $fatal(1, "missing AES cycle measurement");
+        $display("AES_AXI_PASS vectors=%0d core_cycles=%0d consecutive=2 key_update=1 hard_reset=1",
+                 count, first_core_cycles);
+        $finish;
     end
 endmodule
