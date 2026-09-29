@@ -13,13 +13,20 @@ int g3_usb_flush(void);
 int g3_usb_resume(void);
 void g3_usb_zeroize(void);
 int g3_usb_encrypt(const uint8_t *plain, unsigned size, const uint8_t aad[40],
-                   uint32_t epoch, uint64_t sequence, const uint8_t **sealed);
+                   const uint8_t key[16], uint32_t epoch, uint64_t sequence,
+                   const uint8_t **sealed);
 int usb_cdc_init(void);
 int usb_cdc_ready(void);
 int usb_cdc_send(uint8_t *data, uint32_t size);
 uint32_t usb_cdc_test_epoch(void);
 
 static uint8_t record[3 + 40 + PAYLOAD + 16] __attribute__((aligned(64)));
+#ifdef G5_USB
+static const uint8_t g5_test_key[16] = {
+    0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+    0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
+}; // ponytail: public test key only; G6 uses a derived key.
+#endif
 static void be16(uint8_t *p, uint32_t n) { p[0] = n >> 8; p[1] = n; }
 static void be32(uint8_t *p, uint32_t n) { p[0] = n >> 24; p[1] = n >> 16; p[2] = n >> 8; p[3] = n; }
 static void be64(uint8_t *p, uint64_t n) { be32(p, n >> 32); be32(p + 4, n); }
@@ -55,7 +62,8 @@ static int send_frame(const uint8_t *jpeg, unsigned size, uint32_t frame_id,
 #ifdef G5_USB
         const uint8_t *sealed;
         if (g3_usb_encrypt(jpeg + offset, length, record + 3,
-                           usb_cdc_test_epoch(), packet_sequence, &sealed)) return 3;
+                           g5_test_key, usb_cdc_test_epoch(), packet_sequence,
+                           &sealed)) return 3;
         memcpy(record + 43, sealed, length + 16);
         if (usb_cdc_send(record, 43 + length + 16)) return 1;
 #else

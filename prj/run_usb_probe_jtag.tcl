@@ -3,7 +3,7 @@ if {[catch {
     if {[llength $argv] < 1 || [llength $argv] > 2} {error "usage: run_usb_probe_jtag.tcl <Vitis workspace> ?application?"}
     set workspace [file normalize [lindex $argv 0]]
     set app [expr {[llength $argv] == 2 ? [lindex $argv 1] : "usb_probe"}]
-    if {$app ni {usb_probe g4_usb g5_usb}} {error "Unsupported application: $app"}
+    if {$app ni {usb_probe g4_usb g5_usb g6_usb}} {error "Unsupported application: $app"}
     set elf "$workspace/$app/build/$app.elf"
     set bit "$workspace/$app/_ide/bitstream/m01.bit"
     set init "$workspace/$app/_ide/psinit/ps7_init.tcl"

@@ -17,6 +17,21 @@ static u8 jpeg[65536] __attribute__((aligned(64)));
 static u8 line_coding[8] __attribute__((aligned(64))) = {0x00, 0xc2, 0x01, 0x00, 0, 0, 8};
 static volatile int configured, dtr, tx_ready = 1, line_pending, mode;
 static volatile u32 test_epoch, test_epoch_bytes;
+#ifdef G6_USB
+static u8 rx_ring[2048], control_record[1039];
+static volatile u32 rx_head, rx_tail, rx_bad;
+static u32 control_used, control_target;
+static void rx_reset(void) {
+    rx_head = rx_tail = rx_bad = control_used = control_target = 0;
+}
+static void rx_push(u8 value) {
+    u32 next = (rx_head + 1U) & 2047U;
+    if (next == rx_tail) { rx_bad = 1; return; }
+    rx_ring[rx_head] = value;
+    __asm__ volatile("dmb sy" ::: "memory");
+    rx_head = next;
+}
+#endif
 static u32 block_no;
 static volatile u32 jpeg_length, jpeg_used, jpeg_length_bytes, jpeg_receiving, jpeg_ready, jpeg_bad;
 static u32 jpeg_offset, jpeg_packet;
@@ -73,6 +88,9 @@ void XUsbPs_SetConfiguration(XUsbPs *u, int index) {
     dtr = 0;
     mode = 0;
     test_epoch = test_epoch_bytes = 0;
+#ifdef G6_USB
+    rx_reset();
+#endif
     jpeg_receiving = jpeg_ready = jpeg_bad = 0;
     tx_ready = 1;
     if (!configured) return;
@@ -100,6 +118,9 @@ void XUsbPs_ClassReq(XUsbPs *u, XUsbPs_SetupData *s) {
         dtr = s->wValue & 1;
         mode = 0;
         test_epoch = test_epoch_bytes = 0;
+#ifdef G6_USB
+        rx_reset();
+#endif
         jpeg_receiving = jpeg_ready = jpeg_bad = 0;
         if (dtr) block_no = 0;
         XUsbPs_EpBufferSend(u, 0, NULL, 0);
@@ -147,7 +168,9 @@ static void ep1_out(void *ref, u8 ep, u8 event, void *data) {
             if (len) Xil_DCacheInvalidateRange((UINTPTR)buf, (len + 31) & ~31U);
             for (u32 i=0; i<len; ++i) {
                 u8 c = buf[i];
-#ifdef USB_LIBRARY
+#ifdef G6_USB
+                rx_push(c);
+#elif defined(USB_LIBRARY)
                 if (test_epoch_bytes) {
                     test_epoch = (test_epoch << 8) | c;
                     if (++test_epoch_bytes == 5) { test_epoch_bytes = 0; mode = 'E'; }
@@ -155,8 +178,7 @@ static void ep1_out(void *ref, u8 ep, u8 event, void *data) {
                     test_epoch = 0;
                     test_epoch_bytes = 1;
                 } else if (len == 1 && c == 'V') mode = 'V';
-                continue;
-#endif
+#else
                 if (jpeg_bad) continue;
                 if (jpeg_receiving) {
                     if (jpeg_length_bytes < 4) {
@@ -186,6 +208,7 @@ static void ep1_out(void *ref, u8 ep, u8 event, void *data) {
                     block_no = 0;
                     mode = c;
                 }
+#endif
             }
             XUsbPs_EpBufferRelease(handle);
         }
@@ -226,13 +249,42 @@ int usb_cdc_init(void) {
 }
 
 int usb_cdc_ready(void) {
-#ifdef G5_USB
+#ifdef G6_USB
+    return configured && dtr;
+#elif defined(G5_USB)
     return configured && dtr && mode == 'E';
 #else
     return configured && dtr && mode == 'V';
 #endif
 }
 u32 usb_cdc_test_epoch(void) { return test_epoch; }
+
+#ifdef G6_USB
+int usb_cdc_take_control(u8 *out, u32 capacity) {
+    if (!out || rx_bad) return -1;
+    while (rx_tail != rx_head) {
+        u8 value = rx_ring[rx_tail];
+        rx_tail = (rx_tail + 1U) & 2047U;
+        control_record[control_used++] = value;
+        if (control_used == 3) {
+            u32 length = ((u32)control_record[1] << 8) | control_record[2];
+            if (control_record[0] != 1 || length < 12 || length > 1036) {
+                rx_bad = 1;
+                return -1;
+            }
+            control_target = 3 + length;
+        }
+        if (control_target && control_used == control_target) {
+            u32 length = control_target - 3;
+            if (length > capacity) { rx_bad = 1; return -1; }
+            memcpy(out, control_record + 3, length);
+            control_used = control_target = 0;
+            return (int)length;
+        }
+    }
+    return 0;
+}
+#endif
 
 int usb_cdc_send(u8 *data, u32 size) {
     XTime start, now;

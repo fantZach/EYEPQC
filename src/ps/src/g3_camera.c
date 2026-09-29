@@ -319,17 +319,14 @@ int g3_usb_resume(void)
 }
 void g3_usb_zeroize(void) { Xil_Out32(GCM_BASE, 2); }
 int g3_usb_encrypt(const uint8_t *plain, unsigned size, const uint8_t aad[40],
-                   uint32_t epoch, uint64_t sequence, const uint8_t **sealed)
+                   const uint8_t key[16], uint32_t epoch, uint64_t sequence,
+                   const uint8_t **sealed)
 {
-    static const uint8_t test_key[16] = {
-        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
-        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
-    }; // G5 test-only; G6 replaces it with a fresh ML-KEM-derived session key.
-    if (!size || size > CHUNK) return 1;
+    if (!plain || !aad || !key || !sealed || !size || size > CHUNK) return 1;
     memset(g3_sealed, 0xa5, RX_BTT + GUARD);
     g3_usb_zeroize();
     for (unsigned i = 0; i < 4; ++i)
-        Xil_Out32(GCM_BASE + 0x20 + i*4, be32(test_key + i*4));
+        Xil_Out32(GCM_BASE + 0x20 + i*4, be32(key + i*4));
     Xil_Out32(GCM_BASE + 0x30, epoch);
     Xil_Out32(GCM_BASE + 0x34, (uint32_t)(sequence >> 32));
     Xil_Out32(GCM_BASE + 0x38, (uint32_t)sequence);
