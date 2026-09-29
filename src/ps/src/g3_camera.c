@@ -230,6 +230,7 @@ static unsigned run(void)
     g3_job.sealed_address = (uint32_t)(UINTPTR)g3_sealed;
     return status;
 }
+#ifndef G4_USB
 int main(void)
 {
     XUartPs uart;
@@ -270,3 +271,93 @@ int main(void)
             g3_job.sealed_length, g3_job.elapsed_us);
     }
 }
+#else
+int g3_usb_init(unsigned camera_cfg)
+{
+    XUartPs uart;
+    XUartPs_Config *cfg = XUartPs_LookupConfig(XPAR_XUARTPS_0_BASEADDR);
+    Xil_DCacheDisable();
+    if (!cfg || XUartPs_CfgInitialize(&uart, cfg, cfg->BaseAddress) ||
+        XUartPs_SetBaudRate(&uart, 115200)) return 1;
+    usleep(1);
+    Xil_Out32(CAM_GPIO + 4, 0); Xil_Out32(CAM_GPIO + 12, 0xffffffffU);
+    Xil_Out32(DMA_GPIO + 4, 0); Xil_Out32(DMA_GPIO + 12, 0xffffffffU);
+    route(1, 1);
+    XAxiDma_Config *cc = XAxiDma_LookupConfig(CAP_BASE);
+    XAxiDma_Config *dc = XAxiDma_LookupConfig(CRYPTO_BASE);
+    if (stat(0, 1, 1) != 0x4d303531U || !cc || !dc ||
+        XAxiDma_CfgInitialize(&capture, cc) != XST_SUCCESS ||
+        XAxiDma_CfgInitialize(&crypto, dc) != XST_SUCCESS ||
+        XAxiDma_HasSg(&capture) || XAxiDma_HasSg(&crypto)) return 2;
+    XAxiDma_IntrDisable(&capture, XAXIDMA_IRQ_ALL_MASK, XAXIDMA_DEVICE_TO_DMA);
+    XAxiDma_IntrDisable(&crypto, XAXIDMA_IRQ_ALL_MASK, XAXIDMA_DEVICE_TO_DMA);
+    XAxiDma_IntrDisable(&crypto, XAXIDMA_IRQ_ALL_MASK, XAXIDMA_DMA_TO_DEVICE);
+    if (reset_dma()) return 3;
+    return configure_camera(camera_cfg);
+}
+int g3_usb_capture(const uint8_t **data, unsigned *size)
+{
+    int status = capture_frame();
+    if (status) return status;
+    route(2, 0);
+    *data = g3_frame;
+    *size = g3_job.frame_length;
+    return 0;
+}
+int g3_usb_flush(void)
+{
+    route(1, 1);
+    if (reset_dma()) return 1;
+    route(1, 0);
+    return 0;
+}
+int g3_usb_resume(void)
+{
+    if (reset_dma()) return 1;
+    route(1, 0);
+    return 0;
+}
+void g3_usb_zeroize(void) { Xil_Out32(GCM_BASE, 2); }
+int g3_usb_encrypt(const uint8_t *plain, unsigned size, const uint8_t aad[40],
+                   uint32_t epoch, uint64_t sequence, const uint8_t **sealed)
+{
+    static const uint8_t test_key[16] = {
+        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
+    }; // G5 test-only; G6 replaces it with a fresh ML-KEM-derived session key.
+    if (!size || size > CHUNK) return 1;
+    memset(g3_sealed, 0xa5, RX_BTT + GUARD);
+    g3_usb_zeroize();
+    for (unsigned i = 0; i < 4; ++i)
+        Xil_Out32(GCM_BASE + 0x20 + i*4, be32(test_key + i*4));
+    Xil_Out32(GCM_BASE + 0x30, epoch);
+    Xil_Out32(GCM_BASE + 0x34, (uint32_t)(sequence >> 32));
+    Xil_Out32(GCM_BASE + 0x38, (uint32_t)sequence);
+    for (unsigned i = 0; i < 10; ++i)
+        Xil_Out32(GCM_BASE + 0x40 + i*4, be32(aad + i*4));
+    Xil_Out32(GCM_BASE + 0x08, size);
+    Xil_Out32(GCM_BASE + 0x0c, 40);
+    Xil_Out32(GCM_BASE, 1);
+    if (XAxiDma_SimpleTransfer(&crypto, (UINTPTR)g3_sealed, RX_BTT,
+                               XAXIDMA_DEVICE_TO_DMA) != XST_SUCCESS ||
+        XAxiDma_SimpleTransfer(&crypto, (UINTPTR)plain, size,
+                               XAXIDMA_DMA_TO_DEVICE) != XST_SUCCESS) return 2;
+    XTime start;
+    XTime_GetTime(&start);
+    while (!(Xil_In32(GCM_BASE + 4) & 2U) ||
+           XAxiDma_Busy(&crypto, XAXIDMA_DEVICE_TO_DMA) ||
+           XAxiDma_Busy(&crypto, XAXIDMA_DMA_TO_DEVICE)) {
+        if ((Xil_In32(GCM_BASE + 4) & 4U) ||
+            dma_error(&crypto, XAXIDMA_DEVICE_TO_DMA) ||
+            dma_error(&crypto, XAXIDMA_DMA_TO_DEVICE)) return 3;
+        if (elapsed_us(start) > 500000U) return 4;
+    }
+    unsigned actual = XAxiDma_ReadReg(CRYPTO_BASE,
+                            XAXIDMA_RX_OFFSET + XAXIDMA_BUFFLEN_OFFSET);
+    if (actual != size + 16U) return 5;
+    for (unsigned i = actual; i < actual + GUARD; ++i)
+        if (g3_sealed[i] != 0xa5) return 6;
+    *sealed = g3_sealed;
+    return 0;
+}
+#endif

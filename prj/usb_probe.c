@@ -6,6 +6,7 @@
 #include "xinterrupt_wrap.h"
 #include "xil_cache.h"
 #include "xil_printf.h"
+#include "xiltimer.h"
 #include <string.h>
 
 #define CHUNK 16384
@@ -15,6 +16,7 @@ static u8 chunk[CHUNK] __attribute__((aligned(64)));
 static u8 jpeg[65536] __attribute__((aligned(64)));
 static u8 line_coding[8] __attribute__((aligned(64))) = {0x00, 0xc2, 0x01, 0x00, 0, 0, 8};
 static volatile int configured, dtr, tx_ready = 1, line_pending, mode;
+static volatile u32 test_epoch, test_epoch_bytes;
 static u32 block_no;
 static volatile u32 jpeg_length, jpeg_used, jpeg_length_bytes, jpeg_receiving, jpeg_ready, jpeg_bad;
 static u32 jpeg_offset, jpeg_packet;
@@ -70,6 +72,7 @@ void XUsbPs_SetConfiguration(XUsbPs *u, int index) {
     configured = index == 1;
     dtr = 0;
     mode = 0;
+    test_epoch = test_epoch_bytes = 0;
     jpeg_receiving = jpeg_ready = jpeg_bad = 0;
     tx_ready = 1;
     if (!configured) return;
@@ -96,6 +99,7 @@ void XUsbPs_ClassReq(XUsbPs *u, XUsbPs_SetupData *s) {
     case 0x22: /* SET_CONTROL_LINE_STATE */
         dtr = s->wValue & 1;
         mode = 0;
+        test_epoch = test_epoch_bytes = 0;
         jpeg_receiving = jpeg_ready = jpeg_bad = 0;
         if (dtr) block_no = 0;
         XUsbPs_EpBufferSend(u, 0, NULL, 0);
@@ -143,6 +147,16 @@ static void ep1_out(void *ref, u8 ep, u8 event, void *data) {
             if (len) Xil_DCacheInvalidateRange((UINTPTR)buf, (len + 31) & ~31U);
             for (u32 i=0; i<len; ++i) {
                 u8 c = buf[i];
+#ifdef USB_LIBRARY
+                if (test_epoch_bytes) {
+                    test_epoch = (test_epoch << 8) | c;
+                    if (++test_epoch_bytes == 5) { test_epoch_bytes = 0; mode = 'E'; }
+                } else if (c == 'E') {
+                    test_epoch = 0;
+                    test_epoch_bytes = 1;
+                } else if (len == 1 && c == 'V') mode = 'V';
+                continue;
+#endif
                 if (jpeg_bad) continue;
                 if (jpeg_receiving) {
                     if (jpeg_length_bytes < 4) {
@@ -180,12 +194,12 @@ static void ep1_out(void *ref, u8 ep, u8 event, void *data) {
 }
 static void usb_event(void *ref, u32 mask) { (void)ref; (void)mask; }
 
-int main(void) {
+int usb_cdc_init(void) {
     XUsbPs_Config *uc = XUsbPs_LookupConfig(XPAR_XUSBPS_0_BASEADDR);
     XUsbPs_DeviceConfig dc = {0};
-    if (!uc || XUsbPs_CfgInitialize(&usb, uc, uc->BaseAddress) != XST_SUCCESS) goto fail;
+    if (!uc || XUsbPs_CfgInitialize(&usb, uc, uc->BaseAddress) != XST_SUCCESS) return 1;
     if (XSetupInterruptSystem(&usb, &XUsbPs_IntrHandler, uc->IntrId,
-                              uc->IntrParent, XINTERRUPT_DEFAULT_PRIORITY) != XST_SUCCESS) goto fail;
+                              uc->IntrParent, XINTERRUPT_DEFAULT_PRIORITY) != XST_SUCCESS) return 2;
 
     dc.NumEndpoints = 3;
     for (int i=0; i<3; ++i) {
@@ -201,13 +215,51 @@ int main(void) {
     memset(dma_mem, 0, sizeof(dma_mem));
     Xil_DCacheFlushRange((UINTPTR)dma_mem, sizeof(dma_mem));
     dc.DMAMemPhys = (u32)(UINTPTR)dma_mem;
-    if (XUsbPs_ConfigureDevice(&usb, &dc) != XST_SUCCESS) goto fail;
+    if (XUsbPs_ConfigureDevice(&usb, &dc) != XST_SUCCESS) return 3;
     if (XUsbPs_IntrSetHandler(&usb, usb_event, NULL, XUSBPS_IXR_UE_MASK) != XST_SUCCESS ||
         XUsbPs_EpSetHandler(&usb, 0, XUSBPS_EP_DIRECTION_OUT, ep0, &usb) != XST_SUCCESS ||
         XUsbPs_EpSetHandler(&usb, 1, XUSBPS_EP_DIRECTION_IN, ep1_in, &usb) != XST_SUCCESS ||
-        XUsbPs_EpSetHandler(&usb, 1, XUSBPS_EP_DIRECTION_OUT, ep1_out, &usb) != XST_SUCCESS) goto fail;
+        XUsbPs_EpSetHandler(&usb, 1, XUSBPS_EP_DIRECTION_OUT, ep1_out, &usb) != XST_SUCCESS) return 4;
     XUsbPs_IntrEnable(&usb, XUSBPS_IXR_UR_MASK | XUSBPS_IXR_UI_MASK);
     XUsbPs_Start(&usb);
+    return 0;
+}
+
+int usb_cdc_ready(void) {
+#ifdef G5_USB
+    return configured && dtr && mode == 'E';
+#else
+    return configured && dtr && mode == 'V';
+#endif
+}
+u32 usb_cdc_test_epoch(void) { return test_epoch; }
+
+int usb_cdc_send(u8 *data, u32 size) {
+    XTime start, now;
+    XTime_GetTime(&start);
+    while (!tx_ready) {
+        if (!usb_cdc_ready()) return 1;
+        XTime_GetTime(&now);
+        if (now - start > COUNTS_PER_SECOND) return 2;
+    }
+    if (!usb_cdc_ready()) return 1;
+    tx_ready = 0;
+    if (XUsbPs_EpBufferSend(&usb, 1, data, size) != XST_SUCCESS) {
+        tx_ready = 1;
+        return 3;
+    }
+    XTime_GetTime(&start);
+    while (!tx_ready) {
+        if (!usb_cdc_ready()) return 1;
+        XTime_GetTime(&now);
+        if (now - start > COUNTS_PER_SECOND) return 2;
+    }
+    return usb_cdc_ready() ? 0 : 1;
+}
+
+#ifndef USB_LIBRARY
+int main(void) {
+    if (usb_cdc_init()) goto fail;
     xil_printf("USB_PROBE_READY\r\n");
     for (;;) {
         if (!configured || !dtr || !mode || !tx_ready) continue;
@@ -263,3 +315,4 @@ fail:
     xil_printf("USB_PROBE_FAIL\r\n");
     for (;;) {}
 }
+#endif

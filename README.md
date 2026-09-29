@@ -17,7 +17,9 @@ M08 全 PL AES-GCM AXIS 独立仿真与 OOC 综合见 [M08](doc/m08.md)；
 USB Slave 已完成独立 30 秒、16.37 MB/s、逐字节正确性验证；第一版传输方案已从
 PS 以太网改为 PS USB0 CDC，复现及边界见 [USB 可行性测试](doc/usb_probe.md)。
 M11 固定协议记录与两张实拍 JPEG 的 USB 往返也已验证；M12 离线认证回放见
-[M12](doc/m12.md)。摄像头直接经 USB 持续发送及 G4～G7 尚未验收。
+[M12](doc/m12.md)。实拍 USB 视频 G4 明文 30 分钟 47.258 fps、G5 固定测试密钥
+AES-GCM 60 秒 47.270 fps 与 Tag 篡改拒绝已通过，见 [G4/G5](doc/g4_g5.md)。
+G6 动态握手、G7 长测与完整 G0 尚待验收。
 M02 SCCB/OV5640 初始化、失败保护和仿真已编写，复现及硬件状态见 [M02](doc/m02.md)。
 M03 DVP/JPEG 字节采集与帧边界检查已编写，连续 1000 帧和故障恢复仿真通过，见 [M03](doc/m03.md)。
 M04 原生异步 FIFO、整帧提交和 32/64-bit AXIS 已编写，默认帧长上限 64 KiB，见 [M04](doc/m04.md)。

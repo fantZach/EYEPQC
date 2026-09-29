@@ -1,10 +1,12 @@
 # Volatile JTAG load; never writes boot media.
 if {[catch {
-    if {[llength $argv] != 1} {error "usage: run_usb_probe_jtag.tcl <Vitis workspace>"}
+    if {[llength $argv] < 1 || [llength $argv] > 2} {error "usage: run_usb_probe_jtag.tcl <Vitis workspace> ?application?"}
     set workspace [file normalize [lindex $argv 0]]
-    set elf "$workspace/usb_probe/build/usb_probe.elf"
-    set bit "$workspace/usb_probe/_ide/bitstream/m01.bit"
-    set init "$workspace/usb_probe/_ide/psinit/ps7_init.tcl"
+    set app [expr {[llength $argv] == 2 ? [lindex $argv 1] : "usb_probe"}]
+    if {$app ni {usb_probe g4_usb g5_usb}} {error "Unsupported application: $app"}
+    set elf "$workspace/$app/build/$app.elf"
+    set bit "$workspace/$app/_ide/bitstream/m01.bit"
+    set init "$workspace/$app/_ide/psinit/ps7_init.tcl"
     foreach path [list $elf $bit $init] {
         if {![file isfile $path]} {error "Missing USB probe artifact: $path"}
     }
@@ -21,7 +23,7 @@ if {[catch {
     rst -processor
     dow -clear $elf
     con
-    puts "USB_PROBE_JTAG_RUNNING"
+    puts "USB_JTAG_RUNNING $app"
     disconnect
 } message options]} {
     puts stderr [dict get $options -errorinfo]
