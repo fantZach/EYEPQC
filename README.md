@@ -90,10 +90,11 @@ git config --local core.hooksPath .githooks
 git hook run pre-commit
 ```
 
-每次 `git commit` 会先检查暂存改动的空白错误，再验证向量可复现性并运行 M00/M01/图片 MVP/M02/M03/M04/M05 离线测试。
+每次 `git commit` 只检查暂存空白错误，并运行 M00（含向量一致性）、
+M10（会话）、M12（JPEG 回放）和 G5（视频认证）四项快速离线检查。
 任一步失败都会阻止提交；hook 不生成向量、不暂存文件、不自动创建提交。
-校验使用当前工作区内容，部分暂存时需确保工作区与拟提交内容一致；M01 需要 Icarus/vvp 和原生 GCC。
-M04/M05 需要已安装 Vivado 的 XSim/XPM，工具不在 PATH/默认位置时设置 `VIVADO_ROOT`；不需要板卡。
+校验使用当前工作区内容，部分暂存时需确保工作区与拟提交内容一致；需要原生 GCC，
+不需要 Vivado 或板卡。RTL/板级深度回归保留在各模块测试中，相关代码变更时单独运行。
 Linux/macOS 首次启用还需 `chmod +x .githooks/pre-commit`。
 
 ## M01 输入与预检

@@ -8,22 +8,11 @@ if [ -x .venv/Scripts/python.exe ]; then
 elif [ -x .venv/bin/python ]; then
     python=.venv/bin/python
 else
-    echo 'M00 pre-commit: create .venv and install requirements.txt first.' >&2
+    echo 'pre-commit: create .venv and install requirements.txt first.' >&2
     exit 1
 fi
 
-"$python" sim/scripts/generate_vectors.py --check
 "$python" sim/tb/test_m00.py
-"$python" sim/tb/test_m01.py
-"$python" sim/tb/test_aes_mvp.py
-"$python" sim/tb/test_m02.py
-"$python" sim/tb/test_m03.py
-"$python" sim/tb/test_m04.py
-"$python" sim/tb/test_m05.py
-"$python" sim/tb/test_m07.py
-"$python" sim/tb/test_m08.py
-"$python" sim/tb/test_g3.py
-"$python" sim/tb/test_m09.py
 "$python" sim/tb/test_m10.py
 "$python" sim/tb/test_m12.py
 exec "$python" sim/tb/test_g5.py
