@@ -23,4 +23,5 @@ fi
 "$python" sim/tb/test_m07.py
 "$python" sim/tb/test_m08.py
 "$python" sim/tb/test_g3.py
-exec "$python" sim/tb/test_m09.py
+"$python" sim/tb/test_m09.py
+exec "$python" sim/tb/test_m10.py
