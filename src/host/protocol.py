@@ -14,6 +14,11 @@ MAX_CONTROL = 1024
 VIDEO_HEADER = struct.Struct("!BBHIIHHIHHQQ")
 CONTROL_HEADER = struct.Struct("!4sBBHI")
 NONCE = struct.Struct("!IQ")
+USB_RECORD = struct.Struct("!BH")
+USB_CONTROL = 1
+USB_VIDEO = 2
+USB_LIMITS = {USB_CONTROL: CONTROL_HEADER.size + MAX_CONTROL,
+              USB_VIDEO: VIDEO_HEADER.size + MAX_PAYLOAD + TAG_SIZE}
 
 
 class MessageType(IntEnum):
@@ -170,7 +175,7 @@ def decode_control(message):
 
 
 class ControlDecoder:
-    """TCP fragmentation/coalescing, buffering at most one bounded message."""
+    """Control-message fragmentation/coalescing, buffering at most one message."""
 
     def __init__(self):
         self.buffer = bytearray()
@@ -200,4 +205,40 @@ class ControlDecoder:
     def finish(self):
         if self.buffer:
             self.buffer.clear()
-            raise ValueError("truncated TCP control message")
+            raise ValueError("truncated control message")
+
+
+def encode_usb_record(channel, record):
+    if channel not in USB_LIMITS or not 1 <= len(record) <= USB_LIMITS[channel]:
+        raise ValueError("invalid USB record channel or length")
+    return USB_RECORD.pack(channel, len(record)) + record
+
+
+class UsbRecordDecoder:
+    """Bounded byte-stream decoder; caller closes the port on a framing error."""
+
+    def __init__(self):
+        self.buffer = bytearray()
+
+    def feed(self, data):
+        self.buffer.extend(data)
+        records = []
+        try:
+            while len(self.buffer) >= USB_RECORD.size:
+                channel, size = USB_RECORD.unpack_from(self.buffer)
+                if channel not in USB_LIMITS or not 1 <= size <= USB_LIMITS[channel]:
+                    raise ValueError("invalid USB record header")
+                total = USB_RECORD.size + size
+                if len(self.buffer) < total:
+                    break
+                records.append((channel, bytes(self.buffer[USB_RECORD.size:total])))
+                del self.buffer[:total]
+        except ValueError:
+            self.buffer.clear()
+            raise
+        return records
+
+    def finish(self):
+        if self.buffer:
+            self.buffer.clear()
+            raise ValueError("truncated USB record")

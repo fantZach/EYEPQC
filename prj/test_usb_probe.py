@@ -23,6 +23,8 @@ def main():
     ser.open()
     try:
         ser.dtr = True
+        ser.write(b"T")
+        ser.flush()
         parts = []
         t0 = time.monotonic()
         while time.monotonic() - t0 < args.seconds:

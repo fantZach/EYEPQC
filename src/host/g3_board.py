@@ -16,26 +16,35 @@ MAGIC = 0x33474345
 CHUNK = 1400
 
 
-def verify(frame, sealed, key, prefix, nonce_start=0):
-    if not 4 <= len(frame) <= 65536 or frame[:2] != b"\xff\xd8" or frame[-2:] != b"\xff\xd9":
-        raise ValueError("Invalid captured JPEG")
-    chunks = (len(frame) + CHUNK - 1) // CHUNK
-    if len(sealed) != len(frame) + 16 * chunks:
+def decrypt_g3(frame_length, sealed, key, prefix, nonce_start=0):
+    if not 4 <= frame_length <= 65536:
+        raise ValueError("Invalid captured JPEG length")
+    chunks = (frame_length + CHUNK - 1) // CHUNK
+    if len(key) != 16 or len(prefix) != 8 or not 0 <= nonce_start <= (1 << 32) - chunks:
+        raise ValueError("Invalid G3 key or nonce")
+    if len(sealed) != frame_length + 16 * chunks:
         raise ValueError("Encrypted packet length mismatch")
     aes = AESGCM(key)
     rebuilt = bytearray()
     cursor = 0
     for index in range(chunks):
         offset = index * CHUNK
-        size = min(CHUNK, len(frame) - offset)
-        aad = struct.pack(">4I", len(frame), offset, index, chunks)
+        size = min(CHUNK, frame_length - offset)
+        aad = struct.pack(">4I", frame_length, offset, index, chunks)
         nonce = prefix + (nonce_start + index).to_bytes(4, "big")
         part = sealed[cursor:cursor + size + 16]
         rebuilt.extend(aes.decrypt(nonce, part, aad))
         cursor += size + 16
-    if rebuilt != frame:
+    frame = bytes(rebuilt)
+    if frame[:2] != b"\xff\xd8" or frame[-2:] != b"\xff\xd9":
+        raise ValueError("Decrypted data is not JPEG")
+    return frame
+
+
+def verify(frame, sealed, key, prefix, nonce_start=0):
+    if decrypt_g3(len(frame), sealed, key, prefix, nonce_start) != frame:
         raise ValueError("Decrypted JPEG differs from captured DDR bytes")
-    return chunks
+    return (len(frame) + CHUNK - 1) // CHUNK
 
 
 def main():

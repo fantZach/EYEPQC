@@ -12,9 +12,16 @@
 static XUsbPs usb;
 static u8 dma_mem[65536] __attribute__((aligned(64)));
 static u8 chunk[CHUNK] __attribute__((aligned(64)));
+static u8 jpeg[65536] __attribute__((aligned(64)));
 static u8 line_coding[8] __attribute__((aligned(64))) = {0x00, 0xc2, 0x01, 0x00, 0, 0, 8};
-static volatile int configured, dtr, tx_ready = 1, line_pending;
+static volatile int configured, dtr, tx_ready = 1, line_pending, mode;
 static u32 block_no;
+static volatile u32 jpeg_length, jpeg_used, jpeg_length_bytes, jpeg_receiving, jpeg_ready, jpeg_bad;
+static u32 jpeg_offset, jpeg_packet;
+
+static void be16(u8 *p, u32 n) { p[0] = n >> 8; p[1] = n; }
+static void be32(u8 *p, u32 n) { p[0] = n >> 24; p[1] = n >> 16; p[2] = n >> 8; p[3] = n; }
+static void be64(u8 *p, u32 n) { memset(p, 0, 4); be32(p + 4, n); }
 
 /* Device class CDC, ACM control interface 0 + data interface 1. Test VID/PID only. */
 static const u8 dev_desc[] = {
@@ -62,12 +69,15 @@ u32 XUsbPs_Ch9SetupStrDescReply(u8 *buf, u32 cap, u8 index) {
 void XUsbPs_SetConfiguration(XUsbPs *u, int index) {
     configured = index == 1;
     dtr = 0;
+    mode = 0;
+    jpeg_receiving = jpeg_ready = jpeg_bad = 0;
     tx_ready = 1;
     if (!configured) return;
     XUsbPs_EpEnable(u, 1, XUSBPS_EP_DIRECTION_OUT);
     XUsbPs_EpEnable(u, 1, XUSBPS_EP_DIRECTION_IN);
     XUsbPs_SetBits(u, XUSBPS_EPCR1_OFFSET, XUSBPS_EPCR_TXT_BULK_MASK |
                    XUSBPS_EPCR_RXT_BULK_MASK | XUSBPS_EPCR_TXR_MASK | XUSBPS_EPCR_RXR_MASK);
+    XUsbPs_EpPrime(u, 1, XUSBPS_EP_DIRECTION_OUT);
     XUsbPs_EpEnable(u, 2, XUSBPS_EP_DIRECTION_IN);
     XUsbPs_SetBits(u, XUSBPS_EPCR2_OFFSET, XUSBPS_EPCR_TXT_INTR_MASK | XUSBPS_EPCR_TXR_MASK);
 }
@@ -85,6 +95,8 @@ void XUsbPs_ClassReq(XUsbPs *u, XUsbPs_SetupData *s) {
         return;
     case 0x22: /* SET_CONTROL_LINE_STATE */
         dtr = s->wValue & 1;
+        mode = 0;
+        jpeg_receiving = jpeg_ready = jpeg_bad = 0;
         if (dtr) block_no = 0;
         XUsbPs_EpBufferSend(u, 0, NULL, 0);
         return;
@@ -122,6 +134,50 @@ static void ep1_in(void *ref, u8 ep, u8 event, void *data) {
     (void)ref; (void)ep; (void)data;
     if (event == XUSBPS_EP_EVENT_DATA_TX) tx_ready = 1;
 }
+static void ep1_out(void *ref, u8 ep, u8 event, void *data) {
+    (void)data;
+    XUsbPs *u = ref;
+    if (event == XUSBPS_EP_EVENT_DATA_RX) {
+        u8 *buf; u32 len, handle;
+        if (XUsbPs_EpBufferReceive(u, ep, &buf, &len, &handle) == XST_SUCCESS) {
+            if (len) Xil_DCacheInvalidateRange((UINTPTR)buf, (len + 31) & ~31U);
+            for (u32 i=0; i<len; ++i) {
+                u8 c = buf[i];
+                if (jpeg_bad) continue;
+                if (jpeg_receiving) {
+                    if (jpeg_length_bytes < 4) {
+                        jpeg_length |= (u32)c << (8 * jpeg_length_bytes++);
+                        if (jpeg_length_bytes == 4 && (jpeg_length < 4 || jpeg_length > sizeof(jpeg))) {
+                            jpeg_receiving = 0;
+                            jpeg_bad = 1;
+                            mode = 0;
+                        }
+                    } else {
+                        jpeg[jpeg_used++] = c;
+                        if (jpeg_used == jpeg_length) {
+                            jpeg_receiving = 0;
+                            if (jpeg[0] == 0xff && jpeg[1] == 0xd8 &&
+                                jpeg[jpeg_length-2] == 0xff && jpeg[jpeg_length-1] == 0xd9) {
+                                jpeg_offset = jpeg_packet = 0;
+                                jpeg_ready = 1;
+                                mode = 'J';
+                            } else jpeg_bad = 1;
+                        }
+                    }
+                } else if (c == 'J' && !jpeg_ready) {
+                    mode = 0;
+                    jpeg_length = jpeg_used = jpeg_length_bytes = 0;
+                    jpeg_receiving = 1;
+                } else if (!jpeg_ready && len == 1 && (c == 'T' || c == 'R')) {
+                    block_no = 0;
+                    mode = c;
+                }
+            }
+            XUsbPs_EpBufferRelease(handle);
+        }
+        XUsbPs_EpPrime(u, 1, XUSBPS_EP_DIRECTION_OUT);
+    }
+}
 static void usb_event(void *ref, u32 mask) { (void)ref; (void)mask; }
 
 int main(void) {
@@ -148,22 +204,60 @@ int main(void) {
     if (XUsbPs_ConfigureDevice(&usb, &dc) != XST_SUCCESS) goto fail;
     if (XUsbPs_IntrSetHandler(&usb, usb_event, NULL, XUSBPS_IXR_UE_MASK) != XST_SUCCESS ||
         XUsbPs_EpSetHandler(&usb, 0, XUSBPS_EP_DIRECTION_OUT, ep0, &usb) != XST_SUCCESS ||
-        XUsbPs_EpSetHandler(&usb, 1, XUSBPS_EP_DIRECTION_IN, ep1_in, &usb) != XST_SUCCESS) goto fail;
+        XUsbPs_EpSetHandler(&usb, 1, XUSBPS_EP_DIRECTION_IN, ep1_in, &usb) != XST_SUCCESS ||
+        XUsbPs_EpSetHandler(&usb, 1, XUSBPS_EP_DIRECTION_OUT, ep1_out, &usb) != XST_SUCCESS) goto fail;
     XUsbPs_IntrEnable(&usb, XUSBPS_IXR_UR_MASK | XUSBPS_IXR_UI_MASK);
     XUsbPs_Start(&usb);
     xil_printf("USB_PROBE_READY\r\n");
     for (;;) {
-        if (!configured || !dtr || !tx_ready) continue;
+        if (!configured || !dtr || !mode || !tx_ready) continue;
         tx_ready = 0;
-        memcpy(chunk, "EYEP", 4);
-        chunk[4] = block_no; chunk[5] = block_no >> 8;
-        chunk[6] = block_no >> 16; chunk[7] = block_no >> 24;
-        for (u32 i=8; i<CHUNK; ++i) chunk[i] = (u8)(i + block_no);
-        if (XUsbPs_EpBufferSend(&usb, 1, chunk, CHUNK) != XST_SUCCESS) {
+        u32 size = CHUNK;
+        if (mode == 'T') {
+            memcpy(chunk, "EYEP", 4);
+            chunk[4] = block_no; chunk[5] = block_no >> 8;
+            chunk[6] = block_no >> 16; chunk[7] = block_no >> 24;
+            for (u32 i=8; i<CHUNK; ++i) chunk[i] = (u8)(i + block_no);
+        } else if (mode == 'R') {
+            /* One plaintext v1 video record with a deterministic 1400-byte payload. */
+            size = 3 + 40 + 1400;
+            memset(chunk, 0, size);
+            chunk[0] = 2; chunk[1] = 5; chunk[2] = 0xa0; /* record length 1440 */
+            chunk[3] = 1; chunk[5] = 0; chunk[6] = 40; /* version, flags, header_length */
+            chunk[11] = block_no >> 24; chunk[12] = block_no >> 16;
+            chunk[13] = block_no >> 8; chunk[14] = block_no; /* frame_id */
+            chunk[18] = 1; /* packet_count */
+            chunk[21] = 5; chunk[22] = 0x78; /* jpeg_length=1400 */
+            chunk[23] = 5; chunk[24] = 0x78; /* payload_length=1400 */
+            chunk[39] = block_no >> 24; chunk[40] = block_no >> 16;
+            chunk[41] = block_no >> 8; chunk[42] = block_no; /* packet_sequence */
+            for (u32 i=0; i<1400; ++i) chunk[43+i] = (u8)(i + block_no);
+        } else {
+            u32 remaining = jpeg_length - jpeg_offset;
+            u32 payload = remaining < 1400 ? remaining : 1400;
+            u32 count = (jpeg_length + 1399) / 1400;
+            size = 3 + 40 + payload;
+            memset(chunk, 0, 43);
+            chunk[0] = 2; be16(chunk + 1, 40 + payload);
+            chunk[3] = 1; be16(chunk + 5, 40);
+            be16(chunk + 15, jpeg_packet); be16(chunk + 17, count);
+            be32(chunk + 19, jpeg_length); be16(chunk + 23, payload);
+            be64(chunk + 35, jpeg_packet);
+            memcpy(chunk + 43, jpeg + jpeg_offset, payload);
+        }
+        if (XUsbPs_EpBufferSend(&usb, 1, chunk, size) != XST_SUCCESS) {
             tx_ready = 1;
             continue;
         }
         ++block_no;
+        if (mode == 'J') {
+            jpeg_offset += size - 43;
+            ++jpeg_packet;
+            if (jpeg_offset == jpeg_length) {
+                jpeg_ready = 0;
+                mode = 0;
+            }
+        }
     }
 fail:
     xil_printf("USB_PROBE_FAIL\r\n");
