@@ -13,7 +13,9 @@ M07 串行 GF(2¹²⁸) 与 GHASH 的逐块验证见 [M07](doc/m07.md)；已被 
 M08 全 PL AES-GCM AXIS 独立仿真与 OOC 综合见 [M08](doc/m08.md)；
 固定 DDR→DMA→M08→DMA→DDR 的 21 组板测已通过，见 [G2](doc/g2.md)。
 实拍 JPEG 逐包加密及 640×480 连续 1000 帧 47.168 fps 的板测见 [G3](doc/g3.md)；
-这是板端采集/加密吞吐，不是尚未接入的网络端到端帧率。
+这是板端采集/加密吞吐，不是尚未接入的 USB 端到端帧率。
+USB Slave 已完成独立 30 秒、16.37 MB/s、逐字节正确性验证；第一版传输方案已从
+PS 以太网改为 PS USB0 CDC，复现及边界见 [USB 可行性测试](doc/usb_probe.md)。
 M02 SCCB/OV5640 初始化、失败保护和仿真已编写，复现及硬件状态见 [M02](doc/m02.md)。
 M03 DVP/JPEG 字节采集与帧边界检查已编写，连续 1000 帧和故障恢复仿真通过，见 [M03](doc/m03.md)。
 M04 原生异步 FIFO、整帧提交和 32/64-bit AXIS 已编写，默认帧长上限 64 KiB，见 [M04](doc/m04.md)。
@@ -51,7 +53,7 @@ python -m venv .venv
 & ./sim/scripts/run_m00.ps1
 ```
 
-测试离线运行，编译可移植 C 协议代码，并验证标准向量、尾块、篡改、TCP 拆包和 C/Python 互操作。
+测试离线运行，编译可移植 C 协议代码，并验证标准向量、尾块、篡改、控制消息拆包和 C/Python 互操作。
 已有向量保存在 `data/kat/` 与 `sim/vectors/`；重新生成确定性向量：
 
 ```powershell
@@ -112,8 +114,8 @@ M01 离线自检与完整构建：
 
 Zynq-7000 器件支持已安装；按用户确认的两颗海力士 DDR，独立 BD、bitstream、
 XSA 和对应 ELF（含 SD0 / 同平台 FSBL）已构建通过。CF7020B / COM4 已临时 JTAG 验证
-UART、DDR scratch 和定时器；实物 YT8521 已识别并加入最小适配。当前 PS 网口 link=0，
-ping/echo、LED 实测及冷启动 30 分钟验收仍待完成，M01/G0 尚未通过。
+UART、DDR scratch 和定时器；实物 YT8521 已识别并加入最小适配。PS GEM/echo 是历史
+实验，第一版现改用 USB0；LED 实测、冷启动 30 分钟及 USB 视频整机验收仍待完成，M01/G0 尚未通过。
 
 源码分别位于 `src/rtl/`、`src/ps/`、`src/host/`，仿真位于 `sim/`。
 生成工程统一放 `build/vivado/` 和 `build/vitis/`，捕获/固件输出分别放
