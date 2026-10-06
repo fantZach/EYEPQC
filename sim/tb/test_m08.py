@@ -9,6 +9,7 @@ import unittest
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from iverilog_runner import compile_iverilog
 
 ROOT = Path(__file__).resolve().parents[2]
 RTL = ROOT / "src/rtl/crypto"
@@ -74,9 +75,10 @@ class M08(unittest.TestCase):
                 "gf128_mul.sv", "ghash.sv", "aes_gcm_encrypt.sv",
                 "aes_gcm_regs.sv", "aes_gcm_axis.sv")]
             sources += [ROOT / "sim/tb/tb_aes_gcm_axis.sv"]
-            subprocess.run([tool("iverilog"), "-g2012", "-s", "tb_aes_gcm_axis",
-                            "-o", str(work / "m08.vvp"), *map(str, sources)], check=True, cwd=ROOT)
-            result = subprocess.run([tool("vvp"), str(work / "m08.vvp"),
+            executable = work / "m08.vvp"
+            compile_iverilog([tool("iverilog"), "-g2012", "-s", "tb_aes_gcm_axis",
+                              "-o", str(executable), *map(str, sources)], executable)
+            result = subprocess.run([tool("vvp"), str(executable),
                                      f"+VECTORS={input_file}"], cwd=ROOT,
                                     capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

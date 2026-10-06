@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from test_m02 import tool
+from iverilog_runner import compile_iverilog
 
 ROOT = Path(__file__).resolve().parents[2]
 # Own 16x16 RGB gradient, encoded once with the installed Pillow. No runtime image dependency.
@@ -69,10 +70,10 @@ def simulate(jpeg, *, frames=1000, faults=True, limit=4096):
         work = Path(directory)
         data, executable = work / 'jpeg.mem', work / 'test.vvp'
         data.write_text(''.join(f'{byte:02x}\n' for byte in jpeg))
-        subprocess.run([tool('iverilog'), '-g2012', '-Wall', '-s', 'tb_dvp_capture',
+        compile_iverilog([tool('iverilog'), '-g2012', '-Wall', '-s', 'tb_dvp_capture',
             f'-Ptb_dvp_capture.MAX_FRAME_BYTES={limit}', '-o', str(executable),
             str(ROOT / 'src/rtl/camera/jpeg_marker_check.sv'),
-            str(ROOT / 'src/rtl/camera/dvp_capture.sv'), str(ROOT / 'sim/tb/tb_dvp_capture.sv')], check=True)
+            str(ROOT / 'src/rtl/camera/dvp_capture.sv'), str(ROOT / 'sim/tb/tb_dvp_capture.sv')], executable)
         result = subprocess.run([tool('vvp'), str(executable), f'+JPEG={data}', f'+JPEG_LENGTH={length}',
             f'+INPUT_LENGTH={len(jpeg)}',
             f'+FRAMES={frames}', f'+FAULTS={int(faults)}'], text=True, capture_output=True, timeout=60)

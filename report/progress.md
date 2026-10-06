@@ -1,7 +1,32 @@
 # Implementation progress
 
-更新：2026-09-29。实施依据 `doc/steps.md`，采用 Ponytail：复用密码库与标准库，
+更新：2026-10-06。实施依据 `doc/steps.md`，采用 Ponytail：复用密码库与标准库，
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
+当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。
+
+## 2026-10-06：ZYNQ-7020 本地构建复核
+
+**同日软件阶段后续更新：** M04/M05 原生 XSim 本轮已全部通过；新脚本从同一 XSA 生成
+经典 BSP，并完成 G3/G4/G5/G6 四套 ARM 固件、匹配 FSBL 和四份 `BOOT.BIN`。
+修正经典/SDT BSP 的 DMA/UART 配置查找与 USB 中断适配；G6 内存 USB 集成测试覆盖
+20 次软件换钥、清零、坏 Finished、篡改和重放拒绝。当前交付目录改为
+`build/vitis/software_ready`，旧 `g3_delivery` 保留为历史产物。
+详情与当前停止位置见 [软件阶段交付](software_ready.md) 和 [首次实机指南](../doc/bringup.md)。
+下文当日早期“XSim 失败/尚无 BOOT.BIN”是已保留的过程记录；当前以此补记和软件交付记录为准。
+没有实机下载，`board_validated=false`；G0/G7 和设备级密钥/熵源/Keccak 加速未完成。
+
+用户照片可读到正点原子领航者 ATK-DIY7010/7020P 底板、CF7010B/7020B 核心板和 ZYNQ 7020 标签；
+摄像头为 ATK-MC5640 V1.2。该实物与本次 XSA 的 `xc7z020clg400-2` 目标一致，首次下载仍须通过 JTAG 核对器件 IDCODE。
+已有 GUI 构建截图显示 bitstream 写入完成；本地 XSA、IP、时序和 DRC 报告均已核对。
+当前布线报告 WNS=+0.013 ns、WHS=+0.018 ns，用户约束满足；DRC 仍有 warning/advisory，包含 OV5640 PCLK
+由 W14 经非专用时钟路由到 BUFG、且通过 `CLOCK_DEDICATED_ROUTE FALSE` 放行的 `PLCK-12`，需在板级时钟评估中保留。
+从该 XSA 生成 A9 Standalone BSP，编译 BSP 驱动并归档 `libxil.a`；G3 应用以 Vitis ARM GCC 的
+`-O3 -Werror` 编译、链接成功。编译时发现并修正 G3 UART 配置查询误传基地址的问题。
+ELF 为 ARM ELF32，三个 DDR 共享缓冲符号的大小、64 字节对齐和地址范围已核查；bitstream、
+PS 初始化脚本、ELF、源码哈希及 XSA 哈希组成的本地清单位于 Git 忽略的 `build/vitis/g3_delivery`，
+详见 [电脑端构建记录](pc_build.md)。本轮 M00/M08/M09/M10/M12/G3 主机/G5 检查通过；M04/M05
+XSim 构建受 Vivado 随附 GCC 6.2 无法启动影响，若干其他 Icarus 13 用例异常退出。本轮没有执行板卡下载或实拍复测，
+新清单明确 `board_validated=false`；G0/G7 及未完成的整机门禁仍未通过。
 
 ## 当前状态
 
@@ -86,7 +111,7 @@ ML-KEM 直接取 NIST ACVP 提交 `65370b861b96efd30dfe0daae607bde26a78a5c8`，
 
 ## M01 实现与待完成门禁
 
-用户提供的资料实际位于 `D:/BaiduNetdiskDownload/4_Source_Code`（不是 `4/_Source/_Code`）。
+用户提供的资料实际位于资料包内的 `4_Source_Code` 子目录。
 已读取压缩包索引与源码说明，发现 `1_FPGA_Design/ZYNQ_7020_FPGA.rar`（1,519,052,295 字节）
 和 `2_Embedded_Vitis/ZYNQ_Vitis_7020.rar`（2,249,047,175 字节）。
 包含 `42_ov5640_udp_pc`、`1_hello_world`、`8_uart_intr_loop`、`9_timer_intr_led`、
@@ -138,7 +163,7 @@ SD0 及 setup/hold 失败检查已加入并验证；新 FSBL 实际链接 `InitS
 产物哈希见 M01 文档，清单 `board_validated=false`，未创建/写入 BOOT.BIN。
 应用继续使用 BSP/lwIP，按 Ponytail 不引入新驱动框架或依赖。
 
-新增资料目录 `D:/BaiduNetdiskDownload/正点原子领航者` 已核对，核心板 V2.5
+新增硬件资料包已核对，核心板 V2.5
 原理图标明 DDR 1.35 V；图中 PS PHY 为 YT8521SC-CA，而旧官方/新 AMD lwIP
 均无对应型号分支，不能盲用 Marvell 初始化。原理图、走线 CSV 与哈希见
 [官方例程研究第 7 节](vendor_examples.md)。用户确认 CF7020B / COM4；规格书可对应
@@ -146,7 +171,7 @@ SD0 及 setup/hold 失败检查已加入并验证；新 FSBL 实际链接 `InitS
 已加入双 ID 分派、铜口/电平校验、RGMII 延迟和有界 reset/协商，不改官方源码或全局 BSP。
 临时 JTAG 下载成功，UART 启动、64 KiB DDR scratch 非缓存/缓存及 60 秒复测通过，
 50 ms tick 正常；已采集至应用 sec=70，DDR/异常/断言/滞后均为零。网络 PHY link=0，
-未通过 ping/echo，LED 频率仍需实物确认。当前 PC 有线网卡在 10.179.236.247，
+未通过 ping/echo，LED 频率仍需实物确认。当前 PC 网卡与开发板静态网段不一致，
 与板卡静态 192.168.1.10 不同网段，未擅自修改网络设置。
 
 原定下一步：确认 PS 网口接线/地址 → 实际 ping/echo、LED 验证 →
@@ -378,3 +403,15 @@ G0 冷启动/LED 和生产级密钥注入/熵源未验收。
 后续 G7 长测于 2026-09-29 按用户要求提前停止；日志最后确认约 50 分钟、
 141777 帧、47.259 fps，无两小时完成结果。用户例外验收长期运行子项；
 未实测满 2 小时，故障子项及 G7 整体仍未通过。
+
+## 2026-10-06 当前工作副本复跑补记
+
+M04/M05 上述原生 XSim/XPM 通过项是先前环境的历史证据。本机 Vivado 2026.1 复跑时，
+`xelab` 生成阶段完成，但调用随 Vivado 安装的 MinGW GCC 6.2.0 编译 C 快照失败；
+工具本身因 Windows DLL 重定位错误无法启动。当前 Icarus 13.0 复跑的 M01 五项、
+M02 四项、M03 两项、M07 一项和 M08 102 向量端到端 AES-GCM 均通过；
+M05 帧所有权、AXIS 路由和 DMA 缓冲区三项中两项通过，
+其原生集成 XSim 仍未通过。部分 Icarus 编译在退出时返回 Windows 状态 3221225477，
+但已生成非空 VVP 文件；新共享助手只对该精确退出码和非空文件继续，并要求 `vvp`
+实际运行、匹配原有功能通过标记。该兜底没有放宽 HDL 判据。M04/M05 原生 XSim 本轮仍未通过。
+完整命令与调查记录见 [电脑构建记录](pc_build.md)。

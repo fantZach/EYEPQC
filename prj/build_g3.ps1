@@ -1,5 +1,5 @@
 param(
-    [string]$ToolRoot = 'D:/AmdDesignTools/2026.1',
+    [string]$ToolRoot = $(if ($env:EYEPQC_TOOL_ROOT) { $env:EYEPQC_TOOL_ROOT } else { 'D:/AmdDesignTools/2026.1' }),
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$BuildName = 'g3'
 )
 $ErrorActionPreference = 'Stop'

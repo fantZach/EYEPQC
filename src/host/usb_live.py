@@ -107,7 +107,7 @@ def receive(seconds, output, show=False, encrypted_test=False, tamper_check=Fals
                         label.configure(image=photo)
                         label.image = photo
                         window.update()
-                now = time.monotonic()
+                now = time.perf_counter()
                 if start is None:
                     start = now
                     first = bytes(frame)

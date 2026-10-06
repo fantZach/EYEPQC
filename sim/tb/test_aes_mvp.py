@@ -13,6 +13,7 @@ import tempfile
 import unittest
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from iverilog_runner import compile_iverilog
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src/host"))
@@ -58,12 +59,13 @@ class AesMvp(unittest.TestCase):
             data = work / "blocks.txt"
             data.write_text("".join(f"{k.hex()} {b.hex()} {aes_block(k, b).hex()}\n" for k, b in vectors))
             rtl = sorted((ROOT / "src/rtl/crypto/secworks_aes").glob("*.v"))
-            subprocess.run([tool("iverilog", "C:/iverilog/bin/iverilog.exe"), "-g2012",
-                "-s", "tb_aes_axi_lite", "-o", str(work / "test.vvp"),
+            executable = work / "test.vvp"
+            compile_iverilog([tool("iverilog", "C:/iverilog/bin/iverilog.exe"), "-g2012",
+                "-s", "tb_aes_axi_lite", "-o", str(executable),
                 str(ROOT / "src/rtl/crypto/aes_axi_lite.sv"),
-                str(ROOT / "sim/tb/tb_aes_axi_lite.sv"), *map(str, rtl)], check=True)
+                str(ROOT / "sim/tb/tb_aes_axi_lite.sv"), *map(str, rtl)], executable)
             result = subprocess.run([tool("vvp", "C:/iverilog/bin/vvp.exe"),
-                str(work / "test.vvp"), f"+VECTORS={data}"], check=True,
+                str(executable), f"+VECTORS={data}"], check=True,
                 text=True, capture_output=True, timeout=30)
             match = re.search(r"AES_AXI_PASS vectors=13 core_cycles=(\d+) consecutive=2 key_update=1 hard_reset=1",
                               result.stdout)

@@ -58,7 +58,8 @@ def main():
     parser.add_argument("--quality", type=int, default=12)
     parser.add_argument("--vts", type=int, help="Camera frame lines; defaults to 1000 in fast mode")
     parser.add_argument("--fast", action="store_true", help="Low-resolution subsampling mode")
-    parser.add_argument("--tool-root", type=Path, default=Path("D:/AmdDesignTools/2026.1"))
+    parser.add_argument("--tool-root", type=Path,
+                        default=Path(os.environ.get("EYEPQC_TOOL_ROOT", "D:/AmdDesignTools/2026.1")))
     args = parser.parse_args()
     vts = args.vts if args.vts is not None else (1000 if args.fast else 1968)
     if (not 1 <= args.count <= 100 or not 1 <= args.frames_per_run <= 1000 or

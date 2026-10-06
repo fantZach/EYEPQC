@@ -14,6 +14,7 @@ toolroot = Path(os.environ.get("EYEPQC_TOOL_ROOT", "D:/AmdDesignTools/2026.1"))
 if not xsa.is_file() or workspace.exists():
     raise RuntimeError("Use a fresh workspace and a completed G3 XSA")
 tracked = [repo / "src/ps/src/g3_camera.c",
+           repo / "src/ps/include/bsp_compat.h",
            *sorted((repo / "src/rtl/camera").glob("*.sv")),
            repo / "src/rtl/camera/ov5640_jpeg.mem",
            repo / "src/rtl/common/axis_capture_route.sv",
@@ -26,7 +27,8 @@ tracked = [repo / "src/ps/src/g3_camera.c",
            *[repo / f"board/xdc/{name}.xdc" for name in
              ("m01", "m02", "m05", "m05_clocks")]]
 hashes = {p.relative_to(repo).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in tracked}
-client = vitis.create_client()
+server_port = os.environ.get("EYEPQC_VITIS_SERVER_PORT")
+client = vitis.create_client(port=int(server_port) if server_port else None)
 try:
     client.set_workspace(str(workspace))
     platform = client.create_platform_component(name="g3_platform", hw_design=str(xsa),
@@ -38,6 +40,7 @@ try:
     app = client.create_app_component(name="g3_camera", platform=client.find_platform_in_repos("g3_platform"),
         domain="standalone_a9_0", template="empty_application")
     app.import_files(from_loc=str(repo / "src/ps/src"), files=["g3_camera.c"], dest_dir_in_cmp="src")
+    app.import_files(from_loc=str(repo / "src/ps/include"), files=["bsp_compat.h"], dest_dir_in_cmp="src")
     app.set_app_config(key="USER_COMPILE_WARNINGS_AS_ERRORS", values="-Werror")
     app.set_app_config(key="USER_COMPILE_OPTIMIZATION_LEVEL", values="-O3")
     if app.build() != BuildResponse.SUCCESS: raise RuntimeError("G3 application failed")

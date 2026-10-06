@@ -17,18 +17,18 @@ import serial
 from serial.tools import list_ports
 
 from handshake import HostSession
+from build_manifest import verify as verify_build
 from m09 import Kem, OUT, PK, SK
 from protocol import (MessageType, USB_CONTROL, USB_VIDEO, UsbRecordDecoder,
                       decode_control, decode_video, encode_control, encode_usb_record,
                       make_nonce)
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOLS = Path("D:/AmdDesignTools/2026.1")
 
 
-def jtag(workspace, pk, sk):
+def jtag(workspace, pk, sk, tool_root):
     elf = workspace / "g6_usb/build/g6_usb.elf"
-    nm = TOOLS / "gnu/aarch32/nt/gcc-arm-none-eabi/bin/arm-none-eabi-nm.exe"
+    nm = tool_root / "gnu/aarch32/nt/gcc-arm-none-eabi/bin/arm-none-eabi-nm.exe"
     symbols = {}
     for line in subprocess.check_output([str(nm), "-S", str(elf)], text=True).splitlines():
         fields = line.split()
@@ -41,7 +41,7 @@ def jtag(workspace, pk, sk):
             raise ValueError("invalid ELF-owned G6 buffer: " + name)
     if len(pk) != PK or len(sk) != SK or sk[768:1568] != pk:
         raise ValueError("private/public key mismatch")
-    xsdb = TOOLS / "Vivado/bin/xsdb.bat"
+    xsdb = tool_root / "Vivado/bin/xsdb.bat"
     boot = subprocess.run([str(xsdb), str(ROOT / "prj/run_usb_probe_jtag.tcl"),
                            str(workspace), "g6_usb"], capture_output=True, text=True, timeout=120)
     if boot.returncode or "USB_JTAG_RUNNING g6_usb" not in boot.stdout:
@@ -125,7 +125,7 @@ def frames(ser, decoder, session, seconds, output, show=False):
     frame_id = sequence = 0
     total = count = 0
     first = last = started = ended = None
-    next_report = time.monotonic() + 300
+    next_report = time.perf_counter() + 300
     aes = AESGCM(bytes(session.video_key))
     try:
         deadline = time.monotonic() + seconds
@@ -166,7 +166,7 @@ def frames(ser, decoder, session, seconds, output, show=False):
                         label.configure(image=photo)
                         label.image = photo
                         window.update()
-                ended = time.monotonic()
+                ended = time.perf_counter()
                 if started is None:
                     started = ended
                     first = bytes(frame)
@@ -195,9 +195,14 @@ def frames(ser, decoder, session, seconds, output, show=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--workspace", type=Path, default=ROOT / "build/vitis/g6_usb_1")
+    parser.add_argument("--workspace", type=Path, default=ROOT / "build/vitis/software_ready")
+    parser.add_argument("--tool-root", type=Path,
+                        default=Path(os.environ.get("EYEPQC_TOOL_ROOT", "D:/AmdDesignTools/2026.1")),
+                        help="AMD tools install root (or set EYEPQC_TOOL_ROOT)")
     parser.add_argument("--no-jtag", action="store_true",
                         help="reuse an already provisioned, running board")
+    parser.add_argument("--verify-only", action="store_true",
+                        help="check build hashes without JTAG, USB or reading test private keys")
     parser.add_argument("--seconds", type=float, default=10)
     parser.add_argument("--sessions", type=int, default=2)
     parser.add_argument("--fault-check", action="store_true",
@@ -208,13 +213,19 @@ def main():
     args = parser.parse_args()
     if args.seconds <= 0 or not 1 <= args.sessions <= 3:
         parser.error("seconds must be positive and sessions 1..3")
+    manifest, checked = verify_build(args.workspace, 'g6_usb_manifest.json')
+    if manifest.get('application') != 'g6_usb':
+        raise ValueError('Expected a G6 firmware manifest')
+    if args.verify_only:
+        print(f'G6_PREFLIGHT_OK hashes={checked} board_accessed=false')
+        return
     pk = (OUT / "public.bin").read_bytes()
     sk = (OUT / "private.bin").read_bytes()
     pin = bytes.fromhex((OUT / "public.sha256").read_text().strip())
     if hashlib.sha256(pk).digest() != pin or sk[768:1568] != pk:
         raise ValueError("pinned G6 test key mismatch")
     if not args.no_jtag:
-        jtag(args.workspace.resolve(), pk, sk)
+        jtag(args.workspace.resolve(), pk, sk, args.tool_root.resolve())
     device = port()
     ser = serial.Serial(port=None, baudrate=115200, timeout=0.25)
     ser.dtr = False

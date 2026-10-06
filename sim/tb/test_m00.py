@@ -19,7 +19,7 @@ sys.path[:0] = [str(ROOT / "src" / "host"), str(ROOT / "sim" / "scripts")]
 import protocol as p
 from crypto_ref import encrypt, decrypt, ghash_trace, aes_block, mlkem_vector, ML_KEM_512
 from cryptography.exceptions import InvalidTag
-from generate_vectors import encoded_files
+from generate_vectors import canonicalize_line_endings, encoded_files
 
 
 def load(relative):
@@ -144,10 +144,11 @@ class M00(unittest.TestCase):
         self.assertEqual(first, second)
         manifest = load("sim/vectors/sha256.json")
         for name, data in first.items():
-            self.assertEqual((ROOT / "sim/vectors" / name).read_bytes(), data)
+            self.assertEqual(canonicalize_line_endings((ROOT / "sim/vectors" / name).read_bytes()), data)
             self.assertEqual(hashlib.sha256(data).hexdigest(), manifest[name])
         for name, expected in load("data/kat/sources.json")["files"].items():
-            self.assertEqual(hashlib.sha256((ROOT / "data/kat" / name).read_bytes()).hexdigest(), expected)
+            raw = canonicalize_line_endings((ROOT / "data/kat" / name).read_bytes())
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), expected)
 
     def test_python_c_video_interop(self):
         rng = random.Random(203)

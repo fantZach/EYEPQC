@@ -1,7 +1,6 @@
 # Board inputs for M01
 
-用户新增的完整资料位于 `D:/BaiduNetdiskDownload/正点原子领航者`；官方例程现位于其
-`4_Source_Code` 子目录（原目录 `D:/BaiduNetdiskDownload/4_Source_Code` 已迁移），包含
+官方硬件资料目录需由使用者自行提供；例程源码位于该目录的 `4_Source_Code` 子目录，包含
 `1_FPGA_Design/ZYNQ_7020_FPGA.rar`、`2_Embedded_Vitis/ZYNQ_Vitis_7020.rar`。
 已按需解压 FPGA LED/OV5640 和 Vitis UART/Timer/lwIP/JPEG 等 8 个工程，
 核对 XPR/BD：Vivado 2020.2，器件 `xc7z020clg400-2`。
@@ -9,7 +8,7 @@
 
 原始源码位于本地 `board/vendor/`（Git 忽略），清单保存在 `board/vendor/manifest.json`。
 导入脚本为 `prj/import_vendor.ps1`；仅在空目录使用，现有文件不会被覆盖。
-用户确认核心板型号 CF7020B；底板/核心板 PCB 修订和摄像头模组版本仍需确认。
+用户提供的实物照片可读到底板 `ATK-DIY7010/7020P`、核心板 `CF7010B/7020B`，并有 `ZYNQ 7020` 标签；摄像头模组标记为 `ATK-MC5640 V1.2`。照片未显示 Zynq 芯片顶面完整激光料号，首次下载前仍以 JTAG IDCODE 和核心板修订资料核对 `xc7z020clg400-2`。当前设备枚举未发现 JTAG 下载器，因此新 G3 镜像尚未在这块实物上验证。
 特别注意：hello/echo 等工程配置 DDR3L `MT41K256M16`，摄像头工程配置 DDR3 `MT41J256M16`；
 未核对核心板丝印/供电前不能混用这两套 DDR 参数。
 
@@ -37,7 +36,7 @@ YT8521 ID `0000:011A` / 地址 7。AMD lwIP 与旧官方 echo BSP 无该分支�
 - PS DDR、UART、PS GEM、MIO、时钟、复位和中断配置（BD/PS preset/Tcl）。
 - 官方工程的 Vivado 版本及迁移到本机版本后的 IP 升级报告。
 
-2026-09-26 本机找到 `D:/AmdDesignTools/2026.1`，Vivado `-version` 报告 v2026.1，
+2026-09-26 本机找到 Vivado 2026.1 安装，`-version` 报告 v2026.1，
 SW Build 6511674、IP Build 6504888、SharedData Build 6501428。
 这是本机版本；已解压的 XPR/BD 为 2020.2。实际创建工程时许可证有效，
 最初器件库缺少 Zynq-7000；2026-09-27 用户补装后，`get_parts xc7z020clg400-2`

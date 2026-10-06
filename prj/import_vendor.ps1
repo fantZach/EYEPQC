@@ -1,6 +1,9 @@
-param([string]$SourceRoot = 'D:/BaiduNetdiskDownload/正点原子领航者/4_Source_Code')
+param([string]$SourceRoot = '')
 
 $ErrorActionPreference = 'Stop'
+if (!$SourceRoot -or !(Test-Path -LiteralPath $SourceRoot -PathType Container)) {
+    throw "Pass -SourceRoot with the path to the official 4_Source_Code directory."
+}
 $workspace = Split-Path -Parent $PSScriptRoot
 $destination = Join-Path $workspace 'board/vendor'
 $archives = @(

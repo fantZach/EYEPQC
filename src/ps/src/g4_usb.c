@@ -1,6 +1,10 @@
 /* G4: OV5640 JPEG -> DDR -> plaintext v1 USB CDC video records. */
 #include "xil_printf.h"
+#ifdef SDT
 #include "xiltimer.h"
+#else
+#include "xtime_l.h"
+#endif
 #include <stdint.h>
 #include <string.h>
 

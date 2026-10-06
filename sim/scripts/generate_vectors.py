@@ -80,6 +80,10 @@ def encoded_files():
             for name, data in build_vectors().items()}
 
 
+def canonicalize_line_endings(data):
+    return data.replace(b"\r\n", b"\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "sim" / "vectors")
@@ -93,7 +97,7 @@ def main():
     for name, data in files.items():
         path = args.output / name
         if args.check:
-            if not path.is_file() or path.read_bytes() != data:
+            if not path.is_file() or canonicalize_line_endings(path.read_bytes()) != data:
                 raise SystemExit(f"not reproducible: {path}")
         else:
             path.write_bytes(data)

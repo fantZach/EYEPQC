@@ -100,7 +100,7 @@ Key/Nonce/AAD/密文/Tag 五类篡改均被主机拒绝，回读的板端 key/no
 首次 MVP 的历史实测命令与本地证据（图片、密钥和日志不提交 Git，当前优化版复测见下节）：
 
 ```powershell
-& ./.venv/Scripts/python.exe src/host/aes_image_mvp.py 'D:/TEST/media/微信图片_20260910160056_203_3.jpg' --workspace build/vitis/aes_mvp_3 --output data/captures/aes_mvp_userjpg_1
+& ./.venv/Scripts/python.exe src/host/aes_image_mvp.py 'D:/pictures/camera_sample.jpg' --workspace build/vitis/aes_mvp_3 --output data/captures/aes_mvp_userjpg_1
 ```
 
 已存在的输出不可覆盖；复测须省略 `--output` 或改用新目录。
@@ -169,7 +169,7 @@ MVP RESULT bytes=524288 status=0 elapsed_us=6820005
 当前优化版复测：在另一终端先运行 `capture_uart.ps1`，再执行：
 
 ```powershell
-& ./.venv/Scripts/python.exe src/host/aes_image_mvp.py 'D:/TEST/media/微信图片_20260910160056_203_3.jpg' --workspace build/vitis/aes_mvp_o3_word_1
+& ./.venv/Scripts/python.exe src/host/aes_image_mvp.py 'D:/pictures/camera_sample.jpg' --workspace build/vitis/aes_mvp_o3_word_1
 ```
 
 新机器可直接按前文完整构建；本次复用已验证 XSA，只重建了软件，原生 Vitis 命令为：

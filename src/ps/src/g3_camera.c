@@ -4,9 +4,14 @@
 #include "xil_cache.h"
 #include "xil_io.h"
 #include "xil_printf.h"
+#ifdef SDT
 #include "xiltimer.h"
+#else
+#include "xtime_l.h"
+#endif
 #include "xuartps.h"
 #include "sleep.h"
+#include "bsp_compat.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -86,12 +91,14 @@ static int wait_dma(XAxiDma *dma, unsigned direction, unsigned limit_us)
     }
     return dma_error(dma, direction) ? 1 : 0;
 }
+#ifndef G4_USB
 static void zeroize(void)
 {
     Xil_Out32(GCM_BASE, 2);
     volatile uint8_t *p = g3_job.key;
     for (unsigned i = 0; i < 24; ++i) p[i] = 0;
 }
+#endif
 static int configure_camera(unsigned cfg)
 {
     if (reset_dma()) return 10;
@@ -132,6 +139,7 @@ static int capture_frame(void)
     g3_job.frame_length = n;
     return 0;
 }
+#ifndef G4_USB
 static int encrypt_frame(unsigned *nonce_counter)
 {
     unsigned n = g3_job.frame_length;
@@ -230,11 +238,10 @@ static unsigned run(void)
     g3_job.sealed_address = (uint32_t)(UINTPTR)g3_sealed;
     return status;
 }
-#ifndef G4_USB
 int main(void)
 {
     XUartPs uart;
-    XUartPs_Config *cfg = XUartPs_LookupConfig(XPAR_XUARTPS_0_BASEADDR);
+    XUartPs_Config *cfg = eye_uart_config();
     Xil_DCacheDisable();
     if (!cfg || XUartPs_CfgInitialize(&uart, cfg, cfg->BaseAddress) ||
         XUartPs_SetBaudRate(&uart, 115200)) return 1;
@@ -242,8 +249,8 @@ int main(void)
     Xil_Out32(CAM_GPIO + 4, 0); Xil_Out32(CAM_GPIO + 12, 0xffffffffU);
     Xil_Out32(DMA_GPIO + 4, 0); Xil_Out32(DMA_GPIO + 12, 0xffffffffU);
     route(1, 1);
-    XAxiDma_Config *cc = XAxiDma_LookupConfig(CAP_BASE);
-    XAxiDma_Config *dc = XAxiDma_LookupConfig(CRYPTO_BASE);
+    XAxiDma_Config *cc = eye_dma_config(CAP_BASE);
+    XAxiDma_Config *dc = eye_dma_config(CRYPTO_BASE);
     if (stat(0, 1, 1) != 0x4d303531U || !cc || !dc ||
         XAxiDma_CfgInitialize(&capture, cc) != XST_SUCCESS ||
         XAxiDma_CfgInitialize(&crypto, dc) != XST_SUCCESS ||
@@ -275,7 +282,7 @@ int main(void)
 int g3_usb_init(unsigned camera_cfg)
 {
     XUartPs uart;
-    XUartPs_Config *cfg = XUartPs_LookupConfig(XPAR_XUARTPS_0_BASEADDR);
+    XUartPs_Config *cfg = eye_uart_config();
     Xil_DCacheDisable();
     if (!cfg || XUartPs_CfgInitialize(&uart, cfg, cfg->BaseAddress) ||
         XUartPs_SetBaudRate(&uart, 115200)) return 1;
@@ -283,8 +290,8 @@ int g3_usb_init(unsigned camera_cfg)
     Xil_Out32(CAM_GPIO + 4, 0); Xil_Out32(CAM_GPIO + 12, 0xffffffffU);
     Xil_Out32(DMA_GPIO + 4, 0); Xil_Out32(DMA_GPIO + 12, 0xffffffffU);
     route(1, 1);
-    XAxiDma_Config *cc = XAxiDma_LookupConfig(CAP_BASE);
-    XAxiDma_Config *dc = XAxiDma_LookupConfig(CRYPTO_BASE);
+    XAxiDma_Config *cc = eye_dma_config(CAP_BASE);
+    XAxiDma_Config *dc = eye_dma_config(CRYPTO_BASE);
     if (stat(0, 1, 1) != 0x4d303531U || !cc || !dc ||
         XAxiDma_CfgInitialize(&capture, cc) != XST_SUCCESS ||
         XAxiDma_CfgInitialize(&crypto, dc) != XST_SUCCESS ||

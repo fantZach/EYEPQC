@@ -13,9 +13,9 @@
 复现（在仓库根目录 PowerShell；两个 `usb_probe_repro_1` 目录须事先不存在）：
 
 ```powershell
-$env:EYEPQC_USB_PROBE_XSA='C:/Users/23976/Desktop/WorkingOn/EYEPQC/build/vivado/usb_probe_repro_1/m01.xsa'
-& 'D:/AmdDesignTools/2026.1/Vivado/bin/vivado.bat' -mode batch -source prj/build_m01.tcl -tclargs 'C:/Users/23976/Desktop/WorkingOn/EYEPQC/build/vivado/usb_probe_repro_1'
-$env:EYEPQC_USB_PROBE_VITIS='C:/Users/23976/Desktop/WorkingOn/EYEPQC/build/vitis/usb_probe_repro_1'
+$env:EYEPQC_USB_PROBE_XSA=(Resolve-Path 'build/vivado/usb_probe_repro_1/m01.xsa').Path
+& 'D:/AmdDesignTools/2026.1/Vivado/bin/vivado.bat' -mode batch -source prj/build_m01.tcl -tclargs build/vivado/usb_probe_repro_1
+$env:EYEPQC_USB_PROBE_VITIS=(Resolve-Path 'build/vitis/usb_probe_repro_1').Path
 & 'D:/AmdDesignTools/2026.1/Vitis/bin/vitis.bat' -s prj/build_usb_probe.py
 & 'D:/AmdDesignTools/2026.1/Vivado/bin/xsdb.bat' prj/run_usb_probe_jtag.tcl $env:EYEPQC_USB_PROBE_VITIS
 python prj/test_usb_probe.py --seconds 30

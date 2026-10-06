@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from iverilog_runner import compile_iverilog
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -49,10 +50,9 @@ class M02(unittest.TestCase):
     def simulate(self, name, marker):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "test.vvp"
-            subprocess.run([tool("iverilog"), "-g2012", "-Wall", "-s", name,
+            compile_iverilog([tool("iverilog"), "-g2012", "-Wall", "-s", name,
                 "-o", str(output), *map(str, sorted((ROOT / "src/rtl/camera").glob("*.sv"))),
-                str(ROOT / "sim/tb/ov5640_model.sv"), str(ROOT / f"sim/tb/{name}.sv")],
-                check=True, cwd=ROOT)
+                str(ROOT / "sim/tb/ov5640_model.sv"), str(ROOT / f"sim/tb/{name}.sv")], output)
             result = subprocess.run([tool("vvp"), str(output)], check=True,
                                     capture_output=True, text=True, timeout=60, cwd=ROOT)
             self.assertIn(marker, result.stdout)

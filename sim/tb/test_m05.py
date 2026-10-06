@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import unittest
 from test_m02 import tool
+from iverilog_runner import compile_iverilog
 import importlib.util
 import struct
 from test_m04 import vivado_tool, run
@@ -48,9 +49,10 @@ class M05(unittest.TestCase):
     def test_route_and_ownership(self):
         with tempfile.TemporaryDirectory() as directory:
             work=Path(directory)
-            subprocess.run([tool('iverilog'),'-g2012','-s','tb_axis_capture_route','-o',str(work/'route.vvp'),
-                str(ROOT/'src/rtl/common/axis_capture_route.sv'),str(ROOT/'sim/tb/tb_axis_capture_route.sv')],check=True)
-            out=subprocess.check_output([tool('vvp'),str(work/'route.vvp')],text=True,timeout=10)
+            executable=work/'route.vvp'
+            compile_iverilog([tool('iverilog'),'-g2012','-s','tb_axis_capture_route','-o',str(executable),
+                str(ROOT/'src/rtl/common/axis_capture_route.sv'),str(ROOT/'sim/tb/tb_axis_capture_route.sv')], executable)
+            out=subprocess.check_output([tool('vvp'),str(executable)],text=True,timeout=10)
             self.assertIn('AXIS_ROUTE_PASS',out)
             gcc=shutil.which('gcc') or 'C:/msys64/ucrt64/bin/gcc.exe'
             executable=work/'buffers.exe'

@@ -1,6 +1,10 @@
 /* Development G6: JTAG-provisioned secret/seed, real USB ML-KEM session. */
 #include "xil_printf.h"
+#ifdef SDT
 #include "xiltimer.h"
+#else
+#include "xtime_l.h"
+#endif
 #include "session.h"
 #include "protocol.h"
 #define MLK_CONFIG_PARAMETER_SET 512

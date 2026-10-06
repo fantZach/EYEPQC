@@ -2,6 +2,17 @@
 
 领航者 Zynq-7020 单向 JPEG 加密视频项目。实施顺序见 [doc/steps.md](doc/steps.md)，
 目标见 [doc/goals.md](doc/goals.md)，最新进度见 [report/progress.md](report/progress.md)。
+比赛提交前的证据索引与未完成验收项见 [提交检查表](report/competition_submission.md)；
+该清单明确区分历史板测与当前工作副本验证。
+项目设计与已有实验数据汇总见[技术报告草稿](report/technical_report.md)，
+电脑端构建和本轮验证边界见[构建记录](report/pc_build.md)，
+关键协作决策与纠错见[协作记录](report/collaboration_log.md)。
+
+2026-10-06 软件阶段新增统一入口：`./run_demo.ps1` 默认只运行电脑端回归；
+`-Mode Build` 构建四套固件/FSBL/启动镜像，`-Mode Preflight` 核对产物，
+`-Mode Prepare` 准备本地开发测试素材。最新结果见[软件交付记录](report/software_ready.md)，
+接线、重建与首次实机步骤见[bringup 指南](doc/bringup.md)。
+当前在首次实机 G3 验证前停止，新产物仍为 `board_validated=false`。
 
 目前完成 M00 协议与离线黄金参考，已编写 M01 板级工程、自检和 echo；
 构建/上板步骤见 [M01](doc/m01.md)。已解压并研究官方 7020 例程，
@@ -103,7 +114,7 @@ Linux/macOS 首次启用还需 `chmod +x .githooks/pre-commit`。
 在空的 `board/vendor/` 中按需导入用户提供的官方源码（保留原始文件，不覆盖已有文件）：
 
 ```powershell
-& ./prj/import_vendor.ps1 -SourceRoot 'D:/BaiduNetdiskDownload/正点原子领航者/4_Source_Code'
+& ./prj/import_vendor.ps1 -SourceRoot 'D:/vendor-materials/4_Source_Code'
 ```
 
 然后运行工具/资料预检：

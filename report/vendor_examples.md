@@ -5,8 +5,8 @@
 
 ## 1. 来源与复现
 
-首次读取的资料目录为 `D:/BaiduNetdiskDownload/4_Source_Code`，现已迁移至
-`D:/BaiduNetdiskDownload/正点原子领航者/4_Source_Code`。新增完整硬件资料见第 7 节。
+研究使用的官方资料目录由项目使用者提供，例程源码位于资料包的 `4_Source_Code` 子目录。
+新增硬件资料见第 7 节。
 已按需解压 8 个工程，保留原文件，不导入旧 BSP、可执行固件和实现结果。
 另有少量生成的 IP 源码/网表用于核对接口；它们不是新工程的构建输入。
 
@@ -18,7 +18,7 @@
 在空的 `board/vendor/` 中运行（现有文件不会被覆盖，重复导入会报错）：
 
 ```powershell
-& ./prj/import_vendor.ps1 -SourceRoot 'D:/BaiduNetdiskDownload/正点原子领航者/4_Source_Code'
+& ./prj/import_vendor.ps1 -SourceRoot 'D:/vendor-materials/4_Source_Code'
 ```
 
 本次核对 `board/vendor/manifest.json` 中 2267 个条目，全部存在。
@@ -41,8 +41,8 @@ XPR 中的 `navigator_v2` 原作者路径只是线索，不足以确认实物板
 
 ## 2. 已核对的板级配置
 
-PS 配置依据 [echo BD](C:/Users/23976/Desktop/WorkingOn/EYEPQC/board/vendor/ZYNQ_Vitis_7020/40_lwip_echo_server/lwip_echo_server.srcs/sources_1/bd/system/system.bd)
-与 [camera BD](C:/Users/23976/Desktop/WorkingOn/EYEPQC/board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/ov5640_ps_eth_udp_pc.srcs/sources_1/bd/system/system.bd)。
+PS 配置依据 [echo BD](../board/vendor/ZYNQ_Vitis_7020/40_lwip_echo_server/lwip_echo_server.srcs/sources_1/bd/system/system.bd)
+与 [camera BD](../board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/ov5640_ps_eth_udp_pc.srcs/sources_1/bd/system/system.bd)。
 echo BD 只显式保存部分参数，省略字段不能当成关闭或零；结合 hello BD 和导出的 Tcl 读取。
 
 | 项目 | 源码配置 |
@@ -66,7 +66,7 @@ M01 最初以 hello/echo 配置为待确认基线，不用 camera 的 DDR 类型
 用户提供海力士丝印与颗数后已改为 Custom 时序，见第 7 节。
 
 摄像头引脚在两个摄像头工程中完全一致，均配置 `LVCMOS33`。
-依据 [PS 摄像头 XDC](C:/Users/23976/Desktop/WorkingOn/EYEPQC/board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/ov5640_ps_eth_udp_pc.srcs/constrs_1/new/system_wrapper.xdc)。
+依据 [PS 摄像头 XDC](../board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/ov5640_ps_eth_udp_pc.srcs/constrs_1/new/system_wrapper.xdc)。
 
 | 信号 | 封装引脚 | 备注 |
 |---|---|---|
@@ -84,7 +84,7 @@ RGB 配置表还出现“PCLK=48MHz”的注释，不能拿注释代替实测。
 
 ## 3. JPEG 配置已确认，不能按函数名或单个寄存器判断
 
-[camera 初始化](C:/Users/23976/Desktop/WorkingOn/EYEPQC/board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/vitis/ov5640_ps_eth_udp_pc/src/ov5640/ov5640_init.c:78)
+[camera 初始化](../board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/vitis/ov5640_ps_eth_udp_pc/src/ov5640/ov5640_init.c:78)
 先读 `0x300A/0x300B`，要求 ID 为 `0x5640`，然后执行软件复位和初始化。
 SCCB 地址是 7-bit `0x3C`，线上写/读地址字节为 `0x78/0x79`。
 
@@ -126,7 +126,7 @@ IP 仓库与打包副本的这份 RTL SHA-256 相同：
 `fe1de7a86826e7061c9955a11933ec6b4efff935c88264fcd042efe835d3e417`。
 
 这里的 Video IP `TLAST` 是行结束，不是 JPEG 帧结束。
-[生成网表](C:/Users/23976/Desktop/WorkingOn/EYEPQC/board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/ov5640_ps_eth_udp_pc.ip_user_files/bd/system/ip/system_v_vid_in_axi4s_0_0/system_v_vid_in_axi4s_0_0_sim_netlist.v:1492)
+[生成网表](../board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/ov5640_ps_eth_udp_pc.ip_user_files/bd/system/ip/system_v_vid_in_axi4s_0_0/system_v_vid_in_axi4s_0_0_sim_netlist.v:1492)
 直接由 active_video 下降沿形成 `eol` 并进入 AXIS TLAST；FIFO 保留它。
 这也符合 [AMD PG043 接口定义](https://docs.amd.com/r/en-US/pg043_v_vid_in_axi4s/AXI4-Stream-Interface)。
 所以把该 TLAST 原样接 DMA 得到的是 HREF 行段，不能声称得到一整帧 JPEG。
@@ -153,10 +153,10 @@ AXIS FIFO 自身使用同一个 100 MHz 时钟，异步跨域是在前面的 Vid
 | lwIP 循环 | camera44 未调用平台定时器初始化/fast/slow timer，只有输入轮询 | M01 用当前 lwIP 平台模板，TCP 控制必须获得定时器服务 |
 | FIFO/帧边界 | 没有可靠的完整帧、溢出、整帧丢弃协议 | M03～M05 明确错误帧不送入后续加密/发送 |
 
-证据入口：[main.c](C:/Users/23976/Desktop/WorkingOn/EYEPQC/board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/vitis/ov5640_ps_eth_udp_pc/src/main.c:96)、
-[SCCB](C:/Users/23976/Desktop/WorkingOn/EYEPQC/board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/vitis/ov5640_ps_eth_udp_pc/src/emio_sccb_cfg/emio_sccb_cfg.c:146)、
-[DMA](C:/Users/23976/Desktop/WorkingOn/EYEPQC/board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/vitis/ov5640_ps_eth_udp_pc/src/axi_dma/axi_dma.c:79)、
-[UDP](C:/Users/23976/Desktop/WorkingOn/EYEPQC/board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/vitis/ov5640_ps_eth_udp_pc/src/udp_perf_server.c:19)。
+证据入口：[main.c](../board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/vitis/ov5640_ps_eth_udp_pc/src/main.c:96)、
+[SCCB](../board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/vitis/ov5640_ps_eth_udp_pc/src/emio_sccb_cfg/emio_sccb_cfg.c:146)、
+[DMA](../board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/vitis/ov5640_ps_eth_udp_pc/src/axi_dma/axi_dma.c:79)、
+[UDP](../board/vendor/ZYNQ_Vitis_7020/44_ov5640_ps_eth_udp_pc/vitis/ov5640_ps_eth_udp_pc/src/udp_perf_server.c:19)。
 1031/1024 的差异说明程序没有证明有效长度，不据此断言每次必然丢 7 字节；
 提前 TLAST、实际 HREF 段长以及缓存状态均会影响结果，需要仿真/抓取。
 
@@ -172,7 +172,7 @@ FPGA42 的 SCCB RTL 会读 ACK，并支持重复 START 和最后字节 NACK，�
 其 `img_data_pkt` 是 640×480 RGB 行分包（首包 1288、后续 1280 字节），FIFO full/empty 未使用，
 自定义帧头与 EYEPQC 协议不同；不复用其整条发送链路。
 
-echo 的 UART 文案说端口 6001，但 [实际代码绑定 7](C:/Users/23976/Desktop/WorkingOn/EYEPQC/board/vendor/ZYNQ_Vitis_7020/40_lwip_echo_server/vitis/lwip_echo_server/src/echo.c:100)。
+echo 的 UART 文案说端口 6001，但 [实际代码绑定 7](../board/vendor/ZYNQ_Vitis_7020/40_lwip_echo_server/vitis/lwip_echo_server/src/echo.c:100)。
 该接收回调只处理 `p->len` 而非整条 pbuf 链，sndbuf 不足也释放数据，不能直接当作可靠 TCP 控制接收器。
 SCU Timer 例程硬编码 667 MHz 假设；M01 应使用 BSP 实际频率。
 echo 的平台已占用私有定时器/GIC，后续不要再初始化第二套并覆盖已有中断注册。
@@ -199,8 +199,8 @@ echo 的平台已占用私有定时器/GIC，后续不要再初始化第二套�
 
 ## 7. 新增硬件资料与海力士配置核对
 
-2026-09-27 用户新增目录 `D:/BaiduNetdiskDownload/正点原子领航者`。
-硬件目录为 `3_开发板原理图和硬件相关文件`，以下原始文件只读，未混入源码：
+2026-09-27 新增的硬件资料包中，硬件目录为 `3_开发板原理图和硬件相关文件`，
+以下原始文件只读，未混入源码：
 
 | 文件（相对硬件目录） | SHA-256 |
 |---|---|

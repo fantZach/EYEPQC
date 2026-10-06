@@ -31,6 +31,7 @@ try:
     if app_name == "g6_usb":
         sources += ["session.c", "protocol.c", "m09_mlkem.c"]
     app.import_files(from_loc=str(repo / "src/ps/src"), files=sources, dest_dir_in_cmp="src")
+    app.import_files(from_loc=str(repo / "src/ps/include"), files=["bsp_compat.h"], dest_dir_in_cmp="src")
     app.import_files(from_loc=str(repo / "prj"), files=["usb_probe.c"], dest_dir_in_cmp="src")
     app.import_files(from_loc=str(vendor), files=["xusbps_ch9.c", "xusbps_ch9.h"],
                      dest_dir_in_cmp="src")

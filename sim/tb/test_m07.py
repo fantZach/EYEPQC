@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from iverilog_runner import compile_iverilog
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src/host"))
@@ -60,11 +61,12 @@ class M07(unittest.TestCase):
             work = Path(directory)
             vectors = work / "ghash_vectors.txt"
             vectors.write_text("\n".join(lines) + "\n")
-            subprocess.run([tool("iverilog"), "-g2012", "-s", "tb_ghash", "-o", str(work / "ghash.vvp"),
+            executable = work / "ghash.vvp"
+            compile_iverilog([tool("iverilog"), "-g2012", "-s", "tb_ghash", "-o", str(executable),
                             str(ROOT / "src/rtl/crypto/gf128_mul.sv"),
                             str(ROOT / "src/rtl/crypto/ghash.sv"),
-                            str(ROOT / "sim/tb/tb_ghash.sv")], check=True, cwd=ROOT)
-            result = subprocess.run([tool("vvp"), str(work / "ghash.vvp"), f"+VECTORS={vectors}"],
+                            str(ROOT / "sim/tb/tb_ghash.sv")], executable)
+            result = subprocess.run([tool("vvp"), str(executable), f"+VECTORS={vectors}"],
                                     capture_output=True, text=True, timeout=90, cwd=ROOT)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("GHASH_PASS gf=32 cases=100 per_block=1 reset=1", result.stdout)

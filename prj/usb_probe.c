@@ -4,16 +4,27 @@
 #include "xusbps_ch9.h"
 #include "xusbps_hw.h"
 #include "xinterrupt_wrap.h"
+#ifndef SDT
+#include "xscugic.h"
+#include "xil_exception.h"
+static XScuGic usb_gic;
+#endif
 #include "xil_cache.h"
 #include "xil_printf.h"
+#ifdef SDT
 #include "xiltimer.h"
+#else
+#include "xtime_l.h"
+#endif
 #include <string.h>
 
 #define CHUNK 16384
 static XUsbPs usb;
 static u8 dma_mem[65536] __attribute__((aligned(64)));
+#ifndef USB_LIBRARY
 static u8 chunk[CHUNK] __attribute__((aligned(64)));
 static u8 jpeg[65536] __attribute__((aligned(64)));
+#endif
 static u8 line_coding[8] __attribute__((aligned(64))) = {0x00, 0xc2, 0x01, 0x00, 0, 0, 8};
 static volatile int configured, dtr, tx_ready = 1, line_pending, mode;
 static volatile u32 test_epoch, test_epoch_bytes;
@@ -34,11 +45,13 @@ static void rx_push(u8 value) {
 #endif
 static u32 block_no;
 static volatile u32 jpeg_length, jpeg_used, jpeg_length_bytes, jpeg_receiving, jpeg_ready, jpeg_bad;
+#ifndef USB_LIBRARY
 static u32 jpeg_offset, jpeg_packet;
 
 static void be16(u8 *p, u32 n) { p[0] = n >> 8; p[1] = n; }
 static void be32(u8 *p, u32 n) { p[0] = n >> 24; p[1] = n >> 16; p[2] = n >> 8; p[3] = n; }
 static void be64(u8 *p, u32 n) { memset(p, 0, 4); be32(p + 4, n); }
+#endif
 
 /* Device class CDC, ACM control interface 0 + data interface 1. Test VID/PID only. */
 static const u8 dev_desc[] = {
@@ -218,11 +231,28 @@ static void ep1_out(void *ref, u8 ep, u8 event, void *data) {
 static void usb_event(void *ref, u32 mask) { (void)ref; (void)mask; }
 
 int usb_cdc_init(void) {
+#ifdef SDT
     XUsbPs_Config *uc = XUsbPs_LookupConfig(XPAR_XUSBPS_0_BASEADDR);
+#else
+    XUsbPs_Config *uc = XUsbPs_LookupConfig(XPAR_XUSBPS_0_DEVICE_ID);
+#endif
     XUsbPs_DeviceConfig dc = {0};
     if (!uc || XUsbPs_CfgInitialize(&usb, uc, uc->BaseAddress) != XST_SUCCESS) return 1;
+#ifdef SDT
     if (XSetupInterruptSystem(&usb, &XUsbPs_IntrHandler, uc->IntrId,
                               uc->IntrParent, XINTERRUPT_DEFAULT_PRIORITY) != XST_SUCCESS) return 2;
+#else
+    XScuGic_Config *gc = XScuGic_LookupConfig(XPAR_SCUGIC_0_DEVICE_ID);
+    if (!gc || XScuGic_CfgInitialize(&usb_gic, gc, gc->CpuBaseAddress) != XST_SUCCESS ||
+        XScuGic_Connect(&usb_gic, XPAR_XUSBPS_0_INTR,
+                       (Xil_InterruptHandler)XUsbPs_IntrHandler, &usb) != XST_SUCCESS) return 2;
+    XScuGic_SetPriorityTriggerType(&usb_gic, XPAR_XUSBPS_0_INTR, 0xa0U, 1U);
+    XScuGic_Enable(&usb_gic, XPAR_XUSBPS_0_INTR);
+    Xil_ExceptionInit();
+    Xil_ExceptionRegisterHandler(XIL_EXCEPTION_ID_INT,
+                                (Xil_ExceptionHandler)XScuGic_InterruptHandler, &usb_gic);
+    Xil_ExceptionEnable();
+#endif
 
     dc.NumEndpoints = 3;
     for (int i=0; i<3; ++i) {
