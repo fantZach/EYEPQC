@@ -64,10 +64,12 @@ def jtag(workspace, pk, sk, tool_root):
         Path(name).unlink(missing_ok=True)
 
 
-def port(timeout=10):
+def port(timeout=10, cancelled=None):
     deadline = time.monotonic() + timeout
     next_notice = 0.0
     while time.monotonic() < deadline:
+        if cancelled and cancelled():
+            raise InterruptedError('connection cancelled')
         found = [p for p in list_ports.comports() if p.vid == 0x03FD and p.pid == 0x7020]
         if len(found) == 1:
             return found[0].device
@@ -87,10 +89,12 @@ def send_control(ser, message):
     ser.flush()
 
 
-def read_control(ser, decoder):
+def read_control(ser, decoder, cancelled=None):
     pending = pending_records(decoder)
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
+        if cancelled and cancelled():
+            raise InterruptedError('handshake cancelled')
         if not pending:
             pending.extend(decoder.feed(ser.read(4096)))
         if pending:
@@ -144,11 +148,11 @@ def drain_rekey(ser, decoder, timeout=5.0, quiet=0.1):
     raise TimeoutError('G6 old video did not become quiet after REKEY')
 
 
-def handshake(ser, decoder, session, bad_finished=False):
+def handshake(ser, decoder, session, bad_finished=False, cancelled=None):
     host_random = secrets.token_bytes(32)
     hello = encode_control(MessageType.HELLO, b"\x01\x01\x00\x01" + host_random)
     send_control(ser, hello)
-    ack = read_control(ser, decoder)
+    ack = read_control(ser, decoder, cancelled)
     kind, body = decode_control(ack)
     if kind != MessageType.HELLO_ACK or body[:4] != b"\x01\x01\x00\x01":
         raise ValueError("invalid board HELLO_ACK")
@@ -157,7 +161,7 @@ def handshake(ser, decoder, session, bad_finished=False):
     if (hello, ack) != (expected_hello, expected_ack):
         raise ValueError("handshake transcript mismatch")
     send_control(ser, kem)
-    session.verify_board_finished(read_control(ser, decoder))
+    session.verify_board_finished(read_control(ser, decoder, cancelled))
     finished = session.host_finished()
     if bad_finished:
         send_control(ser, finished[:-1] + bytes([finished[-1] ^ 1]))
@@ -166,7 +170,8 @@ def handshake(ser, decoder, session, bad_finished=False):
         send_control(ser, session.command(MessageType.START))
 
 
-def frames(ser, decoder, session, seconds, output, show=False):
+def frames(ser, decoder, session, seconds, output, show=False, *,
+           on_frame=None, on_stats=None, should_stop=None, transform=None):
     window = None
     if show:
         import tkinter as tk
@@ -186,12 +191,22 @@ def frames(ser, decoder, session, seconds, output, show=False):
     stream_marker_printed = False
     next_report = time.perf_counter() + 300
     aes = AESGCM(bytes(session.video_key))
+    def snapshot():
+        elapsed = ended - started if count > 1 else 0.0
+        return dict(frames=count, bytes=total, fps=(count - 1) / elapsed if elapsed else 0.0,
+                    session_id=session.session_id, errors=dict(counters))
     try:
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
+            if should_stop and should_stop():
+                break
+            if on_stats:
+                on_stats(snapshot())
             for channel, record in video_records(ser, decoder):
                 if channel != USB_VIDEO:
                     raise ValueError("unexpected G6 USB channel")
+                if transform:
+                    record = transform(record)
                 try:
                     h, aad, ciphertext, tag = decode_video(record)
                 except ValueError:
@@ -293,6 +308,8 @@ def frames(ser, decoder, session, seconds, output, show=False):
                 last = bytes(frame)
                 total += len(frame)
                 count += 1
+                if on_frame:
+                    on_frame(last, h, snapshot())
                 if count >= 2 and not stream_marker_printed:
                     print(f"G6_STREAM_READY session_id={session.session_id} frames={count}",
                           flush=True)

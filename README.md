@@ -13,7 +13,13 @@
 `-Mode Prepare` 准备本地开发测试素材。最新结果见[软件交付记录](report/software_ready.md)，
 接线、重建与首次实机步骤见[bringup 指南](doc/bringup.md)。
 2026-10-07 首次 G3 复验发生固件就绪超时，已修正 ARM 启动链接配置；
-默认目录为 `build/vitis/usbfix3_20261007`，含新增主机恢复逻辑及固件诊断计数；仍为 `board_validated=false`。
+默认目录为 `build/vitis/usbfix3_20261007`，含新增主机恢复逻辑及固件诊断计数；
+构建清单的 `board_validated=false` 是构建时状态，后续 G6 及单次 USB 拔插/接收进程退出板测已通过，
+详见 [恢复实测记录](report/g7_software_recovery.md)。
+
+演示窗口：`& ./run_demo.ps1 -Mode Demo -Offline` 可在不接板卡时预览软件认证流程；
+`-Mode Demo` 连接已启动的 G6 固件。提供状态统计、换钥、单包篡改、认证帧录像及回放，
+实机 UI 和录像吞吐仍待验证，见 [演示说明](doc/demo.md) 与 [电脑端完成记录](report/demo_software_ready.md)。
 
 目前完成 M00 协议与离线黄金参考，已编写 M01 板级工程、自检和 echo；
 构建/上板步骤见 [M01](doc/m01.md)。已解压并研究官方 7020 例程，

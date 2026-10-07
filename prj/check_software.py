@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TESTS = ['test_m00.py', 'test_aes_mvp.py', 'test_m01.py', 'test_m02.py',
          'test_m03.py', 'test_m04.py', 'test_m05.py', 'test_m07.py',
          'test_m08.py', 'test_m09.py', 'test_m10.py', 'test_m12.py',
-         'test_g3.py', 'test_g5.py', 'test_g6.py', 'test_usb_recovery.py']
+         'test_g3.py', 'test_g5.py', 'test_g6.py', 'test_usb_recovery.py', 'test_demo.py']
 
 
 def main():

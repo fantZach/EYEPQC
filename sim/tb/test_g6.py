@@ -23,6 +23,7 @@ from g6_board import (handshake, frames, require_minimum_frames, read_control,
                       drain_rekey, video_records)
 from handshake import HostSession
 from m09 import Kem, build
+from demo_recording import FrameRecording, recording_frames
 from protocol import (MessageType, USB_CONTROL, USB_VIDEO, UsbRecordDecoder,
                       decode_control, encode_control, encode_usb_record, encode_video, packet_header)
 from test_m10 import Session, array, setup
@@ -239,6 +240,25 @@ class G6(unittest.TestCase):
             frames(board, decoder, host, 0.05, target)
         self.assertFalse(target.exists())
         host.close('ERROR')
+
+    def test_recording_observer_receives_only_verified_complete_frames(self):
+        board, host = self.create_pair('tag')
+        decoder = UsbRecordDecoder()
+        handshake(board, decoder, host)
+        recording = FrameRecording(Path(self.temp.name) / 'authenticated-recording', {'mode': 'test'})
+        accepted_ids = []
+        def accepted(jpeg, header, stats):
+            accepted_ids.append(header.frame_id)
+            recording.write(jpeg, header)
+        try:
+            result = frames(board, decoder, host, .05, Path(self.temp.name) / 'recorded-frames',
+                            on_frame=accepted)
+        finally:
+            recording.close()
+            host.close('ERROR')
+        self.assertEqual(accepted_ids, [1, 2])
+        self.assertEqual(result['errors']['auth_failures'], 1)
+        self.assertEqual([row['frame_id'] for row, _ in recording_frames(recording.folder)], [1, 2])
 
     def test_zero_authenticated_frames_is_not_a_pass(self):
         board, host = self.create_pair()

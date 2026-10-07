@@ -111,3 +111,26 @@ USB 交互现在分两步：拔出并保持，检测 missing 后再提示插回�
 Windows PowerShell 5.1 使用最新默认构建执行 `run_g7_recovery.ps1 -BaselineOnly -Seconds 2`
 通过，复用本轮匹配加载且重新握手，记录 `g6_usb_20261007_121158_945356`，47.815 fps。
 最后检查只有原有 `hw_server` 留存，测试接收进程均已退出，不占用 COM16。
+
+## 用户物理拔插与接收进程退出复验（2026-10-07 12:36）
+
+用户执行默认 `run_demo.ps1 -Mode G7`，完成单次 USB Slave 数据线拔出/插回及单次
+接收子进程强制结束。`g7_runs/g7_recovery_summary.json` 的 status=passed，
+usb_unplug_observed=true、usb_reenumerated=true、receiver_process_killed=true。
+PnP 原始记录 `g7_runs/usb_pnp_20261007_123530_069.csv` 明确出现 present→missing→present，
+没有 error/ambiguous 状态。早前未完成尝试及失败记录继续保留。
+
+| 阶段 | 原始 G6 记录 | 完整认证帧 | fps | 是否重新 JTAG 下载 |
+|---|---|---:|---:|---|
+| 基线 | g6_usb_20261007_123505_458088 | 472 | 47.308 | 是 |
+| USB 插回后新握手 | g6_usb_20261007_123539_470595 | 471 | 47.310 | 否 |
+| 接收进程退出后新握手 | g6_usb_20261007_123604_734974 | 471 | 47.293 | 否 |
+
+三份记录均为同一 usbfix3 构建的 manifest/ELF/XSA 哈希，已与当前产物核对；
+两次恢复的 session_id 均不同于被中断的后台会话。每段首/末两张保存图片均已重新解码为
+640×480，认证/组帧计数一致，没有报告接收认证错误。板端错误计数未读回，仍为 null。
+USB 拔除时后台接收器自行退出，所以 usb_worker_killed_by_script_after_action=false；
+接收进程异常退出阶段另明确由脚本强制终止，不将这两个字段混淆。
+
+本次只验收上述两种故障各一次，原计划各 20 次重复、摄像头故障、真实 DMA 超时仍待验证；
+G7 整体未完成，已有长期运行时长豁免保持原口径。本次复核只读取文件，不接管板卡。
