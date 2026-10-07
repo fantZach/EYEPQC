@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import zipfile
 import xml.etree.ElementTree as ET
+from arm_startup import verify_startup
 
 ROOT = Path(__file__).resolve().parents[1]
 CPU_FLAGS = ['-mcpu=cortex-a9', '-mfpu=vfpv3', '-mfloat-abi=hard']
@@ -69,6 +70,10 @@ def build_bsp(workspace, xsa, tools, boot_images=False):
         compiled = list(pool.map(compile_source, sources))
     library = cpu / 'lib/libxil.a'
     library.parent.mkdir(exist_ok=True)
+    # AMD's startfile spec keeps crti/crtbegin but excludes generic newlib crt0.
+    # This makes _start resolve to the standalone BSP's xil-crt0.S.
+    shutil.copy2(tools / 'Vitis/data/embeddedsw/scripts/specs/arm/Xilinx.spec',
+                 library.parent / 'Xilinx.spec')
     response = workspace / 'bsp_archive.args'
     response.write_text('\n'.join('"' + p.as_posix() + '"' for p in compiled), encoding='utf-8')
     run([ar, 'rcs', library, '@' + str(response)], ROOT, workspace / 'bsp_archive.log')
@@ -95,10 +100,12 @@ def build_boot_images(workspace, cpu, gcc, tools, apps, xsa):
             ROOT, build / (source.stem + '.log'))
         objects.append(obj)
     elf = build / 'fsbl.elf'
-    run([gcc, *CPU_FLAGS, '-Wl,--gc-sections', '-T', fsbl / 'lscript.ld',
+    run([gcc, *CPU_FLAGS, '-specs=' + str(cpu / 'lib/Xilinx.spec'),
+         '-Wl,--gc-sections', '-T', fsbl / 'lscript.ld',
          '-L', cpu / 'lib', *objects, '-Wl,--start-group', '-lxil', '-lgcc', '-lc',
          '-Wl,--end-group', '-Wl,-Map=' + str(build / 'fsbl.map'), '-o', elf],
         ROOT, build / 'link.log')
+    verify_startup(build / 'fsbl.map')
     run([gcc.with_name('arm-none-eabi-readelf.exe'), '-h', '-l', elf], ROOT, build / 'elf_header.txt')
     bootgen = tools / 'Vivado/bin/bootgen.bat'
     for name in apps:
@@ -147,6 +154,8 @@ def build_app(name, workspace, cpu, gcc, xsa):
                     ROOT / 'src/third_party/tinycrypt/lib/include']
     linker = ROOT / 'prj/a9_ddr.ld'
     inputs = [p for p in sources if p.is_relative_to(ROOT)] + [linker, ROOT / 'src/ps/include/bsp_compat.h']
+    if name != 'g3_camera':
+        inputs.append(ROOT / 'src/ps/include/usb_recovery.h')
     if name == 'g6_usb':
         inputs += list((ROOT / 'src/ps/include').glob('*.h'))
         inputs += list((ROOT / 'src/third_party/mlkem').rglob('*'))
@@ -163,16 +172,23 @@ def build_app(name, workspace, cpu, gcc, xsa):
         commands.append(dict(directory=str(ROOT), file=str(source), arguments=[str(a) for a in args]))
         objects.append(obj)
     elf = build / (name + '.elf')
-    link = [gcc, *CPU_FLAGS, '-Wl,--defsym=_STACK_SIZE=0x8000' if name == 'g6_usb'
+    link = [gcc, *CPU_FLAGS, '-specs=' + str(cpu / 'lib/Xilinx.spec'),
+            '-Wl,--defsym=_STACK_SIZE=0x8000' if name == 'g6_usb'
             else '-Wl,--defsym=_STACK_SIZE=0x2000', '-T', linker,
             '-Wl,-Map=' + str(build / (name + '.map')), '-L', cpu / 'lib',
             *objects, '-Wl,--start-group', '-lxil', '-lgcc', '-lc', '-Wl,--end-group', '-o', elf]
     run(link, ROOT, build / 'link.log')
+    verify_startup(build / (name + '.map'))
+    (build / 'link_command.json').write_text(json.dumps([str(a) for a in link], indent=2) + '\n', encoding='utf-8')
     run([gcc.with_name('arm-none-eabi-readelf.exe'), '-h', elf], ROOT, build / 'elf_header.txt')
     abi = symbols(gcc.with_name('arm-none-eabi-nm.exe'), elf)
     expected = {'g3_job': 128, 'g3_frame': 65600, 'g3_sealed': 68096}
     if name == 'g6_usb':
         expected.update(g6_sk_load=1632, g6_seed_load=32, g6_ready=4, g6_status=4)
+        expected.update(g6_frames=4, g6_dropped=4, g6_control_errors=4,
+                        g6_capture_errors=4, g6_transport_errors=4,
+                        g6_fatal_errors=4, g6_disconnects=4,
+                        g6_fault_inject=4, g6_injected_capture_errors=4)
     owned = {}
     for key, size in expected.items():
         address, actual = abi.get(key, (0, 0))
@@ -193,7 +209,7 @@ def build_app(name, workspace, cpu, gcc, xsa):
                     sources=hashes,
                     owned=owned, board_validated=False,
                     artifacts={p.relative_to(workspace).as_posix(): digest(p) for p in
-                               (elf, app / '_ide/bitstream/m01.bit', app / '_ide/psinit/ps7_init.tcl')})
+                               (elf, build / (name + '.map'), app / '_ide/bitstream/m01.bit', app / '_ide/psinit/ps7_init.tcl')})
     return manifest
 
 
@@ -225,7 +241,7 @@ def main():
     if args.boot_images:
         fsbl = build_boot_images(workspace, cpu, gcc, tools, manifests, xsa)
         for name, manifest in manifests.items():
-            for path in (fsbl, workspace / name / 'boot/BOOT.BIN'):
+            for path in (fsbl, fsbl.with_suffix('.map'), workspace / name / 'boot/BOOT.BIN'):
                 manifest['artifacts'][path.relative_to(workspace).as_posix()] = digest(path)
             manifest['development_provisioning_required'] = name == 'g6_usb'
             (workspace / (name + '_manifest.json')).write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
@@ -235,17 +251,20 @@ def main():
         raise RuntimeError('Input XSA changed during build')
     build_inputs = {p.relative_to(workspace).as_posix(): digest(p)
                     for p in (workspace / 'bsp').rglob('*')
-                    if p.is_file() and p.suffix in ('.h', '.c', '.S', '.mss')}
+                    if p.is_file() and p.suffix in ('.h', '.c', '.S', '.mss', '.spec')}
     build_inputs.update({p.relative_to(workspace).as_posix(): digest(p)
                          for p in (workspace / 'fsbl').glob('*')
                          if p.is_file() and p.suffix in ('.h', '.c', '.S', '.ld')})
     build_inputs.update({p.relative_to(workspace).as_posix(): digest(p)
                          for p in workspace.glob('*/compile_commands.json')})
+    build_inputs.update({p.relative_to(workspace).as_posix(): digest(p)
+                         for p in workspace.glob('*/build/link_command.json')})
     (workspace / 'software_build.json').write_text(json.dumps(dict(
         xsa_sha256=xsa_hash, tool_root=str(tools), applications=list(manifests),
         generated_inputs=build_inputs,
         build_scripts={p.relative_to(ROOT).as_posix(): digest(p) for p in
-                       (ROOT / 'prj/build_software.py', ROOT / 'prj/generate_bsp.tcl')},
+                       (ROOT / 'prj/build_software.py', ROOT / 'prj/generate_bsp.tcl',
+                        ROOT / 'prj/arm_startup.py')},
         build_method='classic_hsi_arm_gcc', boot_images=args.boot_images,
         board_validated=False), indent=2) + '\n', encoding='utf-8')
     print('SOFTWARE_BUILD_OK', workspace, flush=True)

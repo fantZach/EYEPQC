@@ -19,7 +19,8 @@ sys.path.insert(0, str(ROOT / 'src/host'))
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from PIL import Image
-from g6_board import handshake, frames
+from g6_board import (handshake, frames, require_minimum_frames, read_control,
+                      drain_rekey, video_records)
 from handshake import HostSession
 from m09 import Kem, build
 from protocol import (MessageType, USB_CONTROL, USB_VIDEO, UsbRecordDecoder,
@@ -85,9 +86,16 @@ class MemoryBoard:
                 payload = jpeg[offset:offset + 1400]
                 sealed = aes.encrypt(bytes(nonce), payload, header.pack())
                 packet = encode_video(header, sealed[:-16], sealed[-16:])
+                if frame_id == 0 and packet_id == 1 and self.fault == 'missing':
+                    continue
                 first = frame_id == packet_id == 0
                 if first and self.fault == 'tag':
                     packet = packet[:-1] + bytes([packet[-1] ^ 1])
+                if first and self.fault == 'forged-header':
+                    forged = bytearray(packet)
+                    forged[8:12] = (0xfefefefe).to_bytes(4, 'big')
+                    forged[32:40] = (0xfefefefefefefefe).to_bytes(8, 'big')
+                    packet = bytes(forged)
                 self.pending.extend(encode_usb_record(USB_VIDEO, packet))
                 if first and self.fault == 'replay':
                     self.pending.extend(encode_usb_record(USB_VIDEO, packet))
@@ -152,16 +160,96 @@ class G6(unittest.TestCase):
         self.assertEqual(bytes(board.session.video_key), bytes(16))
         host.close('ERROR')
 
+    def test_coalesced_controls_preserve_every_record(self):
+        ack = encode_control(MessageType.HELLO_ACK, b'\x01\x01\x00\x01' + bytes(32))
+        finished = encode_control(MessageType.FINISHED_BOARD, bytes(32))
+        data = (encode_usb_record(USB_CONTROL, ack) +
+                encode_usb_record(USB_CONTROL, finished) +
+                encode_usb_record(USB_VIDEO, b'pending video'))
+
+        class Coalesced:
+            def read(self, size):
+                nonlocal data
+                result, data = data, b''
+                return result
+
+        reader, decoder = Coalesced(), UsbRecordDecoder()
+        self.assertEqual(read_control(reader, decoder), ack)
+        self.assertEqual(read_control(reader, decoder), finished)
+        self.assertEqual(video_records(reader, decoder), [(USB_VIDEO, b'pending video')])
+
+    def test_rekey_drains_fragmented_old_video_before_new_handshake(self):
+        board, host = self.create_pair()
+        decoder = UsbRecordDecoder()
+        handshake(board, decoder, host)
+        old_key = bytes(host.video_key)
+        self.assertEqual(decoder.feed(board.read(1)), [])
+        self.assertTrue(decoder.buffer)
+        board.write(encode_usb_record(USB_CONTROL, host.command(MessageType.REKEY)))
+        drain_rekey(board, decoder, timeout=0.2, quiet=0.001)
+        self.assertFalse(board.pending)
+        self.assertFalse(decoder.buffer)
+        handshake(board, decoder, host)
+        self.assertNotEqual(bytes(host.video_key), old_key)
+        result = frames(board, decoder, host, 0.02, Path(self.temp.name) / 'tail-rekey')
+        self.assertEqual(result['frames'], 3)
+        host.close()
+
+    def test_rekey_drain_rejects_truncation_and_never_quiet_stream(self):
+        class Source:
+            def __init__(self, data, repeat=False):
+                self.data, self.repeat = data, repeat
+
+            def read(self, size):
+                data = self.data
+                if not self.repeat:
+                    self.data = b''
+                return data
+
+        truncated = encode_usb_record(USB_VIDEO, b'old video')[:-1]
+        with self.assertRaisesRegex(ValueError, 'truncated USB record'):
+            drain_rekey(Source(truncated), UsbRecordDecoder(), timeout=0.1, quiet=0.001)
+        with self.assertRaisesRegex(TimeoutError, 'did not become quiet'):
+            drain_rekey(Source(encode_usb_record(USB_VIDEO, b'old video'), True),
+                        UsbRecordDecoder(), timeout=0.01, quiet=0.001)
+
     def test_tamper_and_replay_produce_no_image(self):
-        for fault, exception in (('tag', InvalidTag), ('replay', ValueError)):
+        for fault, expected_error in (('tag', 'auth_failures'), ('forged-header', 'auth_failures'),
+                                      ('replay', 'replay_rejects'), ('missing', 'sequence_gaps')):
             board, host = self.create_pair(fault)
             decoder = UsbRecordDecoder()
             handshake(board, decoder, host)
             target = Path(self.temp.name) / fault
-            with self.assertRaises(exception):
-                frames(board, decoder, host, 0.05, target)
-            self.assertFalse(target.exists())
+            result = frames(board, decoder, host, 0.05, target)
+            self.assertEqual(result['frames'], 2)
+            self.assertGreaterEqual(result['errors'][expected_error], 1)
+            if fault == 'forged-header':
+                self.assertEqual(result['errors'].get('frame_gaps', 0), 1)
+                self.assertLess(result['errors']['frame_gaps'], 0xfefefefe)
+            self.assertTrue((target / 'first.jpg').is_file())
             host.close('ERROR')
+
+    def test_usb_framing_damage_is_fatal_without_resync_scan(self):
+        board, host = self.create_pair()
+        decoder = UsbRecordDecoder()
+        handshake(board, decoder, host)
+        board.pending[:0] = b'\xff\xff\x01'
+        target = Path(self.temp.name) / 'framing'
+        with self.assertRaisesRegex(ValueError, 'invalid USB record header'):
+            frames(board, decoder, host, 0.05, target)
+        self.assertFalse(target.exists())
+        host.close('ERROR')
+
+    def test_zero_authenticated_frames_is_not_a_pass(self):
+        board, host = self.create_pair()
+        decoder = UsbRecordDecoder()
+        handshake(board, decoder, host)
+        board.pending.clear()
+        result = frames(board, decoder, host, 0.02, Path(self.temp.name) / 'zero')
+        self.assertEqual(result['frames'], 0)
+        with self.assertRaisesRegex(RuntimeError, 'insufficient authenticated G6 frames'):
+            require_minimum_frames(result)
+        host.close('ERROR')
 
 
 if __name__ == '__main__':

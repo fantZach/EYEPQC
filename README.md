@@ -12,7 +12,8 @@
 `-Mode Build` 构建四套固件/FSBL/启动镜像，`-Mode Preflight` 核对产物，
 `-Mode Prepare` 准备本地开发测试素材。最新结果见[软件交付记录](report/software_ready.md)，
 接线、重建与首次实机步骤见[bringup 指南](doc/bringup.md)。
-当前在首次实机 G3 验证前停止，新产物仍为 `board_validated=false`。
+2026-10-07 首次 G3 复验发生固件就绪超时，已修正 ARM 启动链接配置；
+默认目录为 `build/vitis/usbfix3_20261007`，含新增主机恢复逻辑及固件诊断计数；仍为 `board_validated=false`。
 
 目前完成 M00 协议与离线黄金参考，已编写 M01 板级工程、自检和 echo；
 构建/上板步骤见 [M01](doc/m01.md)。已解压并研究官方 7020 例程，

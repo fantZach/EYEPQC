@@ -117,7 +117,8 @@ def main():
                 raise RuntimeError(f"XSDB timeout; see {case}")
         (case / "xsdb.log").write_text(stdout + stderr)
         if process.returncode or "G3_JOB_DONE" not in stdout:
-            raise RuntimeError(f"XSDB failed on frame {index}; see {case / 'xsdb.log'}")
+            detail = (stdout + stderr).strip()[-3000:]
+            raise RuntimeError(f"XSDB failed on frame {index}; see {case / 'xsdb.log'}\n{detail}")
         reply = reply_path.read_bytes()
         if len(reply) != 128: raise RuntimeError("Truncated G3 mailbox")
         fields = struct.unpack_from("<16I", reply)

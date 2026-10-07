@@ -24,3 +24,7 @@ data/captures/*
 board/output/*
 !board/output/.gitkeep
 board/vendor/
+
+# Local crash dumps and raw G7 observations; publish sanitized summaries only.
+hs_err_pid*.dmp
+report/g7_runs/

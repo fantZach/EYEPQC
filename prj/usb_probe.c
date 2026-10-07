@@ -17,6 +17,7 @@ static XScuGic usb_gic;
 #include "xtime_l.h"
 #endif
 #include <string.h>
+#include "usb_recovery.h"
 
 #define CHUNK 16384
 static XUsbPs usb;
@@ -27,6 +28,8 @@ static u8 jpeg[65536] __attribute__((aligned(64)));
 #endif
 static u8 line_coding[8] __attribute__((aligned(64))) = {0x00, 0xc2, 0x01, 0x00, 0, 0, 8};
 static volatile int configured, dtr, tx_ready = 1, line_pending, mode;
+static volatile u32 connection_epoch;
+volatile u32 usb_recovery_failures;
 static volatile u32 test_epoch, test_epoch_bytes;
 #ifdef G6_USB
 static u8 rx_ring[2048], control_record[1039];
@@ -97,7 +100,8 @@ u32 XUsbPs_Ch9SetupStrDescReply(u8 *buf, u32 cap, u8 index) {
     return 2*n+2;
 }
 void XUsbPs_SetConfiguration(XUsbPs *u, int index) {
-    configured = index == 1;
+    ++connection_epoch;
+    configured = 0;
     dtr = 0;
     mode = 0;
     test_epoch = test_epoch_bytes = 0;
@@ -106,14 +110,15 @@ void XUsbPs_SetConfiguration(XUsbPs *u, int index) {
 #endif
     jpeg_receiving = jpeg_ready = jpeg_bad = 0;
     tx_ready = 1;
-    if (!configured) return;
-    XUsbPs_EpEnable(u, 1, XUSBPS_EP_DIRECTION_OUT);
-    XUsbPs_EpEnable(u, 1, XUSBPS_EP_DIRECTION_IN);
-    XUsbPs_SetBits(u, XUSBPS_EPCR1_OFFSET, XUSBPS_EPCR_TXT_BULK_MASK |
-                   XUSBPS_EPCR_RXT_BULK_MASK | XUSBPS_EPCR_TXR_MASK | XUSBPS_EPCR_RXR_MASK);
-    XUsbPs_EpPrime(u, 1, XUSBPS_EP_DIRECTION_OUT);
-    XUsbPs_EpEnable(u, 2, XUSBPS_EP_DIRECTION_IN);
-    XUsbPs_SetBits(u, XUSBPS_EPCR2_OFFSET, XUSBPS_EPCR_TXT_INTR_MASK | XUSBPS_EPCR_TXR_MASK);
+    line_pending = 0;
+    if (index != 1) {
+        XUsbPs_EpDisable(u, 1, XUSBPS_EP_DIRECTION_OUT);
+        XUsbPs_EpDisable(u, 1, XUSBPS_EP_DIRECTION_IN);
+        XUsbPs_EpDisable(u, 2, XUSBPS_EP_DIRECTION_IN);
+        return;
+    }
+    if (eye_usb_rearm_data(u, 1)) { ++usb_recovery_failures; return; }
+    configured = 1;
 }
 void XUsbPs_SetConfigurationApp(XUsbPs *u, XUsbPs_SetupData *s) { (void)u; (void)s; }
 void XUsbPs_SetInterfaceHandler(XUsbPs *u, XUsbPs_SetupData *s) { (void)u; (void)s; }
@@ -128,6 +133,7 @@ void XUsbPs_ClassReq(XUsbPs *u, XUsbPs_SetupData *s) {
         XUsbPs_EpBufferSend(u, 0, line_coding, 7);
         return;
     case 0x22: /* SET_CONTROL_LINE_STATE */
+        if (!((s->wValue & 1) && dtr)) ++connection_epoch;
         dtr = s->wValue & 1;
         mode = 0;
         test_epoch = test_epoch_bytes = 0;
@@ -135,6 +141,10 @@ void XUsbPs_ClassReq(XUsbPs *u, XUsbPs_SetupData *s) {
         rx_reset();
 #endif
         jpeg_receiving = jpeg_ready = jpeg_bad = 0;
+        if (!dtr && configured) {
+            if (eye_usb_rearm_data(u, 0)) { ++usb_recovery_failures; configured = 0; }
+            tx_ready = 1;
+        }
         if (dtr) block_no = 0;
         XUsbPs_EpBufferSend(u, 0, NULL, 0);
         return;
@@ -228,7 +238,17 @@ static void ep1_out(void *ref, u8 ep, u8 event, void *data) {
         XUsbPs_EpPrime(u, 1, XUSBPS_EP_DIRECTION_OUT);
     }
 }
-static void usb_event(void *ref, u32 mask) { (void)ref; (void)mask; }
+static void usb_event(void *ref, u32 mask) {
+    (void)ref;
+    if (mask & XUSBPS_IXR_UR_MASK) {
+        ++connection_epoch;
+        configured = dtr = mode = line_pending = 0;
+        tx_ready = 1;
+#ifdef G6_USB
+        rx_reset();
+#endif
+    }
+}
 
 int usb_cdc_init(void) {
 #ifdef SDT
@@ -288,6 +308,7 @@ int usb_cdc_ready(void) {
 #endif
 }
 u32 usb_cdc_test_epoch(void) { return test_epoch; }
+u32 usb_cdc_connection_epoch(void) { return connection_epoch; }
 
 #ifdef G6_USB
 int usb_cdc_take_control(u8 *out, u32 capacity) {
@@ -317,14 +338,15 @@ int usb_cdc_take_control(u8 *out, u32 capacity) {
 #endif
 
 int usb_cdc_send(u8 *data, u32 size) {
+    const u32 epoch = connection_epoch;
     XTime start, now;
     XTime_GetTime(&start);
     while (!tx_ready) {
-        if (!usb_cdc_ready()) return 1;
+        if (!usb_cdc_ready() || connection_epoch != epoch) return 1;
         XTime_GetTime(&now);
         if (now - start > COUNTS_PER_SECOND) return 2;
     }
-    if (!usb_cdc_ready()) return 1;
+    if (!usb_cdc_ready() || connection_epoch != epoch) return 1;
     tx_ready = 0;
     if (XUsbPs_EpBufferSend(&usb, 1, data, size) != XST_SUCCESS) {
         tx_ready = 1;
@@ -332,11 +354,11 @@ int usb_cdc_send(u8 *data, u32 size) {
     }
     XTime_GetTime(&start);
     while (!tx_ready) {
-        if (!usb_cdc_ready()) return 1;
+        if (!usb_cdc_ready() || connection_epoch != epoch) return 1;
         XTime_GetTime(&now);
         if (now - start > COUNTS_PER_SECOND) return 2;
     }
-    return usb_cdc_ready() ? 0 : 1;
+    return usb_cdc_ready() && connection_epoch == epoch ? 0 : 1;
 }
 
 #ifndef USB_LIBRARY

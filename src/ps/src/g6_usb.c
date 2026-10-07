@@ -30,6 +30,7 @@ int g3_usb_encrypt(const uint8_t *plain, unsigned size, const uint8_t aad[40],
                    const uint8_t **sealed);
 int usb_cdc_init(void);
 int usb_cdc_ready(void);
+uint32_t usb_cdc_connection_epoch(void);
 int usb_cdc_send(uint8_t *data, uint32_t size);
 int usb_cdc_take_control(uint8_t *out, uint32_t capacity);
 
@@ -39,6 +40,13 @@ volatile uint32_t g6_ready __attribute__((aligned(64)));
 volatile uint32_t g6_status __attribute__((aligned(64)));
 volatile uint32_t g6_frames __attribute__((aligned(64)));
 volatile uint32_t g6_dropped __attribute__((aligned(64)));
+volatile uint32_t g6_control_errors __attribute__((aligned(64)));
+volatile uint32_t g6_capture_errors __attribute__((aligned(64)));
+volatile uint32_t g6_transport_errors __attribute__((aligned(64)));
+volatile uint32_t g6_fatal_errors __attribute__((aligned(64)));
+volatile uint32_t g6_disconnects __attribute__((aligned(64)));
+volatile uint32_t g6_fault_inject __attribute__((aligned(64)));
+volatile uint32_t g6_injected_capture_errors __attribute__((aligned(64)));
 
 static uint8_t private_key[1632], random_seed[32];
 static uint8_t hello[48], ack[48], tx[3 + 1456] __attribute__((aligned(64)));
@@ -75,6 +83,7 @@ static void fail_closed(void) {
     g3_usb_zeroize();
     eye_session_error(&session);
     phase = FAULT;
+    ++g6_fatal_errors;
     ++g6_status;
 }
 static int handle_control(const uint8_t *message, unsigned length) {
@@ -174,14 +183,25 @@ int main(void) {
     }
     g6_status = 1;
     int was_connected = 0, capture_errors = 0;
+    uint32_t connection_epoch = usb_cdc_connection_epoch();
     uint8_t control[1036];
     for (;;) {
+        uint32_t current_epoch = usb_cdc_connection_epoch();
+        if (current_epoch != connection_epoch) {
+            g3_usb_zeroize();
+            eye_session_error(&session);
+            phase = WAIT_HELLO;
+            was_connected = capture_errors = 0;
+            connection_epoch = current_epoch;
+            ++g6_disconnects;
+        }
         if (!usb_cdc_ready()) {
             if (was_connected) {
                 g3_usb_zeroize();
                 eye_session_error(&session);
                 phase = WAIT_HELLO;
                 was_connected = 0;
+                ++g6_disconnects;
             }
             continue;
         }
@@ -189,20 +209,31 @@ int main(void) {
         if (phase == FAULT) continue;
         int n = usb_cdc_take_control(control, sizeof control);
         if (n < 0 || (n > 0 && handle_control(control, (unsigned)n))) {
+            ++g6_control_errors;
             fail_closed();
             continue;
         }
         if (phase != STREAM) continue;
         const uint8_t *jpeg;
         unsigned size;
-        status = g3_usb_capture(&jpeg, &size);
+        if (g6_fault_inject == 1U) {
+            g6_fault_inject = 0;
+            ++g6_injected_capture_errors;
+            status = 0xffffffffU; /* One-shot capture-status injection; DMA is untouched. */
+        } else {
+            status = g3_usb_capture(&jpeg, &size);
+        }
         if (status) {
+            ++g6_capture_errors;
             ++g6_dropped;
             if (++capture_errors > 10 || g3_usb_flush()) fail_closed();
             continue;
         }
         capture_errors = 0;
         status = send_frame(jpeg, size);
-        if (g3_usb_resume() || status) fail_closed();
+        if (g3_usb_resume() || status) {
+            ++g6_transport_errors;
+            fail_closed();
+        }
     }
 }

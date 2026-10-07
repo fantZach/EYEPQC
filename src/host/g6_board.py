@@ -2,6 +2,7 @@
 import argparse
 from datetime import datetime
 import hashlib
+import hmac
 from io import BytesIO
 import json
 import os
@@ -10,7 +11,9 @@ import secrets
 import subprocess
 import tempfile
 import time
+from collections import Counter, deque
 
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from PIL import Image
 import serial
@@ -61,12 +64,18 @@ def jtag(workspace, pk, sk, tool_root):
         Path(name).unlink(missing_ok=True)
 
 
-def port():
-    deadline = time.monotonic() + 10
+def port(timeout=10):
+    deadline = time.monotonic() + timeout
+    next_notice = 0.0
     while time.monotonic() < deadline:
         found = [p for p in list_ports.comports() if p.vid == 0x03FD and p.pid == 0x7020]
         if len(found) == 1:
             return found[0].device
+        if time.monotonic() >= next_notice:
+            print("WAIT_CDC: video CDC is not enumerated yet (VID_03FD&PID_7020); "
+                  "waiting for enumeration after load or reconnect",
+                  flush=True)
+            next_notice = time.monotonic() + 2
         time.sleep(0.2)
     raise RuntimeError("G6 USB CDC device not found")
 
@@ -79,15 +88,60 @@ def send_control(ser, message):
 
 
 def read_control(ser, decoder):
+    pending = pending_records(decoder)
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
-        records = decoder.feed(ser.read(4096))
-        if records:
-            if len(records) != 1 or records[0][0] != USB_CONTROL:
+        if not pending:
+            pending.extend(decoder.feed(ser.read(4096)))
+        if pending:
+            channel, record = pending.popleft()
+            if channel != USB_CONTROL:
                 raise ValueError("unexpected response during handshake")
-            decode_control(records[0][1])
-            return records[0][1]
+            decode_control(record)
+            return record
     raise TimeoutError("G6 control response timeout")
+
+
+def pending_records(decoder):
+    if not hasattr(decoder, '_g6_pending'):
+        decoder._g6_pending = deque()
+    return decoder._g6_pending
+
+
+def video_records(ser, decoder):
+    pending = pending_records(decoder)
+    if pending:
+        records = list(pending)
+        pending.clear()
+        return records
+    return decoder.feed(ser.read(16384))
+
+
+def drain_rekey(ser, decoder, timeout=5.0, quiet=0.1):
+    """Drain old video after REKEY without displaying or accepting any packets.
+
+    The board handles REKEY after its current frame. Keep reading so its USB send
+    can finish, preserving framing across partial reads. Never scan for a header.
+    """
+    deadline = time.monotonic() + timeout
+    quiet_since = None
+    pending = pending_records(decoder)
+    while time.monotonic() < deadline:
+        chunk = ser.read(16384)
+        records = list(pending)
+        pending.clear()
+        records.extend(decoder.feed(chunk))
+        if any(channel != USB_VIDEO for channel, _ in records):
+            raise ValueError('unexpected control response while draining old video')
+        if chunk or records:
+            quiet_since = None
+        else:
+            if quiet_since is None:
+                quiet_since = time.monotonic()
+            if time.monotonic() - quiet_since >= quiet:
+                decoder.finish()
+                return
+    raise TimeoutError('G6 old video did not become quiet after REKEY')
 
 
 def handshake(ser, decoder, session, bad_finished=False):
@@ -122,50 +176,116 @@ def frames(ser, decoder, session, seconds, output, show=False):
         label = tk.Label(window)
         label.pack()
     frame = bytearray()
-    frame_id = sequence = 0
+    frame_id = None
+    expected_frame = expected_sequence = 0
+    frame_length = packet_count = timestamp = None
+    resync = False
+    counters = Counter()
     total = count = 0
     first = last = started = ended = None
+    stream_marker_printed = False
     next_report = time.perf_counter() + 300
     aes = AESGCM(bytes(session.video_key))
     try:
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
-            for channel, record in decoder.feed(ser.read(16384)):
+            for channel, record in video_records(ser, decoder):
                 if channel != USB_VIDEO:
                     raise ValueError("unexpected G6 USB channel")
-                h, aad, ciphertext, tag = decode_video(record)
+                try:
+                    h, aad, ciphertext, tag = decode_video(record)
+                except ValueError:
+                    counters['malformed_video'] += 1
+                    counters['dropped_frames'] += int(bool(frame) or not resync)
+                    frame.clear()
+                    resync = True
+                    continue
                 if h.flags != 1 or h.session_id != session.session_id or h.jpeg_length > 65536:
-                    raise ValueError("invalid G6 video header")
-                payload = aes.decrypt(make_nonce(session.epoch, h.packet_sequence),
-                                      ciphertext + tag, aad)
+                    counters['invalid_session_or_header'] += 1
+                    counters['dropped_frames'] += int(bool(frame) or not resync)
+                    frame.clear()
+                    resync = True
+                    continue
+                try:
+                    payload = aes.decrypt(make_nonce(session.epoch, h.packet_sequence),
+                                          ciphertext + tag, aad)
+                except InvalidTag:
+                    counters['auth_failures'] += 1
+                    counters['dropped_frames'] += int(bool(frame) or not resync)
+                    frame.clear()
+                    resync = True
+                    continue
+                # Authenticated headers alone may affect replay or gap accounting.
                 if not session.accept_authenticated_packet(h.session_id, h.packet_sequence):
-                    raise ValueError("replayed authenticated G6 packet")
-                if h.packet_sequence != sequence or h.frame_id != frame_id:
-                    raise ValueError("missing G6 packet or frame")
+                    counters['replay_rejects'] += 1
+                    counters['dropped_frames'] += int(bool(frame) or not resync)
+                    frame.clear()
+                    resync = True
+                    continue
+                if expected_sequence is not None and h.packet_sequence != expected_sequence:
+                    if h.packet_sequence > expected_sequence:
+                        counters['sequence_gaps'] += h.packet_sequence - expected_sequence
+                    else:
+                        counters['out_of_order'] += 1
+                        counters['dropped_frames'] += int(bool(frame) or not resync)
+                        frame.clear()
+                        resync = True
+                        continue
+                expected_sequence = h.packet_sequence + 1
+                counters['authenticated_packets'] += 1
+                if resync and h.packet_id != 0:
+                    counters['discarded_until_frame_start'] += 1
+                    continue
                 if h.packet_id == 0:
                     if frame:
-                        raise ValueError("missing fragment in prior frame")
+                        counters['dropped_frames'] += 1
+                        frame.clear()
+                    if expected_frame is not None and h.frame_id != expected_frame:
+                        if h.frame_id > expected_frame:
+                            counters['frame_gaps'] += h.frame_id - expected_frame
+                        else:
+                            counters['out_of_order'] += 1
+                            resync = True
+                            continue
+                    frame_id = h.frame_id
                     frame_length, packet_count, timestamp = h.jpeg_length, h.packet_count, h.timestamp
-                elif (not frame or h.jpeg_length != frame_length or
-                      h.packet_count != packet_count or h.timestamp != timestamp):
-                    raise ValueError("inconsistent G6 frame fragments")
+                    resync = False
+                elif (resync or not frame or h.frame_id != frame_id or
+                      h.jpeg_length != frame_length or h.packet_count != packet_count or
+                      h.timestamp != timestamp):
+                    counters['fragment_errors'] += 1
+                    counters['dropped_frames'] += int(bool(frame) or not resync)
+                    frame.clear()
+                    resync = True
+                    continue
                 if h.packet_id != len(frame) // 1400:
-                    raise ValueError("G6 fragment order mismatch")
+                    counters['fragment_errors'] += 1
+                    counters['dropped_frames'] += 1
+                    frame.clear()
+                    resync = True
+                    continue
                 frame.extend(payload)
-                sequence += 1
+                counters['grouped_packets'] += 1
                 if h.packet_id + 1 != h.packet_count:
                     continue
-                if len(frame) != frame_length or frame[:2] != b"\xff\xd8" or frame[-2:] != b"\xff\xd9":
-                    raise ValueError("invalid authenticated JPEG")
-                with Image.open(BytesIO(frame)) as image:
-                    image.load()
-                    if image.size != (640, 480):
-                        raise ValueError("unexpected G6 camera size")
-                    if window:
-                        photo = ImageTk.PhotoImage(image)
-                        label.configure(image=photo)
-                        label.image = photo
-                        window.update()
+                try:
+                    if len(frame) != frame_length or frame[:2] != b"\xff\xd8" or frame[-2:] != b"\xff\xd9":
+                        raise ValueError("invalid authenticated JPEG")
+                    with Image.open(BytesIO(frame)) as image:
+                        image.load()
+                        if image.size != (640, 480):
+                            raise ValueError("unexpected G6 camera size")
+                        if window:
+                            photo = ImageTk.PhotoImage(image)
+                            label.configure(image=photo)
+                            label.image = photo
+                            window.update()
+                except (ValueError, OSError):
+                    counters['invalid_authenticated_jpeg'] += 1
+                    counters['dropped_frames'] += 1
+                    frame.clear()
+                    resync = True
+                    continue
                 ended = time.perf_counter()
                 if started is None:
                     started = ended
@@ -173,7 +293,11 @@ def frames(ser, decoder, session, seconds, output, show=False):
                 last = bytes(frame)
                 total += len(frame)
                 count += 1
-                frame_id += 1
+                if count >= 2 and not stream_marker_printed:
+                    print(f"G6_STREAM_READY session_id={session.session_id} frames={count}",
+                          flush=True)
+                    stream_marker_printed = True
+                expected_frame = frame_id + 1
                 frame.clear()
                 if ended >= next_report:
                     print(f"G6_PROGRESS frames={count} fps={(count-1)/(ended-started):.3f}",
@@ -182,20 +306,28 @@ def frames(ser, decoder, session, seconds, output, show=False):
     finally:
         if window:
             window.destroy()
-    if count < 2:
-        raise RuntimeError("insufficient authenticated G6 frames")
-    output.mkdir(parents=True)
-    (output / "first.jpg").write_bytes(first)
-    (output / "last.jpg").write_bytes(last)
-    elapsed = ended - started
-    return dict(frames=count, bytes=total, seconds=elapsed,
-                fps=(count - 1) / elapsed, output=str(output),
-                session_id=session.session_id, packets=sequence)
+    elapsed = ended - started if count > 1 else 0.0
+    result = dict(frames=count, bytes=total, seconds=elapsed,
+                  fps=(count - 1) / elapsed if elapsed else 0.0, output=str(output),
+                  session_id=session.session_id, packets=counters['authenticated_packets'],
+                  transcript_sha256=(hashlib.sha256(session.transcript).hexdigest()
+                                      if session.transcript else None),
+                  errors=dict(sorted(counters.items())))
+    if count:
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "first.jpg").write_bytes(first)
+        (output / "last.jpg").write_bytes(last)
+    return result
+
+
+def require_minimum_frames(result, minimum=2):
+    if result['frames'] < minimum:
+        raise RuntimeError(f"insufficient authenticated G6 frames: {result['frames']} < {minimum}")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--workspace", type=Path, default=ROOT / "build/vitis/software_ready")
+    parser.add_argument("--workspace", type=Path, default=ROOT / "build/vitis/usbfix3_20261007")
     parser.add_argument("--tool-root", type=Path,
                         default=Path(os.environ.get("EYEPQC_TOOL_ROOT", "D:/AmdDesignTools/2026.1")),
                         help="AMD tools install root (or set EYEPQC_TOOL_ROOT)")
@@ -204,6 +336,8 @@ def main():
     parser.add_argument("--verify-only", action="store_true",
                         help="check build hashes without JTAG, USB or reading test private keys")
     parser.add_argument("--seconds", type=float, default=10)
+    parser.add_argument("--wait-cdc", type=int, default=10,
+                        help="seconds to wait for CDC after optional JTAG load/provision")
     parser.add_argument("--sessions", type=int, default=2)
     parser.add_argument("--fault-check", action="store_true",
                         help="reject a tampered Finished, then reconnect")
@@ -211,7 +345,7 @@ def main():
                         help="drop DTR between sessions instead of authenticated REKEY")
     parser.add_argument("--show", action="store_true")
     args = parser.parse_args()
-    if args.seconds <= 0 or not 1 <= args.sessions <= 3:
+    if args.seconds <= 0 or not 1 <= args.sessions <= 3 or args.wait_cdc < 1:
         parser.error("seconds must be positive and sessions 1..3")
     manifest, checked = verify_build(args.workspace, 'g6_usb_manifest.json')
     if manifest.get('application') != 'g6_usb':
@@ -219,30 +353,58 @@ def main():
     if args.verify_only:
         print(f'G6_PREFLIGHT_OK hashes={checked} board_accessed=false')
         return
-    pk = (OUT / "public.bin").read_bytes()
-    sk = (OUT / "private.bin").read_bytes()
-    pin = bytes.fromhex((OUT / "public.sha256").read_text().strip())
-    if hashlib.sha256(pk).digest() != pin or sk[768:1568] != pk:
-        raise ValueError("pinned G6 test key mismatch")
-    if not args.no_jtag:
-        jtag(args.workspace.resolve(), pk, sk, args.tool_root.resolve())
-    device = port()
-    ser = serial.Serial(port=None, baudrate=115200, timeout=0.25)
-    ser.dtr = False
-    ser.port = device
-    for attempt in range(20):
-        try:
-            ser.open()
-            break
-        except serial.SerialException:
-            if attempt == 19:
-                raise
-            time.sleep(0.5)  # Windows may publish COM before CDC is ready to configure.
-    session = HostSession(pk, pin, Kem())
-    result = []
     output = (ROOT / "data/captures" /
               ("g6_usb_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f"))).resolve()
+    output.mkdir(parents=True)
+    record = {
+        "status": "running", "parameters": {
+            "seconds": args.seconds, "sessions": args.sessions,
+            "fault_check_bad_finished": args.fault_check,
+            "reconnect_dtr": args.reconnect, "show": args.show,
+            "jtag_load": not args.no_jtag,
+        },
+        "build": {
+            "manifest_sha256": hashlib.sha256(
+                (args.workspace / "g6_usb_manifest.json").read_bytes()).hexdigest(),
+            "elf_sha256": hashlib.sha256(
+                (args.workspace / "g6_usb/build/g6_usb.elf").read_bytes()).hexdigest(),
+            "xsa_sha256": manifest.get("xsa_sha256"),
+        },
+        "board_counters": None,
+        "sessions": [],
+    }
+    record_path = output / "result.json"
+    record_path.write_text(json.dumps(record, indent=2) + "\n")
+    pk = pin = sk = None
+    device = None
+    ser = None
+    session = None
+    previous_key = None
+    result = record["sessions"]
     try:
+        pk = (OUT / "public.bin").read_bytes()
+        sk = bytearray((OUT / "private.bin").read_bytes())
+        pin = bytes.fromhex((OUT / "public.sha256").read_text().strip())
+        if hashlib.sha256(pk).digest() != pin or sk[768:1568] != pk:
+            raise ValueError("pinned G6 test key mismatch")
+        if not args.no_jtag:
+            record["jtag_started"] = True
+            record_path.write_text(json.dumps(record, indent=2) + "\n")
+            jtag(args.workspace.resolve(), pk, sk, args.tool_root.resolve())
+            record["jtag_completed"] = True
+        session = HostSession(pk, pin, Kem())
+        device = port(args.wait_cdc)
+        ser = serial.Serial(port=None, baudrate=115200, timeout=0.25)
+        ser.dtr = False
+        ser.port = device
+        for attempt in range(20):
+            try:
+                ser.open()
+                break
+            except serial.SerialException:
+                if attempt == 19:
+                    raise
+                time.sleep(0.5)  # Windows may publish COM before CDC is ready to configure.
         ser.reset_input_buffer()
         ser.dtr = True
         decoder = UsbRecordDecoder()
@@ -258,8 +420,18 @@ def main():
             decoder = UsbRecordDecoder()
         for index in range(args.sessions):
             handshake(ser, decoder, session)
+            current_key = bytearray(session.video_key)
+            key_changed = None if previous_key is None else not hmac.compare_digest(
+                previous_key, current_key)
+            if key_changed is False:
+                raise RuntimeError("fresh G6 handshake repeated the prior video key")
             result.append(frames(ser, decoder, session, args.seconds,
                                  output / f"session_{index+1}", args.show))
+            require_minimum_frames(result[-1])
+            result[-1]['key_changed'] = key_changed
+            if previous_key is not None:
+                previous_key[:] = bytes(len(previous_key))
+            previous_key = current_key
             if index + 1 < args.sessions and args.reconnect:
                 ser.dtr = False
                 time.sleep(0.2)
@@ -271,14 +443,27 @@ def main():
                 kind = MessageType.REKEY if index + 1 < args.sessions else MessageType.STOP
                 send_control(ser, session.command(kind))
             if index + 1 < args.sessions and not args.reconnect:
-                time.sleep(0.2)
-                ser.reset_input_buffer()
+                drain_rekey(ser, decoder)
                 decoder = UsbRecordDecoder()
+        record["status"] = "passed"
+    except Exception as exc:
+        record["status"] = "failed"
+        record["error"] = {"class": type(exc).__name__, "message": str(exc)}
+        raise
     finally:
-        ser.dtr = False
-        ser.close()
-        session.close()
-    (output / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+        if ser is not None:
+            try:
+                ser.dtr = False
+                ser.close()
+            except (serial.SerialException, OSError):
+                pass
+        if previous_key is not None:
+            previous_key[:] = bytes(len(previous_key))
+        if sk is not None:
+            sk[:] = bytes(len(sk))
+        if session is not None:
+            session.close()
+        record_path.write_text(json.dumps(record, indent=2) + "\n")
     print(f"G6_USB_OK port={device} sessions={len(result)} "
           f"fps={[round(x['fps'], 3) for x in result]} "
           f"fault_check={args.fault_check} reconnect={args.reconnect} output={output}")

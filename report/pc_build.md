@@ -2,7 +2,7 @@
 
 更新：2026-10-06。此记录区分当前工作副本新建的产物、此前的离线/板测证据和本次尚未完成的板卡验收。
 
-**同日后续软件交付已更新：** 当前使用 `build/vitis/software_ready`，已有四套固件、匹配
+**2026-10-07 后续软件交付已更新：** 当前使用 `build/vitis/software_ready_20261007`，已修正 ARM 启动链接配置，有四套固件、匹配
 FSBL/`BOOT.BIN`，M04/M05 原生 XSim 已通过。完整自动化入口与本轮结果见
 [软件交付记录](software_ready.md)，首次实机以 [bringup](../doc/bringup.md) 为准。
 下文保留早期 Vitis IDE/手工构建过程，所述 XSim/FSBL 缺口已由新的 HSI/ARM GCC 路径补齐。

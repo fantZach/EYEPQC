@@ -1,7 +1,7 @@
 param(
-    [ValidateSet('Check', 'Build', 'Prepare', 'Preflight', 'G3', 'G6')][string]$Mode = 'Check',
+    [ValidateSet('Check', 'Build', 'Prepare', 'Preflight', 'JtagCheck', 'G3', 'G6', 'G7')][string]$Mode = 'Check',
     [string]$ToolRoot = $(if ($env:EYEPQC_TOOL_ROOT) { $env:EYEPQC_TOOL_ROOT } else { 'E:/fpg/2026.1' }),
-    [string]$Workspace = 'build/vitis/software_ready',
+    [string]$Workspace = 'build/vitis/usbfix3_20261007',
     [string]$Xsa = 'build/vivado/g3_gui/m01.xsa',
     [double]$Seconds = 10,
     [switch]$Show
@@ -20,6 +20,7 @@ try {
         'Build' { & $python prj/build_software.py --xsa $Xsa --output $Workspace --tool-root $ToolRoot --boot-images }
         'Prepare' { & $python prj/prepare_demo.py }
         'Preflight' { & $python prj/verify_software.py $Workspace }
+        'JtagCheck' { & $python prj/check_jtag.py --tool-root $ToolRoot }
         'G3' {
             & $python prj/verify_software.py $Workspace
             if ($LASTEXITCODE -ne 0) { throw 'Software preflight failed' }
@@ -32,6 +33,10 @@ try {
                            '--seconds', $Seconds, '--sessions', '2', '--fault-check')
             if ($Show) { $arguments += '--show' }
             & $python @arguments
+        }
+        'G7' {
+            & ./run_g7_recovery.ps1 -Workspace $Workspace -ToolRoot $ToolRoot `
+                -Seconds ([Math]::Max(2, [Math]::Ceiling($Seconds)))
         }
     }
     if ($LASTEXITCODE -ne 0) { throw "$Mode failed; inspect the printed log path." }

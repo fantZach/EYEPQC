@@ -28,14 +28,24 @@ if {[catch {
         rst -processor
         dow -clear "$workspace/g3_camera/build/g3_camera.elf"
         con
-        puts "G3_BOOT_OK"
+        puts "G3_LOAD_OK bitstream/ELF loaded; waiting for firmware readiness"
     }
     targets -set -filter {name == "APU"}
     set start [clock milliseconds]
     while {[lindex [mrd -address-space AP0 -value $mailbox] 0] != 0x33474345} {
-        if {[clock milliseconds] - $start > 10000} {error "G3 boot timeout"}
+        if {[clock milliseconds] - $start > 10000} {
+            puts "G3_BOOT_DIAGNOSTIC"
+            puts [targets]
+            catch {puts [mrd -address-space AP0 $mailbox 16]}
+            targets -set -filter {name =~ "*Cortex-A9*#0"}
+            foreach reg {pc cpsr lr sp} {
+                if {![catch {rrd $reg} value]} {puts $value}
+            }
+            error "G3 boot timeout: firmware did not publish ready mailbox"
+        }
         after 100
     }
+    puts "G3_READY_OK firmware mailbox ready"
     set state [lindex [mrd -address-space AP0 -value [expr {$mailbox+4}]] 0]
     if {$state == 1 || $state == 4} {error "G3 job already active"}
     mwr -address-space AP0 -bin -file $request $mailbox 32
