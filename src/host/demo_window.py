@@ -28,6 +28,7 @@ class DemoWindow:
         self.recording = False
         self.replay = None
         self.replay_job = None
+        self.pending_replay = None
         self.closing = False
         self.mode = '离线演示 · 合成画面 / 软件密码运算' if controller.offline else '实机演示 · 复用已启动的 G6 固件'
         root.title('EYEPQC · 认证视频演示')
@@ -92,7 +93,6 @@ class DemoWindow:
                 value.set('—')
             self.connect.configure(state='disabled')
             self.stop_button.configure(state='normal')
-            self.play.configure(state='disabled')
 
     def stop(self):
         if self.replay is not None:
@@ -116,6 +116,7 @@ class DemoWindow:
         self.image.image = photo
 
     def poll(self):
+        finished = False
         for kind, data in self.controller.updates():
             if kind == 'frame':
                 self.draw(data['jpeg'])
@@ -143,11 +144,15 @@ class DemoWindow:
             elif kind == 'notice':
                 self.note.set(data['message'])
             elif kind == 'finished':
+                finished = True
                 self.connect.configure(state='normal')
                 self.play.configure(state='normal')
                 for button in (self.rekey, self.tamper, self.record, self.stop_button):
                     button.configure(state='disabled')
                 self.note.set('运行记录：' + data['path'])
+        if finished and self.pending_replay is not None:
+            folder, self.pending_replay = self.pending_replay, None
+            self.start_replay(folder)
         if self.closing and not self.controller.running:
             self.root.destroy()
             return
@@ -162,11 +167,14 @@ class DemoWindow:
             self.replay = None
 
     def choose_replay(self):
-        if self.controller.running:
-            return
         folder = filedialog.askdirectory(title='选择包含 recording.json 的录像目录')
         if folder:
-            self.start_replay(folder)
+            if self.controller.running:
+                self.pending_replay = folder
+                self.note.set('已选择录像，正在结束实时会话并准备回放。')
+                self.stop()
+            else:
+                self.start_replay(folder)
 
     def start_replay(self, folder):
         self.end_replay()
