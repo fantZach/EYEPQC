@@ -1,6 +1,8 @@
 # G7 软件恢复准备与当前实测边界
 
-更新：2026-10-07。此记录覆盖软件恢复准备和一次有限的 G6 硬件诊断，不代表 G7 物理验收完成。
+更新：2026-10-08。此记录按时间保留软件恢复准备、诊断失败和后续通过证据，不代表 G7 整体验收完成。
+USB与接收程序退出均已有20次有效恢复；最新摄像头/DMA候选的局部成功、基线失败和v3离线构建
+见 [本轮同步记录](github_sync_20261008.md)。下文各节仅适用于对应日期与构建。
 
 ## 本轮硬件诊断
 
@@ -134,3 +136,25 @@ USB 拔除时后台接收器自行退出，所以 usb_worker_killed_by_script_af
 
 本次只验收上述两种故障各一次，原计划各 20 次重复、摄像头故障、真实 DMA 超时仍待验证；
 G7 整体未完成，已有长期运行时长豁免保持原口径。本次复核只读取文件，不接管板卡。
+
+## 2026-10-08 主机接收进程退出 20 次
+
+同一 `usbfix3_20261007` 构建完成 20 次异常终止接收器后重连。每次终止前已有至少 2 帧认证并解码；每次恢复都使用新会话/新密钥指纹、无 JTAG 重载，收到至少 93 帧，47.455～47.670 fps。批次证据及两个保留的调度器失败尝试见 [G7 接收退出批次记录](g7_receiver_exit_batch.md)。该结果把“PC 接收程序异常退出”补到 20 次；当时 USB 物理拔插仅一次通过，后续补验见下节。
+
+## 2026-10-08 USB 物理拔插与证据复核
+
+原批次记录 20/20 次物理拔出/插回、PnP `present → missing → present` 与恢复会话成功。但之后复核发现 trial 8/14/18 的主机 `atomic_write` 在 `os.replace(result.json.tmp, result.json)` 遇到 WinError 5；其 interrupted result 留在 `running`，stderr 早于第一条 PnP `missing` 记录，因此不能证明这三轮在物理拔线时仍有存活的旧视频接收进程。原批次 JSON 和 summary 保持原样；严格 active-stream 证据按原批次其余 17 轮 + 新的 3 轮替补批次计算为 20/20。逐轮时间戳、两个批次路径和裁定见 [USB 拔插审计记录](g7_usb_unplug_batch.md)。
+
+修复后的 runner 要求拔线前 worker 仍存活；拔出后观测到时间邻近 PnP missing 的 `ClearCommError` SerialException，且 interrupted result 已终态写为 `failed/SerialException`，然后才允许继续回插/新握手恢复。替补批次 3/3 通过。WinError 5/32/33 的有界 Windows `os.replace` 重试已由真实 Win32 reader sharing-lock 测试覆盖；原始三次 WinError 5 错误保留在原始日志中。host result 无法提供板端 DMA/capture/USB 计数，相关字段缺失/为 `null`；不能据此宣称板端错误计数为零。
+
+G7 仍缺摄像头故障与真实 DMA 超时，G0 LED/复位、冷启动 30 分钟稳定运行及 SD 独立启动也尚未验收；G7 整体保持未通过。
+
+## 2026-10-08 受控摄像头复位与 DMA Busy 超时诊断
+
+在隔离诊断变体 `build/vitis/g6_camera_fault_20261008_ready` 上，按匹配的 `m01.xsa` 临时 JTAG 加载一次，完成受控 PL 摄像头 reset/PWDN 故障链；之后未重载 JTAG，完成新握手和视频恢复。变体与运行器源码独立于 `usbfix3_20261007` 基线，未改写该基线产物或存储介质。
+
+原始诊断日志 `report/g7_runs/g7_camera_reset_dma_20261008_123615_255441_e1622e45/trigger.stdout.log` 显示：摄像头停流期间 AXI S2MM 已 armed 且 Busy，在 5002 µs 软件 deadline 仍 Busy，SR 未报告 DMA 错误位；有界 DMA reset 成功，摄像头重新配置成功，并实际捕获 9329 字节 JPEG。随后新会话 `2360858033` 与故障前会话 `3350814671` 不同，密钥指纹不同，认证解码 377 帧、47.285 fps。批次汇总见同目录 `batch_summary.json`；恢复接收原始记录为 `data/captures/g6_usb_20261008_203700_134112/result.json`。
+
+该结果证明隔离诊断路径能通过 PL 控制的摄像头复位造成 DMA channel 持续 Busy 至软件 deadline，并完成有界恢复、重新握手和真实认证视频。它不是物理拔除/损坏传感器，不是 AXI DMA 硬件 timeout IRQ，也不证明原 `usbfix3_20261007` 基线已有此故障恢复策略。板端累计错误计数未读回（`null`）。
+
+实验后已按匹配 manifest 临时 JTAG 恢复 `usbfix3_20261007` 基线并通过 3 秒认证视频复验：会话 `4273151707`，140 帧、47.383 fps；记录 `data/captures/g6_usb_20261008_203754_455797/result.json`。本次自有 worker 已退出，COM16 设备仍枚举且未被本轮进程占用。G7 整体仍未验收：尚需把恢复策略集成到独立候选固件，再完成约定的摄像头故障与真实硬件 DMA timeout 观测；本诊断不能替代该门禁。

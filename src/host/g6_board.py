@@ -1,6 +1,7 @@
 """Development G6: JTAG seed/key provision, USB ML-KEM handshake, live AES-GCM JPEG."""
 import argparse
 from datetime import datetime
+import faulthandler
 import hashlib
 import hmac
 from io import BytesIO
@@ -27,6 +28,43 @@ from protocol import (MessageType, USB_CONTROL, USB_VIDEO, UsbRecordDecoder,
                       make_nonce)
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def atomic_write(path, payload):
+    """Atomically replace a capture artifact, retrying brief Windows reader locks."""
+    path = Path(path)
+    if isinstance(payload, str):
+        payload = payload.encode("utf-8")
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "wb") as target:
+            target.write(payload)
+
+        deadline = time.monotonic() + 1.5
+        delay = 0.01
+        while True:
+            try:
+                os.replace(temporary, path)
+                break
+            except OSError as exc:
+                retryable_winerrors = (5, 32, 33)  # ACCESS_DENIED, SHARING_VIOLATION, LOCK_VIOLATION
+                remaining = deadline - time.monotonic()
+                if (os.name != "nt" or getattr(exc, "winerror", None) not in retryable_winerrors
+                        or remaining <= 0):
+                    raise
+                time.sleep(min(delay, remaining))
+                delay = min(delay * 2, 0.1)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def write_result(path, record):
+    atomic_write(path, json.dumps(record, indent=2) + "\n")
 
 
 def jtag(workspace, pk, sk, tool_root):
@@ -82,11 +120,22 @@ def port(timeout=10, cancelled=None):
     raise RuntimeError("G6 USB CDC device not found")
 
 
-def send_control(ser, message):
+def send_control(ser, message, stage="control"):
     record = encode_usb_record(USB_CONTROL, message)
+    bounded = getattr(ser, "write_timeout", None) is not None
+    if bounded:
+        print(f"G6_HOST_STAGE stage={stage}_write_begin", flush=True)
     if ser.write(record) != len(record):
         raise RuntimeError("incomplete USB control write")
-    ser.flush()
+    if bounded:
+        deadline = time.monotonic() + 1.0
+        while ser.out_waiting:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"G6 USB control write drain timeout at {stage}")
+            time.sleep(0.01)
+        print(f"G6_HOST_STAGE stage={stage}_write_complete", flush=True)
+    else:
+        ser.flush()
 
 
 def read_control(ser, decoder, cancelled=None):
@@ -122,10 +171,11 @@ def video_records(ser, decoder):
 
 
 def drain_rekey(ser, decoder, timeout=5.0, quiet=0.1):
-    """Drain old video after REKEY without displaying or accepting any packets.
+    """Drain final video until quiet without accepting any control packets.
 
-    The board handles REKEY after its current frame. Keep reading so its USB send
-    can finish, preserving framing across partial reads. Never scan for a header.
+    The board handles session commands after its current frame. Keep reading so its
+    USB send can finish, preserving framing across partial reads. Never scan for a
+    header. Used for REKEY by default and for STOP only by an explicit candidate flag.
     """
     deadline = time.monotonic() + timeout
     quiet_since = None
@@ -148,11 +198,22 @@ def drain_rekey(ser, decoder, timeout=5.0, quiet=0.1):
     raise TimeoutError('G6 old video did not become quiet after REKEY')
 
 
-def handshake(ser, decoder, session, bad_finished=False, cancelled=None):
+def stop_and_drain(ser, decoder, session, enabled=False, timeout=5.0, quiet=0.1):
+    """Send authenticated STOP and optionally drain video before closing CDC."""
+    send_control(ser, session.command(MessageType.STOP))
+    if enabled:
+        drain_rekey(ser, decoder, timeout=timeout, quiet=quiet)
+
+
+def handshake(ser, decoder, session, bad_finished=False, cancelled=None, debug_stage=False):
     host_random = secrets.token_bytes(32)
     hello = encode_control(MessageType.HELLO, b"\x01\x01\x00\x01" + host_random)
-    send_control(ser, hello)
+    send_control(ser, hello, stage="hello")
+    if debug_stage:
+        print("G6_HOST_STAGE stage=hello_ack_wait_begin", flush=True)
     ack = read_control(ser, decoder, cancelled)
+    if debug_stage:
+        print("G6_HOST_STAGE stage=hello_ack_received", flush=True)
     kind, body = decode_control(ack)
     if kind != MessageType.HELLO_ACK or body[:4] != b"\x01\x01\x00\x01":
         raise ValueError("invalid board HELLO_ACK")
@@ -160,8 +221,12 @@ def handshake(ser, decoder, session, bad_finished=False, cancelled=None):
         host_random, body[4:], secrets.token_bytes(32))
     if (hello, ack) != (expected_hello, expected_ack):
         raise ValueError("handshake transcript mismatch")
-    send_control(ser, kem)
+    send_control(ser, kem, stage="kem")
+    if debug_stage:
+        print("G6_HOST_STAGE stage=board_finished_wait_begin", flush=True)
     session.verify_board_finished(read_control(ser, decoder, cancelled))
+    if debug_stage:
+        print("G6_HOST_STAGE stage=board_finished_received", flush=True)
     finished = session.host_finished()
     if bad_finished:
         send_control(ser, finished[:-1] + bytes([finished[-1] ^ 1]))
@@ -171,7 +236,8 @@ def handshake(ser, decoder, session, bad_finished=False, cancelled=None):
 
 
 def frames(ser, decoder, session, seconds, output, show=False, *,
-           on_frame=None, on_stats=None, should_stop=None, transform=None):
+           on_frame=None, on_stats=None, should_stop=None, transform=None,
+           on_verified_frame=None):
     window = None
     if show:
         import tkinter as tk
@@ -310,6 +376,14 @@ def frames(ser, decoder, session, seconds, output, show=False, *,
                 count += 1
                 if on_frame:
                     on_frame(last, h, snapshot())
+                if on_verified_frame:
+                    output.mkdir(parents=True, exist_ok=True)
+                    def save_snapshot(name, payload):
+                        atomic_write(output / name, payload)
+                    if count == 1:
+                        save_snapshot("first.jpg", first)
+                    save_snapshot("last.jpg", last)
+                    on_verified_frame(count, total, counters.copy())
                 if count >= 2 and not stream_marker_printed:
                     print(f"G6_STREAM_READY session_id={session.session_id} frames={count}",
                           flush=True)
@@ -332,8 +406,8 @@ def frames(ser, decoder, session, seconds, output, show=False, *,
                   errors=dict(sorted(counters.items())))
     if count:
         output.mkdir(parents=True, exist_ok=True)
-        (output / "first.jpg").write_bytes(first)
-        (output / "last.jpg").write_bytes(last)
+        atomic_write(output / "first.jpg", first)
+        atomic_write(output / "last.jpg", last)
     return result
 
 
@@ -360,6 +434,14 @@ def main():
                         help="reject a tampered Finished, then reconnect")
     parser.add_argument("--reconnect", action="store_true",
                         help="drop DTR between sessions instead of authenticated REKEY")
+    parser.add_argument("--report-key-fingerprint", action="store_true",
+                        help="record SHA-256 of each derived video key for cross-process uniqueness checks")
+    parser.add_argument("--drain-stop", action="store_true",
+                        help="after STOP, drain authenticated video to a quiet boundary before DTR close")
+    parser.add_argument("--bounded-control-write", action="store_true",
+                        help="bound control writes and report handshake progress without payloads")
+    parser.add_argument("--debug-stage", action="store_true",
+                        help="record key-free host stage markers and a delayed Python stack dump")
     parser.add_argument("--show", action="store_true")
     args = parser.parse_args()
     if args.seconds <= 0 or not 1 <= args.sessions <= 3 or args.wait_cdc < 1:
@@ -391,7 +473,15 @@ def main():
         "sessions": [],
     }
     record_path = output / "result.json"
-    record_path.write_text(json.dumps(record, indent=2) + "\n")
+    write_result(record_path, record)
+    print(f"G6_RUN_RESULT path={record_path}", flush=True)
+    stack_dump = None
+    if args.debug_stage:
+        stack_dump = (output / "host_stack_timeout.log").open("w", encoding="utf-8")
+        faulthandler.dump_traceback_later(30, file=stack_dump, repeat=False)
+    def stage(name):
+        if args.debug_stage:
+            print(f"G6_HOST_STAGE stage={name}", flush=True)
     pk = pin = sk = None
     device = None
     ser = None
@@ -399,34 +489,50 @@ def main():
     previous_key = None
     result = record["sessions"]
     try:
+        stage("key_material_load_begin")
         pk = (OUT / "public.bin").read_bytes()
         sk = bytearray((OUT / "private.bin").read_bytes())
         pin = bytes.fromhex((OUT / "public.sha256").read_text().strip())
         if hashlib.sha256(pk).digest() != pin or sk[768:1568] != pk:
             raise ValueError("pinned G6 test key mismatch")
+        stage("key_material_load_complete")
         if not args.no_jtag:
             record["jtag_started"] = True
-            record_path.write_text(json.dumps(record, indent=2) + "\n")
+            write_result(record_path, record)
+            stage("jtag_begin")
             jtag(args.workspace.resolve(), pk, sk, args.tool_root.resolve())
             record["jtag_completed"] = True
+            write_result(record_path, record)
+            stage("jtag_complete")
+        stage("kem_init_begin")
         session = HostSession(pk, pin, Kem())
+        stage("kem_init_complete")
+        stage("cdc_enumeration_begin")
         device = port(args.wait_cdc)
-        ser = serial.Serial(port=None, baudrate=115200, timeout=0.25)
+        stage("cdc_enumeration_complete")
+        ser = serial.Serial(port=None, baudrate=115200, timeout=0.25,
+                            write_timeout=1.0 if args.bounded_control_write else None)
         ser.dtr = False
         ser.port = device
         for attempt in range(20):
             try:
+                stage("serial_open_begin")
                 ser.open()
+                stage("serial_open_complete")
                 break
             except serial.SerialException:
                 if attempt == 19:
                     raise
                 time.sleep(0.5)  # Windows may publish COM before CDC is ready to configure.
+        stage("input_reset_begin")
         ser.reset_input_buffer()
+        stage("input_reset_complete")
+        stage("dtr_high_begin")
         ser.dtr = True
+        stage("dtr_high_complete")
         decoder = UsbRecordDecoder()
         if args.fault_check:
-            handshake(ser, decoder, session, bad_finished=True)
+            handshake(ser, decoder, session, bad_finished=True, debug_stage=args.debug_stage)
             if ser.read(1):
                 raise RuntimeError("video sent after invalid host Finished")
             ser.dtr = False
@@ -436,19 +542,45 @@ def main():
             session.close("ERROR")
             decoder = UsbRecordDecoder()
         for index in range(args.sessions):
-            handshake(ser, decoder, session)
+            handshake(ser, decoder, session, debug_stage=args.debug_stage)
             current_key = bytearray(session.video_key)
             key_changed = None if previous_key is None else not hmac.compare_digest(
                 previous_key, current_key)
             if key_changed is False:
                 raise RuntimeError("fresh G6 handshake repeated the prior video key")
-            result.append(frames(ser, decoder, session, args.seconds,
-                                 output / f"session_{index+1}", args.show))
+            if args.report_key_fingerprint:
+                session_record = {
+                    "session_id": session.session_id,
+                    "video_key_sha256": hashlib.sha256(current_key).hexdigest(),
+                    "key_changed": key_changed,
+                    "capture_directory": str(output / f"session_{index+1}"),
+                }
+                result.append(session_record)
+                write_result(record_path, record)
+                print(f"G6_SESSION_ESTABLISHED session_id={session.session_id} "
+                      f"video_key_sha256={session_record['video_key_sha256']}", flush=True)
+                def persist_verified_frames(count, byte_count, counters):
+                    session_record["observed_verified_frames"] = count
+                    session_record["observed_verified_bytes"] = byte_count
+                    session_record["observed_statistics"] = dict(sorted(counters.items()))
+                    if count <= 2:
+                        hashes = session_record.setdefault("verified_frame_sha256", [])
+                        hashes.append(hashlib.sha256(Path(session_record["capture_directory"],
+                                                          "first.jpg" if count == 1 else "last.jpg").read_bytes()).hexdigest())
+                    write_result(record_path, record)
+
+                session_record.update(frames(ser, decoder, session, args.seconds,
+                                             Path(session_record["capture_directory"]), args.show,
+                                             on_verified_frame=persist_verified_frames))
+            else:
+                result.append(frames(ser, decoder, session, args.seconds,
+                                     output / f"session_{index+1}", args.show))
             require_minimum_frames(result[-1])
             result[-1]['key_changed'] = key_changed
             if previous_key is not None:
                 previous_key[:] = bytes(len(previous_key))
             previous_key = current_key
+            kind = MessageType.REKEY if index + 1 < args.sessions else MessageType.STOP
             if index + 1 < args.sessions and args.reconnect:
                 ser.dtr = False
                 time.sleep(0.2)
@@ -457,8 +589,12 @@ def main():
                 session.close("ERROR")
                 decoder = UsbRecordDecoder()
             else:
-                kind = MessageType.REKEY if index + 1 < args.sessions else MessageType.STOP
-                send_control(ser, session.command(kind))
+                if kind == MessageType.STOP:
+                    stage("stop_and_drain_begin")
+                    stop_and_drain(ser, decoder, session, enabled=args.drain_stop)
+                    stage("stop_and_drain_complete")
+                else:
+                    send_control(ser, session.command(kind))
             if index + 1 < args.sessions and not args.reconnect:
                 drain_rekey(ser, decoder)
                 decoder = UsbRecordDecoder()
@@ -470,8 +606,11 @@ def main():
     finally:
         if ser is not None:
             try:
+                stage("dtr_low_begin")
                 ser.dtr = False
+                stage("serial_close_begin")
                 ser.close()
+                stage("serial_close_complete")
             except (serial.SerialException, OSError):
                 pass
         if previous_key is not None:
@@ -480,7 +619,10 @@ def main():
             sk[:] = bytes(len(sk))
         if session is not None:
             session.close()
-        record_path.write_text(json.dumps(record, indent=2) + "\n")
+        write_result(record_path, record)
+        if stack_dump is not None:
+            faulthandler.cancel_dump_traceback_later()
+            stack_dump.close()
     print(f"G6_USB_OK port={device} sessions={len(result)} "
           f"fps={[round(x['fps'], 3) for x in result]} "
           f"fault_check={args.fault_check} reconnect={args.reconnect} output={output}")

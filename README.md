@@ -4,6 +4,8 @@
 目标见 [doc/goals.md](doc/goals.md)，最新进度见 [report/progress.md](report/progress.md)。
 比赛提交前的证据索引与未完成验收项见 [提交检查表](report/competition_submission.md)；
 该清单明确区分历史板测与当前工作副本验证。
+2026-10-08 的最新发布范围、候选固件失败记录及离线复验见 [本轮同步记录](report/github_sync_20261008.md)；
+摄像头/DMA 恢复和 Keccak 加速仍是隔离实验实现，G0/G7 整体未通过。
 项目设计与已有实验数据汇总见[技术报告草稿](report/technical_report.md)，
 电脑端构建和本轮验证边界见[构建记录](report/pc_build.md)，
 关键协作决策与纠错见[协作记录](report/collaboration_log.md)。
@@ -19,11 +21,12 @@
 
 演示窗口：`& ./run_demo.ps1 -Mode Demo -Offline` 可在不接板卡时预览软件认证流程；
 `-Mode Demo` 连接已启动的 G6 固件。提供状态统计、换钥、单包篡改、认证帧录像及回放，
-实机 UI 和录像吞吐仍待验证，见 [演示说明](doc/demo.md) 与 [电脑端完成记录](report/demo_software_ready.md)。
+2026-10-08 已完成一次 15 秒实机录像/回放/MP4/AVI 短测（722/722 帧保存，导出均完整解码），详见[演示验收记录](report/demo_software_ready.md)和[使用说明](doc/demo.md)。
+接收进程退出恢复已完成 20/20。USB物理拔插原批次完成 20/20 次 PnP/恢复，但其中 3 次旧接收进程的原子写盘失败，active-stream 证据不足；修复后另 3 次替补通过，合并严格有效数为 20（17+3）。G0 final2 临时 JTAG 启动、30 秒 DDR/定时器检查与 H15 红灯观察已通过，随后 G6 baseline 认证复验通过；SD 独立启动、物理复位和 30 分钟断电冷启动仍未完成。摄像头故障、真实 DMA 超时未完成，G7 整体仍未验收。Keccak-f[1600]/SHA3/SHAKE 独立 RTL 的 84 组向量通过，尚未 PS 集成；后续顺序与边界见[下一阶段计划](report/next_stage_plan.md)、[G0 验收记录](report/g0_acceptance.md)及[USB 拔插审计记录](report/g7_usb_unplug_batch.md)。
 
 目前完成 M00 协议与离线黄金参考，已编写 M01 板级工程、自检和 echo；
 构建/上板步骤见 [M01](doc/m01.md)。已解压并研究官方 7020 例程，
-板级参数、JPEG 数据路径及迁移问题见 [研究记录](report/vendor_examples.md)。M01/G0 门禁尚未通过。
+板级参数、JPEG 数据路径及迁移问题见 [研究记录](report/vendor_examples.md)。M01/G0 已有本轮 JTAG 局部实测，独立 SD 启动、物理复位和冷启动 30 分钟门禁仍未通过。
 按用户要求，固定图片 AES-GCM MVP 已在步骤中提前并通过上板验证（完整 JPG/512 KiB PNG）；使用 GitHub 开源 AES 核，
 不依赖摄像头或未连接的 PS 网口。复现与验证状态见 [图片 MVP](doc/aes_mvp.md)。
 M06 开源 AES-128 核的独立判据、资源和每块周期数见 [M06](doc/m06.md)。
@@ -138,9 +141,9 @@ M01 离线自检与完整构建：
 ```
 
 Zynq-7000 器件支持已安装；按用户确认的两颗海力士 DDR，独立 BD、bitstream、
-XSA 和对应 ELF（含 SD0 / 同平台 FSBL）已构建通过。CF7020B / COM4 已临时 JTAG 验证
-UART、DDR scratch 和定时器；实物 YT8521 已识别并加入最小适配。PS GEM/echo 是历史
-实验，第一版现改用 USB0；LED 实测、冷启动 30 分钟及 USB 视频整机验收仍待完成，M01/G0 尚未通过。
+XSA 和对应 ELF（含 SD0 / 同平台 FSBL）已构建通过。CF7020B 本轮 final2 / COM14 临时 JTAG
+启动已验证 UART、64 KiB DDR scratch、定时器和 H15 红色 LED 观察；实物 YT8521 已识别并加入最小适配。PS GEM/echo 是历史
+实验，第一版现改用 USB0；SD 独立启动、物理复位、冷启动 30 分钟及 USB 视频整机长期稳定性仍待完成，M01/G0 整体闭环尚未通过。
 
 源码分别位于 `src/rtl/`、`src/ps/`、`src/host/`，仿真位于 `sim/`。
 生成工程统一放 `build/vivado/` 和 `build/vitis/`，捕获/固件输出分别放

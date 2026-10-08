@@ -1,0 +1,328 @@
+"""Build a source-pinned candidate G6 firmware with bounded camera/DMA recovery."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import zipfile
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'prj'))
+import build_software as base
+
+CPU_FLAGS = ['-mcpu=cortex-a9', '-mfpu=vfpv3', '-mfloat-abi=hard']
+VARIANT = 'g6-auto-camera-dma-recovery-usb-bounded-candidate-v3'
+LOOP_OLD = '''        if (status) {
+            ++g6_capture_errors;
+            ++g6_dropped;
+            if (++capture_errors > 10 || g3_usb_flush()) fail_closed();
+            continue;
+        }'''
+LOOP_NEW = '''        if (status == G6_AUTO_RECOVERED) {
+            ++g6_capture_errors;
+            ++g6_dropped;
+            capture_errors = 0;
+            g6_auto_recovery_diag.state = 2;
+            continue;
+        }
+        if (status) {
+            ++g6_capture_errors;
+            ++g6_dropped;
+            if (status == 16U) {
+                fail_closed();
+                continue;
+            }
+            if (++capture_errors > 10 || g3_usb_flush()) fail_closed();
+            continue;
+        }'''
+TRANSPORT_OLD = '''        capture_errors = 0;
+        status = send_frame(jpeg, size);
+        if (g3_usb_resume() || status) {
+            ++g6_transport_errors;
+            fail_closed();
+        }'''
+TRANSPORT_NEW = '''        capture_errors = 0;
+        status = send_frame(jpeg, size);
+        int resume_status = g3_usb_resume();
+        if (!status && !resume_status)
+            g6_transport_failure_diag.last_successful_frame_id = frame_id - 1U;
+        if (resume_status || status) {
+            g6_transport_failure_diag.send_status = (uint32_t)status;
+            g6_transport_failure_diag.resume_status = (uint32_t)resume_status;
+            g6_transport_failure_diag.phase = (uint32_t)phase;
+            g6_transport_failure_diag.usb_ready = (uint32_t)usb_cdc_ready();
+            g6_transport_failure_diag.connection_epoch = usb_cdc_connection_epoch();
+            g6_transport_failure_diag.transport_error_count = g6_transport_errors + 1U;
+            ++g6_transport_errors;
+            fail_closed();
+        }'''
+
+
+def digest(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def nm_symbols(nm, elf):
+    result = subprocess.check_output([str(nm), '-S', str(elf)], text=True)
+    return {f[3]: (int(f[0], 16), int(f[1], 16)) for line in result.splitlines()
+            if len(f := line.split()) == 4}
+
+
+def generate_candidate_usb(base_source, tail_source, output):
+    source = base_source.read_text(encoding='utf-8')
+    if source.count('g3_usb_capture') != 2:
+        raise RuntimeError('Baseline G6 capture hook changed; refusing unreviewed patch')
+    source = source.replace('#include "session.h"',
+                            '#include "session.h"\n#include "g6_auto_recovery.h"', 1)
+    source = source.replace('g3_usb_capture', 'g6_auto_capture_hook')
+    hook_proto = 'int g6_auto_capture_hook(const uint8_t **data, unsigned *size);'
+    if source.count(hook_proto) != 1:
+        raise RuntimeError('Baseline G6 capture prototype changed')
+    source = source.replace(hook_proto, 'static ' + hook_proto, 1)
+    marker = 'volatile uint32_t g6_injected_capture_errors __attribute__((aligned(64)));'
+    if source.count(marker) != 1:
+        raise RuntimeError('Baseline G6 owned-ABI marker changed')
+    source = source.replace(marker, marker +
+        '\nvolatile uint32_t g6_auto_recovery_request __attribute__((aligned(64)));' +
+        '\nvolatile struct g6_transport_failure_diag g6_transport_failure_diag ' +
+        '__attribute__((aligned(64)));', 1)
+    prototype = 'int usb_cdc_take_control(uint8_t *out, uint32_t capacity);'
+    if source.count(prototype) != 1:
+        raise RuntimeError('Baseline USB control API changed')
+    source = source.replace(prototype,
+        prototype + '\nint usb_cdc_clear_control_queue(void);\n'
+        'int g6_candidate_recover_camera(void);', 1)
+    if source.count(LOOP_OLD) != 1:
+        raise RuntimeError('Baseline G6 capture-error branch changed; refusing unreviewed patch')
+    source = source.replace(LOOP_OLD, LOOP_NEW, 1)
+    if source.count(TRANSPORT_OLD) != 1:
+        raise RuntimeError('Baseline G6 transport-error branch changed; refusing unreviewed patch')
+    source = source.replace(TRANSPORT_OLD, TRANSPORT_NEW, 1)
+    source += '\n' + tail_source.read_text(encoding='utf-8') + '\n'
+    output.write_text(source, encoding='utf-8', newline='\n')
+    return source
+
+
+def pin_bsp_inputs(bsp_workspace, workspace):
+    """Snapshot the exact generated BSP headers and link inputs used by this build."""
+    source_cpu = Path(bsp_workspace) / 'bsp/ps7_cortexa9_0'
+    target_cpu = Path(workspace) / 'bsp_inputs/ps7_cortexa9_0'
+    source_include = source_cpu / 'include'
+    source_lib = source_cpu / 'lib'
+    required = (source_include / 'xparameters.h', source_lib / 'libxil.a',
+                source_lib / 'Xilinx.spec')
+    missing = [str(path) for path in required if not path.is_file()]
+    if missing:
+        raise RuntimeError('Reused BSP is incomplete: ' + ', '.join(missing))
+    target_cpu.mkdir(parents=True, exist_ok=False)
+    shutil.copytree(source_include, target_cpu / 'include')
+    (target_cpu / 'lib').mkdir()
+    for name in ('libxil.a', 'Xilinx.spec'):
+        shutil.copy2(source_lib / name, target_cpu / 'lib' / name)
+    inputs = {}
+    for path in sorted((target_cpu / 'include').rglob('*')):
+        if path.is_file():
+            inputs[path.relative_to(workspace).as_posix()] = digest(path)
+    for name in ('libxil.a', 'Xilinx.spec'):
+        path = target_cpu / 'lib' / name
+        inputs[path.relative_to(workspace).as_posix()] = digest(path)
+    return target_cpu, inputs
+
+
+def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
+    bsp_workspace = Path(bsp_workspace or workspace).resolve()
+    with zipfile.ZipFile(xsa) as archive:
+        names = set(archive.namelist())
+        if not {'m01.bit', 'ps7_init.tcl', 'system.hwh'} <= names:
+            raise RuntimeError('Input XSA is missing bitstream, PS init, or system.hwh')
+        if b'xc7z020clg400-2' not in archive.read('sysdef.xml'):
+            raise RuntimeError('Expected the CF7020B xc7z020clg400-2 XSA')
+        hwh = archive.read('system.hwh').decode('utf-8', 'replace')
+        for ip in ('camera_0', 'dma_capture', 'dma_crypto', 'camera_gpio', 'dma_gpio', 'gcm_0'):
+            if ip not in hwh:
+                raise RuntimeError('XSA is missing G6 camera/DMA IP: ' + ip)
+
+    base_data = json.loads(base_manifest.read_text(encoding='utf-8'))
+    xsa_hash = digest(xsa)
+    if base_data.get('xsa_sha256') != xsa_hash:
+        raise RuntimeError('XSA does not match accepted usbfix3 G6 manifest')
+    baseline_usb = ROOT / 'src/ps/src/g6_usb.c'
+    expected_usb = base_data.get('sources', {}).get('src/ps/src/g6_usb.c')
+    if not expected_usb or digest(baseline_usb) != expected_usb:
+        raise RuntimeError('Baseline G6 USB source changed from accepted manifest')
+
+    app = workspace / 'g6_usb'
+    build = app / 'build'
+    build.mkdir(parents=True, exist_ok=True)
+    pinned_cpu, bsp_inputs = pin_bsp_inputs(bsp_workspace, workspace)
+    candidate_usb = workspace / 'g6_usb_auto_recovery_generated.c'
+    generate_candidate_usb(baseline_usb,
+        ROOT / 'src/ps/diag/g6_usb_auto_recovery_tail.inc', candidate_usb)
+
+    gcc = tools / 'Vitis/gnu/aarch32/nt/gcc-arm-none-eabi/bin/arm-none-eabi-gcc.exe'
+    if not gcc.is_file():
+        raise RuntimeError('ARM GCC is missing: ' + str(gcc))
+    vendor = gcc.parents[5] / 'data/embeddedsw/XilinxProcessorIPLib/drivers/usbps_v2_11/examples'
+    sdk_root = vendor.parent
+    sdk_generator = ROOT / 'prj/prepare_usb_bounded_sdk.py'
+    sdk_overlay = workspace / 'usb_bounded_sdk/src'
+    base.run([sys.executable, sdk_generator, '--source-root', sdk_root,
+              '--out', workspace], ROOT, workspace / 'usb_bounded_sdk_generate.log')
+    patched_endpoint = sdk_overlay / 'xusbps_endpoint.c'
+    patched_ch9 = sdk_overlay / 'xusbps_ch9.c'
+    sources = [ROOT / 'src/ps/diag/g3_camera_auto_recovery.c', candidate_usb,
+               ROOT / 'prj/usb_probe_auto_recovery.c', patched_endpoint, patched_ch9,
+               *[ROOT / 'src/ps/src' / f for f in ('session.c', 'protocol.c', 'm09_mlkem.c')],
+               *[ROOT / 'src/third_party/tinycrypt/lib/source' / f
+                 for f in ('sha256.c', 'utils.c')]]
+    include = [sdk_overlay, pinned_cpu / 'include', ROOT / 'src/ps/include',
+               ROOT / 'src/third_party', ROOT / 'src/third_party/mlkem',
+               ROOT / 'src/third_party/tinycrypt/lib/include', ROOT / 'prj', vendor]
+    for source in sources:
+        if not source.is_file():
+            raise RuntimeError('Build source missing: ' + str(source))
+    flags = [*CPU_FLAGS, '-std=c11', '-O3', '-g', '-Wall', '-Wextra', '-Werror',
+             '-DG4_USB', '-DUSB_LIBRARY', '-DG6_USB']
+    include_flags = [arg for path in include for arg in ('-I', str(path))]
+    objects, commands = [], []
+    patched_endpoint_object = None
+    for index, source in enumerate(sources):
+        obj = build / f'{index}_{source.stem}.o'
+        command = [gcc, *flags, *include_flags, '-c', source, '-o', obj]
+        base.run(command, ROOT, build / f'{index}_{source.stem}.log')
+        commands.append(dict(directory=str(ROOT), file=str(source),
+                             arguments=[str(arg) for arg in command]))
+        objects.append(obj)
+        if source.resolve() == patched_endpoint.resolve():
+            patched_endpoint_object = obj
+
+    cpu = pinned_cpu
+    elf = build / 'g6_usb.elf'
+    link = [gcc, *CPU_FLAGS, '-specs=' + str(cpu / 'lib/Xilinx.spec'),
+            '-Wl,--defsym=_STACK_SIZE=0x8000', '-T', ROOT / 'prj/a9_ddr.ld',
+            '-Wl,-Map=' + str(build / 'g6_usb.map'), '-L', cpu / 'lib',
+            *objects, '-Wl,--start-group', '-lxil', '-lgcc', '-lc', '-Wl,--end-group', '-o', elf]
+    base.run(link, ROOT, build / 'link.log')
+    base.verify_startup(build / 'g6_usb.map')
+    map_text = (build / 'g6_usb.map').read_text(encoding='utf-8', errors='replace')
+    if not patched_endpoint_object or str(patched_endpoint_object) not in map_text:
+        raise RuntimeError('Link map does not contain the isolated patched USB endpoint object')
+    if 'libxil.a(usbps_v2_11_xusbps_endpoint.o)' in map_text:
+        raise RuntimeError('Unpatched libxil USB endpoint object was also linked')
+    base.run([gcc.with_name('arm-none-eabi-readelf.exe'), '-h', elf], ROOT,
+             build / 'elf_header.txt')
+    abi = nm_symbols(gcc.with_name('arm-none-eabi-nm.exe'), elf)
+    expected = {'g3_job': 128, 'g3_frame': 65600, 'g3_sealed': 68096,
+                'g6_sk_load': 1632, 'g6_seed_load': 32, 'g6_ready': 4, 'g6_status': 4,
+                'g6_frames': 4, 'g6_dropped': 4, 'g6_control_errors': 4,
+                'g6_capture_errors': 4, 'g6_transport_errors': 4, 'g6_fatal_errors': 4,
+                'g6_disconnects': 4, 'g6_fault_inject': 4,
+                'g6_injected_capture_errors': 4, 'g6_auto_recovery_request': 4,
+                'g6_auto_recovery_diag': 56, 'g6_transport_failure_diag': 32}
+    owned = {}
+    for name, size in expected.items():
+        address, actual = abi.get(name, (0, 0))
+        if actual != size or address % 64 or not 0x100000 <= address <= 0x40000000 - size:
+            raise RuntimeError(f'Invalid ELF-owned DDR ABI: {name}, {address:#x}, {actual}')
+        owned[name] = dict(address=address, size=size)
+
+    (app / '_ide/bitstream').mkdir(parents=True, exist_ok=True)
+    (app / '_ide/psinit').mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(xsa) as archive:
+        (app / '_ide/bitstream/m01.bit').write_bytes(archive.read('m01.bit'))
+        (app / '_ide/psinit/ps7_init.tcl').write_bytes(archive.read('ps7_init.tcl'))
+    (app / 'compile_commands.json').write_text(json.dumps(commands, indent=2) + '\n', encoding='utf-8')
+
+    source_paths = [ROOT / 'src/ps/src/g3_camera.c', baseline_usb,
+                    ROOT / 'src/ps/diag/g3_camera_auto_recovery.c',
+                    ROOT / 'src/ps/diag/usb_bounded_sdk_policy.h',
+                    ROOT / 'src/ps/diag/g6_usb_auto_recovery_tail.inc',
+                    ROOT / 'prj/trigger_g6_auto_recovery.tcl',
+                    ROOT / 'prj/read_g6_auto_health.tcl',
+                    ROOT / 'prj/run_g7_auto_recovery.py',
+                    ROOT / 'sim/tb/test_g6_auto_recovery.py',
+                    ROOT / 'src/host/g6_board.py', ROOT / 'src/host/build_manifest.py',
+                    ROOT / 'src/ps/include/g6_auto_recovery.h',
+                    ROOT / 'src/ps/include/bsp_compat.h', ROOT / 'src/ps/include/session.h',
+                    ROOT / 'src/ps/include/protocol.h', ROOT / 'src/ps/include/usb_recovery.h',
+                    ROOT / 'src/ps/include/mvp_gcm.h', ROOT / 'src/ps/include/dma_buffers.h',
+                    ROOT / 'src/ps/src/session.c', ROOT / 'src/ps/src/protocol.c',
+                    ROOT / 'src/ps/src/m09_mlkem.c', ROOT / 'prj/usb_probe_auto_recovery.c',
+                    ROOT / 'prj/usb_probe.c', ROOT / 'prj/a9_ddr.ld',
+                    ROOT / 'prj/prepare_usb_bounded_sdk.py',
+                    ROOT / 'prj/build_g6_auto_recovery.py', ROOT / 'prj/build_software.py',
+                    ROOT / 'prj/generate_bsp.tcl', candidate_usb]
+    source_paths += sorted((ROOT / 'src/third_party/mlkem').rglob('*'))
+    source_paths += sorted((ROOT / 'src/third_party/tinycrypt/lib/include').rglob('*.h'))
+    source_paths += sorted((ROOT / 'src/third_party/tinycrypt/lib/source').glob('*.c'))
+    sources_hash = {path.relative_to(ROOT).as_posix(): digest(path)
+                    for path in source_paths if path.is_file() and ROOT in path.parents}
+    sdk_src_relative = (sdk_root / 'src/xusbps_endpoint.c').relative_to(tools).as_posix()
+    sdk_ch9_relative = (sdk_root / 'examples/xusbps_ch9.c').relative_to(tools).as_posix()
+    sdk_ch9_header_relative = (sdk_root / 'examples/xusbps_ch9.h').relative_to(tools).as_posix()
+    gcc_relative = gcc.resolve().relative_to(tools.resolve()).as_posix()
+    external_sources = {sdk_src_relative: digest(sdk_root / 'src/xusbps_endpoint.c'),
+                        sdk_ch9_relative: digest(sdk_root / 'examples/xusbps_ch9.c'),
+                        sdk_ch9_header_relative: digest(sdk_root / 'examples/xusbps_ch9.h'),
+                        gcc_relative: digest(gcc)}
+    manifest = dict(application='g6_usb', variant=VARIANT,
+                    base_application='g6_usb', base_manifest=str(base_manifest),
+                    base_manifest_sha256=digest(base_manifest), xsa=str(xsa),
+                    xsa_sha256=xsa_hash, patch_id='capture-auto-recovery-usb-bounded-v3',
+                    trigger_modes={'1': 'PL camera reset/PWDN before normal S2MM capture',
+                                   '2': 'PL capture route mode 3 disables all valid/ready before S2MM capture'},
+                    sources=sources_hash, external_sources=external_sources,
+                    external_sources_root='tool-root', bsp_inputs=bsp_inputs,
+                    bsp_inputs_origin=str(bsp_workspace.resolve() / 'bsp/ps7_cortexa9_0'),
+                    toolchain=dict(gcc_version=subprocess.check_output(
+                        [str(gcc), '--version'], text=True).splitlines()[0],
+                        gcc_relative_path=gcc_relative),
+                    owned=owned, board_validated=False,
+                    artifacts={p.relative_to(workspace).as_posix(): digest(p) for p in
+                               (elf, build / 'g6_usb.map', app / '_ide/bitstream/m01.bit',
+                                app / '_ide/psinit/ps7_init.tcl',
+                                sdk_overlay / 'xusbps_endpoint.c',
+                                sdk_overlay / 'xusbps_ch9.c',
+                                sdk_overlay / 'usb_bounded_sdk_policy.h',
+                                workspace / 'usb_bounded_sdk/manifest.json')})
+    text = json.dumps(manifest, indent=2) + '\n'
+    (workspace / 'build_manifest.json').write_text(text, encoding='utf-8')
+    (workspace / 'g6_usb_manifest.json').write_text(text, encoding='utf-8')
+    return manifest
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--xsa', type=Path, default=ROOT / 'build/vivado/g3_gui/m01.xsa')
+    parser.add_argument('--base-manifest', type=Path,
+                        default=ROOT / 'build/vitis/usbfix3_20261007/g6_usb_manifest.json')
+    parser.add_argument('--output', type=Path,
+                        default=ROOT / 'build/vitis/g6_auto_recovery_20261008_candidate4')
+    parser.add_argument('--reuse-bsp', type=Path, default=None,
+                        help='reuse an existing same-XSA BSP workspace without regenerating it')
+    parser.add_argument('--tool-root', type=Path, default=Path('E:/fpg/2026.1'))
+    args = parser.parse_args()
+    xsa, base_manifest, workspace, tools = (p.resolve() for p in
+        (args.xsa, args.base_manifest, args.output, args.tool_root))
+    if not xsa.is_file() or not base_manifest.is_file() or workspace.exists():
+        parser.error('XSA and matching baseline manifest must exist, and output must be fresh')
+    workspace.mkdir(parents=True)
+    bsp_workspace = args.reuse_bsp.resolve() if args.reuse_bsp else workspace
+    if args.reuse_bsp:
+        prior_manifest = bsp_workspace / 'g6_usb_manifest.json'
+        if not (bsp_workspace / 'bsp/ps7_cortexa9_0/include/xparameters.h').is_file() or \
+                not prior_manifest.is_file():
+            parser.error('--reuse-bsp must name a prior complete G6 BSP workspace')
+        prior = json.loads(prior_manifest.read_text(encoding='utf-8'))
+        if prior.get('xsa_sha256') != digest(xsa):
+            parser.error('--reuse-bsp XSA hash differs from requested XSA')
+    else:
+        base.build_bsp(workspace, xsa, tools, boot_images=False)
+    manifest = build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=bsp_workspace)
+    print('G6_AUTO_RECOVERY_BUILD_OK', workspace, manifest['xsa_sha256'], flush=True)
+
+
+if __name__ == '__main__':
+    main()

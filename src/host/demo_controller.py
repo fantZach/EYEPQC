@@ -117,7 +117,8 @@ class DemoController:
                     self.emit('recording', active=True, path=str(folder))
                 elif command == 'record_stop' and recorder is not None:
                     recorder.close()
-                    self.emit('recording', active=False, path=str(recorder.folder))
+                    self.emit('recording', active=False, path=str(recorder.folder),
+                              frames=recorder.summary['frames'])
                     recorder = None
             return self.stop_event.is_set() or action == 'rekey'
 
@@ -212,7 +213,8 @@ class DemoController:
             try:
                 if recorder is not None:
                     recorder.close()
-                    self.emit('recording', active=False, path=str(recorder.folder))
+                    self.emit('recording', active=False, path=str(recorder.folder),
+                              frames=recorder.summary['frames'])
             except OSError as exc:
                 report.update(status='failed', recording_error=str(exc))
                 self.emit('state', name='FAILED', message=str(exc))

@@ -12,6 +12,8 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,7 +21,7 @@ sys.path.insert(0, str(ROOT / 'src/host'))
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from PIL import Image
-from g6_board import (handshake, frames, require_minimum_frames, read_control,
+from g6_board import (atomic_write, handshake, frames, require_minimum_frames, read_control,
                       drain_rekey, video_records)
 from handshake import HostSession
 from m09 import Kem, build
@@ -100,6 +102,57 @@ class MemoryBoard:
                 self.pending.extend(encode_usb_record(USB_VIDEO, packet))
                 if first and self.fault == 'replay':
                     self.pending.extend(encode_usb_record(USB_VIDEO, packet))
+
+
+@unittest.skipUnless(os.name == 'nt', 'requires Win32 file-sharing semantics')
+class AtomicWriteWindows(unittest.TestCase):
+    @staticmethod
+    def lock_without_delete_sharing(path):
+        kernel32 = ct.WinDLL('kernel32', use_last_error=True)
+        kernel32.CreateFileW.argtypes = [ct.c_wchar_p, ct.c_uint32, ct.c_uint32,
+                                         ct.c_void_p, ct.c_uint32, ct.c_uint32, ct.c_void_p]
+        kernel32.CreateFileW.restype = ct.c_void_p
+        handle = kernel32.CreateFileW(str(path), 0x80000000, 0x00000001, None,
+                                      3, 0x00000080, None)
+        if handle == ct.c_void_p(-1).value:
+            raise ct.WinError(ct.get_last_error())
+        return kernel32, handle
+
+    @staticmethod
+    def close_handle(kernel32, handle):
+        kernel32.CloseHandle.argtypes = [ct.c_void_p]
+        kernel32.CloseHandle.restype = ct.c_int
+        if not kernel32.CloseHandle(handle):
+            raise ct.WinError(ct.get_last_error())
+
+    def test_retries_until_short_reader_lock_is_released(self):
+        with tempfile.TemporaryDirectory(prefix='eyepqc-atomic-retry-') as folder:
+            target = Path(folder) / 'result.json'
+            target.write_bytes(b'old-complete-result')
+            kernel32, handle = self.lock_without_delete_sharing(target)
+            timer = threading.Timer(0.25, self.close_handle, args=(kernel32, handle))
+            timer.start()
+            try:
+                atomic_write(target, b'new-complete-result')
+            finally:
+                timer.join()
+            self.assertEqual(target.read_bytes(), b'new-complete-result')
+            self.assertFalse(list(Path(folder).glob('.result.json.*.tmp')))
+
+    def test_persistent_reader_lock_fails_bounded_and_preserves_previous_file(self):
+        with tempfile.TemporaryDirectory(prefix='eyepqc-atomic-locked-') as folder:
+            target = Path(folder) / 'result.json'
+            target.write_bytes(b'previous-valid-result')
+            kernel32, handle = self.lock_without_delete_sharing(target)
+            started = time.monotonic()
+            try:
+                with self.assertRaises(PermissionError):
+                    atomic_write(target, b'new-result-must-not-replace')
+            finally:
+                self.close_handle(kernel32, handle)
+            self.assertLess(time.monotonic() - started, 3.0)
+            self.assertEqual(target.read_bytes(), b'previous-valid-result')
+            self.assertFalse(list(Path(folder).glob('.result.json.*.tmp')))
 
 
 class G6(unittest.TestCase):

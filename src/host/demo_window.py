@@ -4,12 +4,15 @@ import ctypes
 from io import BytesIO
 import os
 from pathlib import Path
+import queue
+import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, ttk
 
 from PIL import Image, ImageTk
 from demo_controller import DemoController
+from demo_export import ExportCancelled, export_recording
 from demo_recording import recording_frames
 from g6_board import ROOT
 
@@ -26,9 +29,15 @@ class DemoWindow:
     def __init__(self, root, controller):
         self.root, self.controller = root, controller
         self.recording = False
+        self.last_recorded_frame_count = None
+        self.last_run_status = None
         self.replay = None
         self.replay_job = None
         self.pending_replay = None
+        self.last_recording_folder = None
+        self.export_events = queue.Queue()
+        self.export_thread = None
+        self.export_cancel = None
         self.closing = False
         self.mode = '离线演示 · 合成画面 / 软件密码运算' if controller.offline else '实机演示 · 复用已启动的 G6 固件'
         root.title('EYEPQC · 认证视频演示')
@@ -77,6 +86,12 @@ class DemoWindow:
         self.record.pack(fill='x', pady=3)
         self.play = ttk.Button(side, text='回放录像目录', command=self.choose_replay)
         self.play.pack(fill='x', pady=3)
+        self.export_mp4 = ttk.Button(side, text='导出 MP4', command=lambda: self.choose_export('mp4'))
+        self.export_mp4.pack(fill='x', pady=3)
+        self.export_avi = ttk.Button(side, text='导出 AVI', command=lambda: self.choose_export('avi'))
+        self.export_avi.pack(fill='x', pady=3)
+        self.cancel_export_button = ttk.Button(side, text='取消导出', command=self.cancel_export, state='disabled')
+        self.cancel_export_button.pack(fill='x', pady=3)
         self.note = tk.StringVar(value='ML-KEM-512 / AES-128-GCM · 只有认证成功的完整帧进入显示和录像')
         ttk.Label(shell, textvariable=self.note, wraplength=990).pack(anchor='w', pady=(16, 6))
         self.footer = ttk.Label(shell, text='录像保存认证后的明文 JPEG 和逐帧时间戳。板端 DMA / FIFO 计数：未读取。',
@@ -97,10 +112,16 @@ class DemoWindow:
     def stop(self):
         if self.replay is not None:
             self.end_replay()
-        self.controller.stop()
+        try:
+            self.controller.stop()
+        except Exception as exc:
+            self.status.set('停止失败')
+            self.note.set(f'无法结束实时会话：{exc}')
+            return False
         self.status.set('正在结束连接')
         for button in (self.rekey, self.tamper, self.record, self.stop_button):
             button.configure(state='disabled')
+        return True
 
     def toggle_record(self):
         self.controller.request('record_stop' if self.recording else 'record_start')
@@ -117,6 +138,26 @@ class DemoWindow:
 
     def poll(self):
         finished = False
+        while True:
+            try:
+                kind, data = self.export_events.get_nowait()
+            except queue.Empty:
+                break
+            if kind == 'progress':
+                phase, current, total = data
+                suffix = f' {current}/{total}' if total else f' {current} frames'
+                self.note.set(f'导出进度：{phase}{suffix}')
+                continue
+            self.cancel_export_button.configure(state='disabled')
+            if kind == 'done':
+                self.note.set(f"导出完成：{data}")
+            elif kind == 'cancelled':
+                self.note.set('导出已取消，未生成目标文件。')
+            else:
+                self.note.set(f"导出失败：{data}")
+        if self.export_thread is not None and not self.export_thread.is_alive():
+            self.export_thread = None
+            self.export_cancel = None
         for kind, data in self.controller.updates():
             if kind == 'frame':
                 self.draw(data['jpeg'])
@@ -139,12 +180,17 @@ class DemoWindow:
                     self.note.set('已完成新握手，视频密钥已变化。')
             elif kind == 'recording':
                 self.recording = data['active']
+                if data['active']:
+                    self.last_recording_folder = data['path']
+                elif 'frames' in data:
+                    self.last_recorded_frame_count = data['frames']
                 self.record.configure(text='停止录像' if self.recording else '开始录像', state='normal')
                 self.note.set(('正在录制明文：' if self.recording else '录像已保存：') + data['path'])
             elif kind == 'notice':
                 self.note.set(data['message'])
             elif kind == 'finished':
                 finished = True
+                self.last_run_status = data.get('status')
                 self.connect.configure(state='normal')
                 self.play.configure(state='normal')
                 for button in (self.rekey, self.tamper, self.record, self.stop_button):
@@ -153,7 +199,7 @@ class DemoWindow:
         if finished and self.pending_replay is not None:
             folder, self.pending_replay = self.pending_replay, None
             self.start_replay(folder)
-        if self.closing and not self.controller.running:
+        if self.closing and not self.controller.running and (self.export_thread is None or not self.export_thread.is_alive()):
             self.root.destroy()
             return
         self.root.after(50, self.poll)
@@ -169,15 +215,19 @@ class DemoWindow:
     def choose_replay(self):
         folder = filedialog.askdirectory(title='选择包含 recording.json 的录像目录')
         if folder:
+            self.last_recording_folder = folder
             if self.controller.running:
                 self.pending_replay = folder
                 self.note.set('已选择录像，正在结束实时会话并准备回放。')
-                self.stop()
+                if not self.stop():
+                    self.pending_replay = None
+                    self.note.set('停止实时会话失败，已取消回放请求。')
             else:
                 self.start_replay(folder)
 
     def start_replay(self, folder):
         self.end_replay()
+        self.last_recording_folder = folder
         for value in self.values.values():
             value.set('—')
         self.replay = iter(recording_frames(folder))
@@ -212,7 +262,52 @@ class DemoWindow:
     def close(self):
         self.end_replay()
         self.closing = True
+        if self.export_cancel is not None:
+            self.export_cancel.set()
         self.stop()
+
+    def choose_export(self, container):
+        if self.export_thread is not None and self.export_thread.is_alive():
+            return
+        folder = self.last_recording_folder
+        if folder is None:
+            folder = filedialog.askdirectory(title='选择要导出的认证录像目录')
+            if not folder:
+                return
+        extension = '.mp4' if container == 'mp4' else '.avi'
+        target = filedialog.asksaveasfilename(title=f'导出 {container.upper()}',
+                                              defaultextension=extension,
+                                              filetypes=[(container.upper(), '*' + extension)])
+        if not target:
+            return
+        if Path(target).exists():
+            self.note.set('导出失败：目标文件已存在，请选择新文件名。')
+            return
+        self.export_cancel = threading.Event()
+        self.cancel_export_button.configure(state='normal')
+        self.note.set(f'正在校验并导出 {container.upper()}，期间可取消。')
+        self.export_thread = threading.Thread(target=self._export_worker,
+                                              args=(folder, target, container, self.export_cancel),
+                                              name='EYEPQC-demo-export', daemon=False)
+        self.export_thread.start()
+
+    def _export_worker(self, folder, target, container, cancel_event):
+        try:
+            result = export_recording(
+                folder, target, container, cancel_event,
+                progress=lambda phase, current, total: self.export_events.put(
+                    ('progress', (phase, current, total))))
+        except ExportCancelled:
+            self.export_events.put(('cancelled', None))
+        except Exception as exc:
+            self.export_events.put(('failed', str(exc)))
+        else:
+            self.export_events.put(('done', str(result)))
+
+    def cancel_export(self):
+        if self.export_cancel is not None:
+            self.export_cancel.set()
+            self.note.set('正在取消导出并清理临时文件。')
 
 
 def main():
