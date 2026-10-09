@@ -1,8 +1,16 @@
 # Implementation progress
 
-更新：2026-10-08。实施依据 `doc/steps.md`，采用 Ponytail：复用密码库与标准库，
+更新：2026-10-09。实施依据 `doc/steps.md`，采用 Ponytail：复用密码库与标准库，
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
 当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。
+
+## 2026-10-09：离线交付整合与验收边界
+
+B 线完成 G0 工具/manifest 的离线复核、固定来源脱敏 Benchmark 汇总和现场验收矩阵；独立 fixture 单测 12/12 通过，汇总包含 10 条独立证据记录。G0 final2 既有临时 JTAG 局部证据通过离线复验，但 SD 独立启动、物理复位和 30 分钟断电冷启动仍未通过。本轮用户确认没有读卡器，板上 SD 卡保持原样、不写入。
+
+C 线完成独立 Keccak route4k PS+PL 工程、匹配 XSA/bitstream 及 software/hardware 两种 A9 固件的离线构建。实现地址为 `0x43C10000–0x43C10FFF`，与 M01 AES 地址不重叠；时序、DRC、资源和 manifest 哈希已复核。没有板级启动、MMIO 或性能数据，因此尚不能宣称加速收益。
+
+G7 当前不作整体通过结论：candidate004 USB 枚举失败；candidate005 只完成离线冻结/构建、未上板。随后只读审查发现 `usb_probe.c` 的 class SETUP 路径绕过 EP0 所有权 gate：`GET_LINE_CODING` 将静态 `line_coding` 交给 IN dTD，后续 `SET_LINE_CODING` DATA_RX 可能在旧 IN 事务尚未 quiesce 时覆盖同一缓冲区。candidate006 正在补共同 SETUP gate、类请求发送/状态错误处理和 line_pending 时序测试，板测暂停。用户拔插后旧 usbfix3 基线恢复 COM16 和认证视频（记录约 47.36 fps），不据此归因于主机原因。受控 PL/DMA 故障与长录由 A 独占板卡执行。详见 [统一验收矩阵](acceptance_matrix_20261009.md)、[B 线交付](parallel_B_20261009.md)、[C 线交付](parallel_C_20261009.md) 和 [Benchmark 汇总](benchmark_summary_20261009.md)。
 
 ## 2026-10-08：演示验收、重复恢复及隔离候选
 

@@ -4,8 +4,7 @@
 目标见 [doc/goals.md](doc/goals.md)，最新进度见 [report/progress.md](report/progress.md)。
 比赛提交前的证据索引与未完成验收项见 [提交检查表](report/competition_submission.md)；
 该清单明确区分历史板测与当前工作副本验证。
-2026-10-08 的最新发布范围、候选固件失败记录及离线复验见 [本轮同步记录](report/github_sync_20261008.md)；
-摄像头/DMA 恢复和 Keccak 加速仍是隔离实验实现，G0/G7 整体未通过。
+2026-10-08 的发布范围见 [同步记录](report/github_sync_20261008.md)；2026-10-09 的逐项状态见[验收矩阵](report/acceptance_matrix_20261009.md)。摄像头/DMA 恢复仍是隔离候选，G0/G7 整体未通过；candidate004 USB 枚举失败。candidate005 仅完成离线冻结/构建、未上板；后续类请求路径审查发现 EP0 静态缓冲区所有权缺口，candidate006 正在补共同 SETUP gate 和类请求发送/状态处理，板测暂停。旧 usbfix3 基线在拔插后恢复 COM16 与认证视频，未推断原因。Keccak 已有独立 route4k PS+PL 实现、匹配 XSA 与两种 ARM 固件的离线构建，尚未上板或测得性能，详见 [C 线交付](report/parallel_C_20261009.md)。统一脱敏证据索引见 [Benchmark 汇总](report/benchmark_summary_20261009.md)。
 项目设计与已有实验数据汇总见[技术报告草稿](report/technical_report.md)，
 电脑端构建和本轮验证边界见[构建记录](report/pc_build.md)，
 关键协作决策与纠错见[协作记录](report/collaboration_log.md)。
@@ -22,7 +21,7 @@
 演示窗口：`& ./run_demo.ps1 -Mode Demo -Offline` 可在不接板卡时预览软件认证流程；
 `-Mode Demo` 连接已启动的 G6 固件。提供状态统计、换钥、单包篡改、认证帧录像及回放，
 2026-10-08 已完成一次 15 秒实机录像/回放/MP4/AVI 短测（722/722 帧保存，导出均完整解码），详见[演示验收记录](report/demo_software_ready.md)和[使用说明](doc/demo.md)。
-接收进程退出恢复已完成 20/20。USB物理拔插原批次完成 20/20 次 PnP/恢复，但其中 3 次旧接收进程的原子写盘失败，active-stream 证据不足；修复后另 3 次替补通过，合并严格有效数为 20（17+3）。G0 final2 临时 JTAG 启动、30 秒 DDR/定时器检查与 H15 红灯观察已通过，随后 G6 baseline 认证复验通过；SD 独立启动、物理复位和 30 分钟断电冷启动仍未完成。摄像头故障、真实 DMA 超时未完成，G7 整体仍未验收。Keccak-f[1600]/SHA3/SHAKE 独立 RTL 的 84 组向量通过，尚未 PS 集成；后续顺序与边界见[下一阶段计划](report/next_stage_plan.md)、[G0 验收记录](report/g0_acceptance.md)及[USB 拔插审计记录](report/g7_usb_unplug_batch.md)。
+接收进程退出恢复已完成 20/20。usbfix3 基线 USB 物理拔插严格有效 20/20（原17+补3）；candidate004 枚举失败。candidate005 未上板；其后发现 class SETUP 绕过 EP0 所有权 gate，candidate006 修复与 host 验证待完成，G7 整体仍未验收。旧 usbfix3 基线在一次拔插后恢复 COM16 与认证视频，不推断其原因。用户本轮确认没有读卡器，板上 SD 卡保持原样、不写入；G0 final2 临时 JTAG 启动、30 秒 DDR/定时器检查与 H15 红灯观察已通过，SD 独立启动、物理复位和 30 分钟断电冷启动仍未完成。Keccak 已有独立 route4k PS+PL 实现和匹配 XSA、两种 ARM 固件的离线构建，尚无板级启动、MMIO 或性能证据。后续顺序与边界见[下一阶段计划](report/next_stage_plan.md)、[G0 验收记录](report/g0_acceptance.md)、[USB 拔插审计记录](report/g7_usb_unplug_batch.md)和[统一验收矩阵](report/acceptance_matrix_20261009.md)。
 
 目前完成 M00 协议与离线黄金参考，已编写 M01 板级工程、自检和 echo；
 构建/上板步骤见 [M01](doc/m01.md)。已解压并研究官方 7020 例程，
