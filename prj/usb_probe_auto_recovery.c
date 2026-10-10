@@ -1,9 +1,39 @@
 /* Candidate-only USB probe wrapper to clear buffered pre-recovery control messages. */
 #include "usb_probe.c"
 #include "g6_secure_cleanup.h"
+#include "g6_rekey_diag.h"
 #include "usb_bounded_sdk_policy.h"
 
 #define G6_USB_TX_QUIESCE_POLL_LIMIT 256U
+
+void usb_cdc_g6_diag_fill(volatile struct g6_rekey_diag *diag)
+{
+    const uint32_t ep1_in_mask = 1U << 17U;
+    if (!diag) return;
+    diag->usb_configured = configured ? 1U : 0U;
+    diag->usb_dtr = dtr ? 1U : 0U;
+    diag->connection_epoch = connection_epoch;
+    diag->tx_ready = tx_ready ? 1U : 0U;
+#ifdef G6_USB
+    diag->rx_head = rx_head;
+    diag->rx_tail = rx_tail;
+    diag->rx_bad = rx_bad ? 1U : 0U;
+    diag->rx_bytes_buffered = (rx_head - rx_tail) & 2047U;
+    diag->ep1_prime = XUsbPs_ReadReg(usb.Config.BaseAddress,
+                                     XUSBPS_EPPRIME_OFFSET) & ep1_in_mask;
+    diag->ep1_ready = XUsbPs_ReadReg(usb.Config.BaseAddress,
+                                     XUSBPS_EPRDY_OFFSET) & ep1_in_mask;
+    diag->epcr1 = XUsbPs_ReadReg(usb.Config.BaseAddress, XUSBPS_EPCR1_OFFSET);
+    diag->ep1_completion = XUsbPs_ReadReg(usb.Config.BaseAddress,
+                                          XUSBPS_EPCOMPL_OFFSET) & ep1_in_mask;
+    diag->ep1_flush = XUsbPs_ReadReg(usb.Config.BaseAddress,
+                                     XUSBPS_EPFLUSH_OFFSET) & ep1_in_mask;
+#else
+    diag->rx_head = diag->rx_tail = diag->rx_bad = diag->rx_bytes_buffered = 0U;
+    diag->ep1_prime = diag->ep1_ready = diag->epcr1 = 0U;
+    diag->ep1_completion = diag->ep1_flush = 0U;
+#endif
+}
 
 static uint32_t usb_irq_save_disable(void)
 {

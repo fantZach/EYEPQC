@@ -56,6 +56,13 @@ class G6CleanupPathHarnessTests(unittest.TestCase):
                 "#endif\n",
                 encoding="utf-8",
             )
+            (stubs / "xil_cache.h").write_text(
+                "#ifndef TEST_XIL_CACHE_H\n#define TEST_XIL_CACHE_H\n"
+                "#include <stdint.h>\n"
+                "void Xil_DCacheFlushRange(uintptr_t address, uint32_t length);\n"
+                "#endif\n",
+                encoding="utf-8",
+            )
 
             for candidate in (False, True):
                 with self.subTest(candidate_cleanup=candidate):

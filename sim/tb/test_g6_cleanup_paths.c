@@ -7,6 +7,7 @@
 #include "protocol.h"
 #include "g6_auto_recovery.h"
 #include "g6_secure_cleanup.h"
+#include "g6_rekey_diag.h"
 
 #define main g6_usb_firmware_main
 #include "../../src/ps/src/g6_usb.c"
@@ -14,6 +15,17 @@
 
 volatile struct g6_secure_cleanup_diag g6_secure_cleanup_diag;
 volatile struct g6_auto_recovery_diag g6_auto_recovery_diag;
+
+void usb_cdc_g6_diag_fill(volatile struct g6_rekey_diag *diag)
+{
+    (void)diag;
+}
+
+void Xil_DCacheFlushRange(uintptr_t address, uint32_t length)
+{
+    (void)address;
+    (void)length;
+}
 
 static unsigned gcm_clear_calls;
 static unsigned cleanup_calls[3];

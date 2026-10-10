@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / 'prj'))
 import build_software as base
 
 CPU_FLAGS = ['-mcpu=cortex-a9', '-mfpu=vfpv3', '-mfloat-abi=hard']
-VARIANT = 'g6-secure-buffer-cleanup-usb-bounded-candidate-v1'
+VARIANT = 'g6-secure-buffer-cleanup-usb-bounded-candidate009-diagnostic-v1'
 LOOP_OLD = '''        if (status) {
             ++g6_capture_errors;
             ++g6_dropped;
@@ -287,7 +287,8 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
                 'g6_disconnects': 4, 'g6_fault_inject': 4,
                 'g6_injected_capture_errors': 4, 'g6_auto_recovery_request': 4,
                 'g6_auto_recovery_diag': 56, 'g6_auto_recovery_request': 4,
-                'g6_transport_failure_diag': 32, 'g6_secure_cleanup_diag': 108}
+                'g6_transport_failure_diag': 32, 'g6_secure_cleanup_diag': 108,
+                'g6_rekey_diagnostic': 116}
     owned = {}
     for name, size in expected.items():
         address, actual = abi.get(name, (0, 0))
@@ -308,12 +309,14 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
                     ROOT / 'src/ps/diag/g6_usb_auto_recovery_tail.inc',
                     ROOT / 'prj/trigger_g6_auto_recovery.tcl',
                     ROOT / 'prj/read_g6_auto_health.tcl',
+                    ROOT / 'prj/read_g6_rekey_diag.tcl',
                     ROOT / 'prj/run_g7_auto_recovery.py',
                     ROOT / 'sim/tb/test_g6_auto_recovery.py',
                     ROOT / 'sim/tb/test_g6_control_dispatch.py',
                     ROOT / 'sim/tb/test_g6_control_dispatch.c',
                     ROOT / 'sim/tb/test_g6_secure_cleanup.py',
                     ROOT / 'sim/tb/test_g6_secure_cleanup_harness.c',
+                    ROOT / 'sim/tb/test_read_g6_rekey_diag_tcl.py',
                     ROOT / 'sim/tb/test_usb_bounded_sdk.py',
                     ROOT / 'sim/tb/test_usb_bounded_sdk_mock.c',
                     ROOT / 'sim/tb/test_usb_bounded_ch9_mock.c',
@@ -321,6 +324,7 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
                     ROOT / 'src/host/g6_board.py', ROOT / 'src/host/build_manifest.py',
                     ROOT / 'src/ps/include/g6_auto_recovery.h',
                     ROOT / 'src/ps/include/g6_secure_cleanup.h',
+                    ROOT / 'src/ps/include/g6_rekey_diag.h',
                     ROOT / 'src/ps/include/g6_control_dispatch.h',
                     ROOT / 'src/ps/include/bsp_compat.h', ROOT / 'src/ps/include/session.h',
                     ROOT / 'src/ps/include/protocol.h', ROOT / 'src/ps/include/usb_recovery.h',
@@ -349,7 +353,8 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
     manifest = dict(application='g6_usb', variant=VARIANT,
                     base_application='g6_usb', base_manifest=str(base_manifest),
                     base_manifest_sha256=digest(base_manifest), xsa=str(xsa),
-                    xsa_sha256=xsa_hash, patch_id='g6-secure-buffer-cleanup-usb-bounded-v1',
+                    xsa_sha256=xsa_hash,
+                    patch_id='g6-secure-buffer-cleanup-usb-bounded-candidate009-diagnostic-v1',
                     trigger_modes={'1': 'PL camera reset/PWDN before normal S2MM capture',
                                    '2': 'PL capture route mode 3 disables all valid/ready before S2MM capture'},
                     sources=sources_hash, external_sources=external_sources,
