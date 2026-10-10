@@ -118,15 +118,21 @@
       "eprdy": 0,
       "eprdy_samples": 1,
       "zeroized_bytes": 135168,
-      "reader_output": "build/continuation_20261010/cleanup010_stop.stdout.log"
+      "reader_output": "build/continuation_20261010/cleanup010_stop.stdout.log",
+      "reader_output_sha256": "0050290d26a53230cfd6b19baecc581b701efdd18f360c04b4633cd742800c28",
+      "health_before_exit_sha256": "420ac5d10a9130db36042540ebb65ef654ed27f584a9b0719c93e98fd26272cb"
     },
     "receiver_exit_trial": {
       "result": "FAIL",
       "stage": "receiver_terminated",
       "failure": "recovery process HELLO_ACK timeout",
       "trial": "report/g7_runs/g7_batch_receiver_exit_20261010_193345_582_f1f7896d/trial_01_try01.json",
+      "trial_sha256": "6270475ed65b89417876320cea7c6c480de35acf56a21acab984d3fcdd96cb70",
       "recovery_capture": "data/captures/g6_usb_20261010_193348_017669/result.json",
-      "after_failure_health": "build/continuation_20261010/health010_after_exit_failure.stdout.log"
+      "recovery_capture_sha256": "19d19c0c9301bf3b015a62cc2555b805bd83c1306752fc76c73cbcae1d80a079",
+      "recovery_stderr_sha256": "37bf51f9ebb99d9319aec90ed08e7608a8b8260fc2ebafd7aefee8ba68809e14",
+      "after_failure_health": "build/continuation_20261010/health010_after_exit_failure.stdout.log",
+      "after_failure_health_sha256": "a8d2c2a55583bffc17d1dc5bd2afdcbea08f8df9900cbe845a3e226995ddc664"
     },
     "trial_count": 1,
     "required_independent_trials": 20,
