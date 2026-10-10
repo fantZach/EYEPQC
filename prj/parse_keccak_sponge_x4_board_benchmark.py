@@ -1,15 +1,16 @@
-"""Strict parser for the isolated KX41 same-boot Decaps experiment."""
+"""Strict parser for a same-boot, full 60-vector KX41 board KAT run."""
 from __future__ import annotations
 
 import re
 
-WINDOWS = (
-    "software_mlkem512_decaps_3",
-    "hardware_mlkem512_decaps_3",
-    "timeout_fallback_mlkem512_decaps_3",
-)
+WINDOWS = ("software", "hardware", "timeout_fallback")
 EXPECTED_ID = "4b583431"
 EXPECTED_VERSION = "00010000"
+EXPECTED_CASES = tuple(
+    [("keygen", tcid) for tcid in range(1, 26)]
+    + [("encapsulation", tcid) for tcid in range(1, 26)]
+    + [("decapsulation", tcid) for tcid in range(76, 86)]
+)
 
 
 def _one(pattern: str, text: str, name: str) -> re.Match[str]:
@@ -26,7 +27,8 @@ def parse_log(text: str, *, expected_counter_hz: int) -> dict:
     if re.search(r"(?:FAIL|_ERROR|WATCHDOG|HARDWARE_CONTEXT_IDENTITY_FAIL)", text):
         raise ValueError("failure marker present in UART log")
     header = _one(
-        r"^KECCAK_SX4_BENCH board=not_asserted hw_compiled=1 counter_hz=(\d+)$",
+        r"^KX41_BENCH board=not_asserted hw_compiled=1 counter_hz=(\d+) "
+        r"vectors=60 keygen=25 encapsulation=25 decapsulation=10$",
         text, "KX41 benchmark header",
     )
     counter_hz = int(header.group(1))
@@ -34,77 +36,91 @@ def parse_log(text: str, *, expected_counter_hz: int) -> dict:
         raise ValueError("counter frequency is outside the 32-bit UART ABI")
     if counter_hz != expected_counter_hz:
         raise ValueError(f"counter frequency mismatch: {counter_hz} != {expected_counter_hz}")
-    _one(r"^KECCAK_SX4_BENCH_VALIDATION per_iteration_kat=1 identity_at_configure=1$",
-         text, "per-iteration/identity validation marker")
-    if len(re.findall(r"^KECCAK_SX4_BENCH_DONE$", text, re.MULTILINE)) != 1:
+    _one(r"^KX41_BENCH_VALIDATION per_vector_kat=1 identity_at_window=1$",
+         text, "per-vector/identity validation marker")
+    if len(re.findall(r"^KX41_BENCH_DONE$", text, re.MULTILINE)) != 1:
         raise ValueError("benchmark must have exactly one completion marker")
 
-    identities = [tuple(part.lower() for part in pair) for pair in re.findall(
-        r"^HARDWARE_CONTEXT_IDENTITY_PASS id=([0-9a-fA-F]{8}) version=([0-9a-fA-F]{8})$",
+    identity_matches = list(re.finditer(
+        r"^HARDWARE_CONTEXT_IDENTITY_PASS window=(hardware|timeout_fallback) "
+        r"id=([0-9a-fA-F]{8}) version=([0-9a-fA-F]{8})$",
         text, re.MULTILINE,
-    )]
-    if identities != [(EXPECTED_ID, EXPECTED_VERSION)] * 2:
-        raise ValueError("expected exactly two KX41 ID/version checks at configure")
+    ))
+    identities = [(m.group(1), m.group(2).lower(), m.group(3).lower())
+                  for m in identity_matches]
+    if identities != [("hardware", EXPECTED_ID, EXPECTED_VERSION),
+                      ("timeout_fallback", EXPECTED_ID, EXPECTED_VERSION)]:
+        raise ValueError("expected KX41 ID/version checks bound to both hardware windows")
+    identity_by_window = {m.group(1): m for m in identity_matches}
+
+    expected = set(EXPECTED_CASES)
     parsed = {}
-    for label in WINDOWS:
-        _one(rf"^{label}_ticks_hi=([0-9a-fA-F]{{8}})_ticks_lo=([0-9a-fA-F]{{8}})$",
-             text, label + " timing")
-        ticks_match = re.search(
-            rf"^{label}_ticks_hi=([0-9a-fA-F]{{8}})_ticks_lo=([0-9a-fA-F]{{8}})$",
-            text, re.MULTILINE,
+    for window in WINDOWS:
+        start_match = _one(rf"^KX41_WINDOW_START window={window}$", text,
+                           window + " start")
+        ticks_match = _one(
+            rf"^KX41_WINDOW_TICKS window={window} hi=([0-9a-fA-F]{{8}}) "
+            r"lo=([0-9a-fA-F]{8})$", text, window + " timing"
         )
         ticks = (int(ticks_match.group(1), 16) << 32) | int(ticks_match.group(2), 16)
         if ticks == 0:
-            raise ValueError(label + " timing must be nonzero")
+            raise ValueError(window + " timing must be nonzero")
+        if start_match.start() >= ticks_match.start():
+            raise ValueError(window + " start marker must precede its timing result")
+        if window != "software":
+            identity = identity_by_window[window]
+            if not start_match.start() < identity.start() < ticks_match.start():
+                raise ValueError(window + " ID/version check is not inside its window setup")
+        lines = re.findall(
+            rf"^KX41_VECTOR_PASS window={window} operation=([a-z]+) tcId=(\d+)$",
+            text, re.MULTILINE,
+        )
+        cases = [(operation, int(tcid)) for operation, tcid in lines]
+        if len(cases) != 60 or set(cases) != expected or len(set(cases)) != 60:
+            raise ValueError(window + " must prove all 60 unique expected KAT vectors exactly once")
 
-        iteration_lines = re.findall(
-            rf"^{label} KAT_ITER_PASS iteration=(\d+) tcId=(\d+)$", text, re.MULTILINE
+        summary = _one(
+            rf"^KX41_WINDOW_SUMMARY window={window} vectors=(\d+) absorbs=(\d+) "
+            r"hw_absorbs=(\d+) hw_squeeze_blocks=(\d+) fallback=(\d+) "
+            r"timeout=(\d+) error=(\d+) timeout_status_zero_vectors=(\d+)$",
+            text, window + " path counters",
         )
-        if iteration_lines != [("0", "76"), ("1", "76"), ("2", "76")]:
-            raise ValueError(label + " must prove tcId 76 KAT for each of three iterations")
-        _one(rf"^{label} KAT_PASS iterations=3 tcId=76$", text, label + " aggregate KAT")
-        stat_match = _one(
-            rf"^{label} absorbs=(\d+) hw_absorbs=(\d+) hw_squeeze_blocks=(\d+) "
-            rf"fallback=(\d+) timeout=(\d+) error=(\d+)$",
-            text, label + " path counters",
+        vectors, absorbs, hw_absorbs, hw_squeezes, fallback, timeout, error, status_zero = map(
+            int, summary.groups()
         )
-        absorbs, hw_absorbs, hw_squeezes, fallback, timeout, error = map(
-            int, stat_match.groups()
-        )
-        if absorbs <= 0 or error:
-            raise ValueError(label + " has no absorb work or reports a hardware error")
-        parsed[label] = {
-            "ticks": ticks, "counter_hz": counter_hz,
+        if vectors != 60 or absorbs <= 0 or error:
+            raise ValueError(window + " has invalid vector count, no absorb work, or errors")
+        parsed[window] = {
+            "ticks": ticks, "counter_hz": counter_hz, "unique_vectors": vectors,
             "absorb_calls": absorbs, "hardware_absorbs": hw_absorbs,
             "hardware_squeeze_blocks": hw_squeezes,
             "software_fallbacks": fallback, "timeout_fallbacks": timeout,
-            "error_fallbacks": error, "iterations": 3, "tcId": 76,
+            "error_fallbacks": error, "timeout_status_zero_vectors": status_zero,
+            "cases": cases,
         }
 
-    sw = parsed[WINDOWS[0]]
-    hw = parsed[WINDOWS[1]]
-    timeout = parsed[WINDOWS[2]]
+    sw, hw, timeout = (parsed[k] for k in WINDOWS)
     if (sw["hardware_absorbs"] or sw["hardware_squeeze_blocks"] or
-            sw["timeout_fallbacks"] or sw["error_fallbacks"]):
-        raise ValueError("software reference window used hardware or fallback path")
+            sw["software_fallbacks"] or
+            sw["timeout_fallbacks"] or sw["error_fallbacks"] or sw["timeout_status_zero_vectors"]):
+        raise ValueError("software reference window used hardware or a fallback")
     if (hw["hardware_absorbs"] <= 0 or hw["hardware_squeeze_blocks"] <= 0 or
-            hw["software_fallbacks"] or hw["timeout_fallbacks"] or hw["error_fallbacks"]):
-        raise ValueError("normal KX41 window did not complete entirely in hardware")
-    if (timeout["timeout_fallbacks"] <= 0 or timeout["software_fallbacks"] <= 0 or
-            timeout["hardware_squeeze_blocks"] != 0):
-        raise ValueError("forced-timeout window did not exercise software fallback")
+            hw["software_fallbacks"] or hw["timeout_fallbacks"]):
+        raise ValueError("normal KX41 window did not stay on hardware or had fallbacks")
+    if timeout["timeout_fallbacks"] < 60 or timeout["hardware_squeeze_blocks"] or \
+            timeout["timeout_status_zero_vectors"] != 60:
+        raise ValueError("forced-timeout window did not clear STATUS after all 60 KATs")
 
-    _one(r"^timeout_clear_status=00000000$", text, "timeout clear STATUS=0")
-    _one(r"^TIMEOUT_STATUS_CLEAR_PASS$", text, "timeout STATUS clear marker")
-    _one(r"^TIMEOUT_STATUS_ONLY_CHECK_NO_STATE_RESULT_READBACK$", text,
-         "timeout clear readback scope marker")
-    sw_ticks, hw_ticks = sw["ticks"], hw["ticks"]
+    _one(r"^KX41_FINAL_STATUS=00000000$", text, "final STATUS=0")
+    _one(r"^KX41_FINAL_STATUS_CLEAR_PASS$", text, "final status clear marker")
+    _one(r"^KX41_TIMEOUT_MEMORY_READBACK=NOT_PERFORMED$", text,
+         "timeout memory readback scope marker")
     return {
         "hardware_path_compiled": True,
         "counter_hz": counter_hz,
         "windows": parsed,
-        "hardware_over_software_ratio": hw_ticks / sw_ticks,
-        "timeout_fallback_checked_status_zero": True,
+        "hardware_over_software_ratio": hw["ticks"] / sw["ticks"],
+        "timeout_status_zero_all_vectors": True,
         "timeout_clear_scope": "STATUS register only; STATE/OUTPUT were not read back",
-        "kat_scope": "tcId 76 shared secret compared after each of three Decaps per window",
+        "kat_scope": "60 unique ML-KEM-512 keygen/encapsulation/decapsulation vectors per window",
     }

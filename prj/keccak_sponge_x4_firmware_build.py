@@ -90,23 +90,64 @@ def validate_xsa(xsa: Path, xsa_manifest: Path) -> tuple[dict, str, str]:
 
 def write_kat(path: Path) -> dict:
     vectors = json.loads(KAT.read_text(encoding="utf-8"))
-    vector = next(v for v in vectors["decapsulation"] if v["tcId"] == 76)
-    arrays = {"keccak_sponge_x4_bench_sk": bytes.fromhex(vector["dk"]),
-              "keccak_sponge_x4_bench_ct": bytes.fromhex(vector["c"]),
-              "keccak_sponge_x4_bench_ss": bytes.fromhex(vector["k"])}
+    operations = (
+        ("keygen", 1, lambda v: bytes.fromhex(v["d"] + v["z"]),
+         lambda v: bytes.fromhex(v["ek"] + v["dk"])),
+        ("encapsulation", 2, lambda v: bytes.fromhex(v["ek"] + v["m"]),
+         lambda v: bytes.fromhex(v["c"] + v["k"])),
+        ("decapsulation", 3, lambda v: bytes.fromhex(v["dk"] + v["c"]),
+         lambda v: bytes.fromhex(v["k"])),
+    )
+    expected_counts = {"keygen": 25, "encapsulation": 25, "decapsulation": 10}
+    entries = []
+    arrays: list[tuple[str, bytes]] = []
+    for operation, op_id, build_input, build_output in operations:
+        cases = vectors.get(operation)
+        if not isinstance(cases, list) or len(cases) != expected_counts[operation]:
+            raise ValueError(f"KAT {operation} vector count mismatch")
+        tcids = []
+        for case in cases:
+            tcid = case.get("tcId")
+            if not isinstance(tcid, int) or case.get("deferred"):
+                raise ValueError(f"KAT {operation} has an invalid or deferred vector")
+            tcids.append(tcid)
+            input_bytes = build_input(case)
+            output_bytes = build_output(case)
+            base = f"kx41_{operation}_{tcid}"
+            in_name, out_name = base + "_input", base + "_expected"
+            arrays.extend(((in_name, input_bytes), (out_name, output_bytes)))
+            entries.append((operation, op_id, tcid, in_name, out_name,
+                            len(input_bytes), len(output_bytes)))
+        if len(set(tcids)) != expected_counts[operation]:
+            raise ValueError(f"KAT {operation} tcId values are not unique")
+
     lines = ["#ifndef KECCAK_SPONGE_X4_BENCH_KAT_H",
              "#define KECCAK_SPONGE_X4_BENCH_KAT_H", "#include <stdint.h>",
-             f"#define KECCAK_SX4_BENCH_KAT_TCID {vector['tcId']}u"]
-    for name, data in arrays.items():
+             "enum { KX41_OP_KEYGEN = 1, KX41_OP_ENCAPS = 2, KX41_OP_DECAPS = 3 };",
+             "typedef struct { uint32_t operation, tcid, input_len, output_len;",
+             "  const uint8_t *input; const uint8_t *expected; } kx41_bench_vector;"]
+    for name, data in arrays:
         lines.append(f"static const uint8_t {name}[{len(data)}] = {{")
         for i in range(0, len(data), 16):
             lines.append("  " + ", ".join(f"0x{x:02x}" for x in data[i:i+16]) + ",")
         lines.append("};")
-    lines.extend(["#endif", ""])
+    lines.append("static const kx41_bench_vector kx41_bench_vectors[60] = {")
+    for operation, op_id, tcid, in_name, out_name, input_len, output_len in entries:
+        lines.append(f"  {{{op_id}u, {tcid}u, {input_len}u, {output_len}u, "
+                     f"{in_name}, {out_name}}},")
+    lines.extend(["};", "#endif", ""])
     path.write_text("\n".join(lines), encoding="ascii")
-    return {"tcId": 76, "secret_key_bytes": len(arrays["keccak_sponge_x4_bench_sk"]),
-            "ciphertext_bytes": len(arrays["keccak_sponge_x4_bench_ct"]),
-            "expected_ss_sha256": hashlib.sha256(arrays["keccak_sponge_x4_bench_ss"]).hexdigest()}
+    return {
+        "unique_vectors": len(entries),
+        "operation_counts": expected_counts,
+        "vector_ids": {name: [v[2] for v in entries if v[0] == name]
+                       for name, *_ in operations},
+        "generated_header_sha256": sha(path),
+        "all_expected_outputs_sha256": hashlib.sha256(
+            b"".join(data for name, data in arrays if name.endswith("_expected"))).hexdigest(),
+        "maximum_input_bytes": max(item[5] for item in entries),
+        "maximum_output_bytes": max(item[6] for item in entries),
+    }
 
 
 def main() -> int:
@@ -213,7 +254,7 @@ def main() -> int:
         "cpu_clock_hz_from_new_xsa_bsp": int(clock.group(1)),
         "address_map": {"module": "keccak_sponge_x4_axi_lite", "base": "0x43C10000",
             "range": "4 KiB", "id": "0x4B583431", "version": "0x00010000"},
-        "measurement_scope": "one hardware-enabled ELF; software, KX41 MMIO, and forced-timeout fallback each run three tcId 76 Decaps in one boot; every output is checked",
+        "measurement_scope": "one hardware-enabled ELF; software, KX41 MMIO, and forced-timeout fallback each run all 60 NIST ML-KEM-512 keygen/encapsulation/decapsulation vectors in one boot; every output is checked",
         "kat": kat_info,
         "firmware": {"elf": {"path": "firmware/build/keccak_sponge_x4_board_bench.elf",
                     "sha256": sha(elf), "bytes": elf.stat().st_size},
