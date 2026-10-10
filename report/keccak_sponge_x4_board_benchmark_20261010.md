@@ -9,3 +9,5 @@
 UART 原始记录 SHA-256 为 `c89884abb5837ee746b211a29e278f0302036062d0d182c3dff6bd9ca9c007dc`。第一次 runner 将大写十六进制硬件 ID 错判为不匹配；保留原始 capture result，并以已修正大小写处理的严格 parser 对同一 UART 字节记录重新审核，解析结果保存在 `build/keccak_sponge_x4_board/kx41_board_20261010_1936/capture_result_reparsed.json`。重解析未重新运行硬件或改变原始数据。
 
 候选 XSA 为 `ed634c6d480de36c16af64962093069cc120e04af5b38498978e210bf404318d`；匹配 ELF 为 `c79a02bae9b836d6a22b7565232b11746db9059a882773f5b37ab135c88ce9a9`。结构化指标见 [JSON 记录](keccak_sponge_x4_board_benchmark_20261010.json)。
+
+为排除 parser 假拒绝，我已用大小写修正后的 parser 重建并通过 715 项清单校验新的测量固件；准备重复板测时，COM14 已消失，之后的 Windows PnP 查询也未发现板卡 JTAG/USB 接口，XSDB 报告无 target。新固件没有第二次上板，后续需在板卡重新枚举后再测。

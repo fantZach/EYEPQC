@@ -53,6 +53,15 @@
     "repeated_performance_distribution": false,
     "production_mlkem_integration": false
   },
+  "followup_attempt": {
+    "status": "blocked_before_hardware_start",
+    "candidate_firmware_rebuilt_with_case_fixed_parser": true,
+    "manifest_sha256": "3956f3a10b5d0129796f1c6cba2f0b8a7aa9887163e84d60019664a5fb227245",
+    "elf_sha256": "82f325962841aa406b8d4515c8427f5d293b80fe836201e4c78083f806ce4f6d",
+    "verify_only_hash_checks": 715,
+    "failure": "COM14 disappeared before serial open; subsequent Windows enumeration had no board USB/JTAG interfaces and XSDB reported no targets",
+    "second_board_capture": false
+  },
   "limits": [
     "One board boot and one ML-KEM-512 Decaps vector (tcId 76), repeated three times per timing window.",
     "Hardware timing was about 9.6% lower than the same-boot software reference for this vector; it is not a full-workload speedup claim.",
