@@ -5,6 +5,10 @@
 #include "xusbps_endpoint.h"
 #include <string.h>
 
+#ifndef EYE_USB_REARM_POLL_LIMIT
+#define EYE_USB_REARM_POLL_LIMIT 4096U
+#endif
+
 /* Called only after the data endpoints have been disabled and flushed. The
  * SDK reconfiguration resets cursors/links but preserves old ACTIVE/error bits
  * and parts of the QH overlay, so clear the stopped DMA objects first. EP0 and
@@ -49,8 +53,12 @@ static int eye_usb_rearm_data(XUsbPs *u, int reset_toggle) {
     XUsbPs_EpDisable(u, 1, XUSBPS_EP_DIRECTION_IN);
     XUsbPs_EpDisable(u, 2, XUSBPS_EP_DIRECTION_IN);
     XUsbPs_WriteReg(u->Config.BaseAddress, XUSBPS_EPFLUSH_OFFSET, mask);
-    unsigned remaining = 10000;
+    unsigned remaining = EYE_USB_REARM_POLL_LIMIT;
     while ((XUsbPs_ReadReg(u->Config.BaseAddress, XUSBPS_EPFLUSH_OFFSET) & mask)
+           && --remaining) {}
+    if (!remaining) return 1;
+    remaining = EYE_USB_REARM_POLL_LIMIT;
+    while ((XUsbPs_ReadReg(u->Config.BaseAddress, XUSBPS_EPPRIME_OFFSET) & mask)
            && --remaining) {}
     if (!remaining) return 1;
     XUsbPs_WriteReg(u->Config.BaseAddress, XUSBPS_EPCOMPL_OFFSET, mask);

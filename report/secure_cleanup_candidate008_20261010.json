@@ -1,0 +1,192 @@
+{
+  "schema": "eyepqc-secure-cleanup-candidate-summary-v1",
+  "date": "2026-10-10",
+  "candidate": "g6_security_cleanup_20261010_candidate008_retry1",
+  "claim_scope": "limited_functional_regression_and_named_DDR_object_readback",
+  "production_security_pass": false,
+  "build": {
+    "workspace": "build/vitis/g6_security_cleanup_20261010_candidate008_retry1",
+    "variant": "g6-secure-buffer-cleanup-usb-bounded-candidate-v1",
+    "source_g6_sha256": "5782693f71c4ba8b4a439ced710112a5763fbf09b1e75a3009baa8ce1b52f1e2",
+    "elf_sha256": "ebfb820b220de668b88db5634cfcb4feb1848dd08db006d3bcdaa5faee78ec03",
+    "manifest_sha256": "8ad4b401f4a5c9604442267571bd9c8bf557a7fc79a154a3a15456d4a9c28ad3",
+    "xsa_sha256": "46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024",
+    "derived_from_accepted_manifest_sha256": "8363a42eba7ec44525feadcf6c4120022dcf06a22fe5b440601d05ada29238db",
+    "verify_only": {
+      "passed": true,
+      "verified_entries": 186
+    },
+    "build_manifest_board_validated": false
+  },
+  "offline_tests": {
+    "real_cleanup_header_c_harness": "passed",
+    "g6_auto_recovery_unittest": {
+      "passed": 9,
+      "failed": 0
+    },
+    "usb_bounded_sdk_mock": {
+      "passed": 3,
+      "failed": 0
+    },
+    "control_dispatch_c_harness": "passed",
+    "canonical_g6_manual_arm_compile_link": {
+      "passed": true,
+      "elf": "build/vitis/canonical_g6_compat_20261010/obj/g6_canonical_compat.elf",
+      "elf_sha256": "9280fba70112616c018364bf4753d9e3ac775cee0211467aa597253643768a49",
+      "official_vitis_launcher_verified": false
+    }
+  },
+  "board_stop_test": {
+    "status": "passed_limited_scope",
+    "source_result": "data/captures/g6_usb_20261010_183800_671508/result.json",
+    "source_result_sha256": "90f44f9966e4fa52216b28fbca1e42e06e3e3ee2db4259cc5c1271b8fd948900",
+    "capture_log": "build/continuation_20261010/cleanup008_stop.stdout.log",
+    "capture_log_sha256": "d46112c95bf055340ed6d60ec4a6ae917974b802ff68dfa5ca3d1448042f6c47",
+    "session_seconds": 2.9215789000008954,
+    "frames": 140,
+    "fps": 47.57701392214922,
+    "cleanup_diag": {
+      "stage": 6,
+      "result": 0,
+      "route_mode": 3,
+      "dma_reset_status": 0,
+      "capture_rx_status": 1,
+      "crypto_rx_status": 1,
+      "crypto_tx_status": 1,
+      "gcm_status": 0,
+      "usb_quiesce_status": 0,
+      "usb_flush_status": 0,
+      "usb_prime_status": 0,
+      "usb_completion_status": 0,
+      "usb_poll_limit": 256,
+      "usb_flush_polls": 1,
+      "usb_prime_polls": 1,
+      "usb_rebuild_status": 0
+    },
+    "readback": {
+      "scope": "named_PS_readable_DDR_ranges_only",
+      "all_zero": true,
+      "total_bytes": 135168,
+      "objects": [
+        { "name": "g3_frame", "address": "0x001319c0", "bytes": 65600, "zero_or": 0 },
+        { "name": "g3_sealed", "address": "0x00120fc0", "bytes": 68096, "zero_or": 0 },
+        { "name": "tx", "address": "0x00141bc0", "bytes": 1472, "zero_or": 0 }
+      ],
+      "pl_gcm_full_readback": false,
+      "whole_device_zeroization_proven": false
+    }
+  },
+  "host_exit_first_round": {
+    "status": "passed_single_round_only",
+    "source_result": "data/captures/g6_usb_20261010_184028_144519/result.json",
+    "source_result_sha256": "fef63ae615d65f2e27dab4a525809e9979e6ffc3da1ddbd13509d1d712c65fd0",
+    "frames": 93,
+    "health_counters_before_after": {
+      "fatal": 0,
+      "control": 0,
+      "transport": 0
+    },
+    "raw_transport_diagnostic": {
+      "send_status": 4,
+      "phase": 4,
+      "usb_ready": 0,
+      "connection_epoch": 14,
+      "transport_error_count": 0
+    },
+    "health_snapshots": [
+      {
+        "path": "build/continuation_20261010/health008_before_exit.stdout.log",
+        "sha256": "9464b2d16ed5b95144237da4663e6310b6525bba1a30d91b8e11d8f6fb14c56e"
+      },
+      {
+        "path": "build/continuation_20261010/health008_after_one.stdout.log",
+        "sha256": "5c672f2a5a5d6b1132dc0fb8abab30491e7502bb869af28e5316dd02484abde8"
+      }
+    ],
+    "expanded_20_round_batch": {
+      "status": "failed",
+      "attempts_required": 20,
+      "attempts_passed_before_failure": 2,
+      "failed_trial": 3,
+      "failed_stage": "receiver_terminated",
+      "receiver_exit_code": 1,
+      "failure_observation": "G6 control response timeout during recovery receiver handshake; root cause under investigation",
+      "batch_summary": "report/g7_runs/g7_batch_receiver_exit_20261010_183956_107_2a94b9ed/batch_summary.json",
+      "batch_summary_sha256": "3acfc7d12b99c18db66870cd1e5d9acf406dff7ee9143dbb7a28c07126cb6272",
+      "trial_03_stderr": "report/g7_runs/g7_batch_receiver_exit_20261010_183956_107_2a94b9ed/trial_03_try01_recovery.stderr.log",
+      "trial_03_stderr_sha256": "37bf51f9ebb99d9319aec90ed08e7608a8b8260fc2ebafd7aefee8ba68809e14",
+      "post_failure_health": {
+        "path": "build/continuation_20261010/health008_after_failure_retry.stdout.log",
+        "sha256": "b0d376157c466a081d47645821824888e8f5a991b8a1fc8bdeab8a4b3c715fdc",
+        "status": 1,
+        "fatal_count": 0,
+        "control_error_count": 0,
+        "transport_error_count": 0,
+        "raw_send_status": 4,
+        "raw_resume_status": 0,
+        "raw_usb_ready": 0,
+        "raw_connection_epoch": 24,
+        "raw_last_successful_frame_id": 4
+      },
+      "post_failure_cleanup_readback": {
+        "path": "build/continuation_20261010/cleanup008_after_failure.stdout.log",
+        "sha256": "269225c236bedc4a9c6fc938871ace457e8dda9bb95e87fd13d3039aed165f4a",
+        "all_named_DDR_ranges_zero": true,
+        "total_bytes": 135168,
+        "cleanup_stage": 6,
+        "cleanup_result": 0
+      },
+      "board_health_investigation": "in_progress"
+    }
+  },
+  "rekey_bad_finished_test": {
+    "status": "failed_after_first_session",
+    "source_result": "data/captures/g6_usb_20261010_184555_821078/result.json",
+    "source_result_sha256": "cebc4f8cfa170de9d8fcb662b8acc439167597eed14bb6417b7644f83b7ac1e6",
+    "jtag_reload": false,
+    "bad_finished_rejected": true,
+    "first_session_frames": 140,
+    "first_session_fps": 47.45332351132168,
+    "second_hello_ack_result": "control_response_timeout",
+    "overall_dual_session_pass": false,
+    "post_timeout_health": {
+      "path": "build/continuation_20261010/health008_after_rekey_timeout.stdout.log",
+      "sha256": "c3b71a20bcf30f4cadbe5c5b6ae4390d6bc46b0b9d0c7a874b4d85ad2009e1e4",
+      "status": 2,
+      "fatal_count": 1,
+      "control_error_count": 1,
+      "transport_error_count": 0,
+      "raw_send_status": 4,
+      "raw_resume_status": 0,
+      "raw_phase": 4,
+      "raw_usb_ready": 0,
+      "raw_connection_epoch": 24,
+      "raw_last_successful_frame_id": 140,
+      "interpretation_limit": "expected bad Finished rejection may contribute fatal/control counts; not attributable to REKEY alone"
+    },
+    "post_timeout_cleanup_readback": {
+      "path": "build/continuation_20261010/cleanup008_after_rekey_timeout.stdout.log",
+      "sha256": "269225c236bedc4a9c6fc938871ace457e8dda9bb95e87fd13d3039aed165f4a",
+      "all_named_DDR_ranges_zero": true,
+      "total_bytes": 135168,
+      "interpretation_limit": "identical to post-failure cleanup log; may reflect cleanup after later close, not necessarily the timeout path"
+    }
+  },
+  "pending": [
+    "root cause analysis for recovery receiver timeout",
+    "root cause analysis for REKEY second HELLO_ACK timeout"
+  ],
+  "historical_build_notes": {
+    "initial_prototype_failure_log_retained": false,
+    "older_candidate008_board_tested": false,
+    "board_evidence_applies_to": "candidate008_retry1_only"
+  },
+  "not_proven": [
+    "PL GCM internal full readback",
+    "CPU registers and compiler spills",
+    "all caches and memory outside the three named DDR ranges",
+    "power loss or hard-reset cleanup",
+    "trusted entropy and production provisioning",
+    "production key storage, rotation, and destruction"
+  ]
+}

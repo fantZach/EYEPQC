@@ -25,6 +25,7 @@ static int inject_setup_during_prepare;
 static int inject_after_first_flush;
 static int fail_out_flush;
 static int fail_in_flush;
+static int prime_stuck;
 static int fail_out_prime;
 static int fail_send;
 static int send_completes_immediately;
@@ -167,7 +168,7 @@ static void fixture_reset(void)
 
 	inject_setup_during_prepare = 0;
 	inject_after_first_flush = 0;
-	fail_out_flush = fail_in_flush = fail_out_prime = fail_send = 0;
+	fail_out_flush = fail_in_flush = fail_out_prime = fail_send = prime_stuck = 0;
 	send_completes_immediately = 1;
 	setup_reads = prime_out_count = prime_in_count = 0U;
 	flush_out_count = flush_in_count = disable_count = enable_count = 0U;
@@ -211,7 +212,8 @@ u32 XUsbPs_ReadReg(UINTPTR base, u32 offset)
 			regs[index] = 0U;
 		return value;
 	}
-	if (offset == XUSBPS_EPPRIME_OFFSET && !fail_out_flush && !fail_in_flush)
+	if (offset == XUSBPS_EPPRIME_OFFSET && !fail_out_flush && !fail_in_flush &&
+	    !prime_stuck)
 		regs[index] = 0U;
 	return regs[index];
 }
@@ -332,16 +334,18 @@ void XUsbPs_EpFlush(XUsbPs *instance, u8 ep, u8 direction)
 
 void XUsbPs_EpDisable(XUsbPs *instance, u8 ep, u8 direction)
 {
-	assert(instance == &usb && ep == 0U);
+	assert(instance == &usb && ep <= 2U);
 	++disable_count;
+	if (ep != 0U) return;
 	if (direction & XUSBPS_EP_DIRECTION_OUT) out_disabled = 1;
 	if (direction & XUSBPS_EP_DIRECTION_IN) in_disabled = 1;
 }
 
 void XUsbPs_EpEnable(XUsbPs *instance, u8 ep, u8 direction)
 {
-	assert(instance == &usb && ep == 0U);
+	assert(instance == &usb && ep <= 2U);
 	++enable_count;
+	if (ep != 0U) return;
 	if (direction & XUSBPS_EP_DIRECTION_OUT) out_disabled = 0;
 	if (direction & XUSBPS_EP_DIRECTION_IN) in_disabled = 0;
 }
@@ -662,6 +666,29 @@ static void test_failed_send_latches_then_next_setup_recovers(void)
 	assert(unstall_count >= 1U);
 }
 
+static void test_data_rearm_prime_busy_preserves_descriptors(void)
+{
+	const u32 mask = OUT1_BIT | IN1_BIT | (1U << 18U);
+	fixture_reset();
+	prime_stuck = 1;
+	regs[XUSBPS_EPPRIME_OFFSET / 4U] = mask;
+	out1_td[0].active = 1U;
+	out1_td[0].token = XUSBPS_dTDTOKEN_ACTIVE_MASK;
+	in1_td[0].active = 1U;
+	in1_td[0].token = XUSBPS_dTDTOKEN_ACTIVE_MASK;
+	qh_slots[2].qh.words[0] = 0x12345678U;
+	qh_slots[3].qh.words[0] = 0x87654321U;
+	assert(eye_usb_rearm_data(&usb, 0) != 0);
+	assert(regs[XUSBPS_EPFLUSH_OFFSET / 4U] == 0U);
+	assert((regs[XUSBPS_EPPRIME_OFFSET / 4U] & mask) == mask);
+	assert(regs[XUSBPS_EPCOMPL_OFFSET / 4U] == 0U);
+	assert(out1_td[0].active == 1U && out1_td[0].token == XUSBPS_dTDTOKEN_ACTIVE_MASK);
+	assert(in1_td[0].active == 1U && in1_td[0].token == XUSBPS_dTDTOKEN_ACTIVE_MASK);
+	assert(qh_slots[2].qh.words[0] == 0x12345678U);
+	assert(qh_slots[3].qh.words[0] == 0x87654321U);
+	assert(cache_invalidate_count == 0U && cache_flush_count == 0U);
+}
+
 static void test_standard_get_status_and_set_sel_error_route(void)
 {
 	XUsbPs_SetupData request;
@@ -709,6 +736,7 @@ int main(void)
 	test_failure_masks_ep0_but_dispatches_other_endpoints();
 	test_failed_send_latches_then_next_setup_recovers();
 	test_standard_get_status_and_set_sel_error_route();
+	test_data_rearm_prime_busy_preserves_descriptors();
 	puts("USB bounded generated intr/probe runtime mock: PASS 5/5");
 	return 0;
 }

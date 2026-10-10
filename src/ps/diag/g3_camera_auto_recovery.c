@@ -109,18 +109,6 @@ int g3_usb_capture(const uint8_t **data, unsigned *size)
 int g6_candidate_recover_camera(void)
 {
     g6_auto_recovery_diag.stage = 4;
-    if (reset_dma()) return 1;
-    route(1, 1);
-    memset(g3_frame, 0, sizeof g3_frame);
-    memset(g3_sealed, 0, sizeof g3_sealed);
-    volatile uint8_t *key = g3_job.key;
-    for (unsigned i = 0; i < sizeof g3_job.key; ++i) key[i] = 0;
-    volatile uint8_t *nonce_prefix = g3_job.nonce_prefix;
-    for (unsigned i = 0; i < sizeof g3_job.nonce_prefix; ++i) nonce_prefix[i] = 0;
-    Xil_DCacheFlushRange((UINTPTR)g3_frame, sizeof g3_frame);
-    Xil_DCacheFlushRange((UINTPTR)g3_sealed, sizeof g3_sealed);
-    Xil_DCacheFlushRange((UINTPTR)&g3_job, sizeof g3_job);
-    g3_usb_zeroize();
     int status = configure_camera(CAMERA_AUTO_CFG);
     g6_auto_recovery_diag.camera_status = Xil_In32(CAM_GPIO + 8);
     if (status) return status;

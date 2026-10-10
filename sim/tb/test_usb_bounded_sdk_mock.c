@@ -10,6 +10,7 @@ typedef uint8_t u8;
 #define XUSBPS_EPRDY_OFFSET 0x104U
 #define XUSBPS_EPFLUSH_OFFSET 0x108U
 #define XUSBPS_EPPRIME_OFFSET 0x10cU
+#define XUSBPS_EPCOMPL_OFFSET 0x110U
 #define XUSBPS_CMD_ATDTW_MASK 0x4000U
 #define XUSBPS_EP_DIRECTION_IN 2U
 #define XUSBPS_EPFLUSH_TX_SHIFT 16U
@@ -22,9 +23,11 @@ typedef struct { XUsbPs_EpIn In; } XUsbPs_Ep;
 typedef struct { XUsbPs_Ep Ep[1]; } XUsbPs_DeviceConfig;
 typedef struct { MockConfig Config; XUsbPs_DeviceConfig DeviceConfig; } XUsbPs;
 
-static u32 cmd_reg, ready_reg, prime_reg, flush_reg;
+static u32 cmd_reg, ready_reg, prime_reg, flush_reg, completion_reg;
 static u32 cmd_reads, epflush_reads, prime_reads;
 static int deny_tripwire, reset_preempts, flush_stuck, disabled;
+static int prime_stuck, completion_stuck;
+static u32 completion_write;
 static unsigned descriptor_sentinel = 0x51a7U;
 
 static u32 XUsbPs_ReadReg(uintptr_t base, u32 offset);
@@ -44,7 +47,11 @@ static u32 XUsbPs_ReadReg(uintptr_t base, u32 offset)
 		++epflush_reads;
 		if (!flush_stuck && epflush_reads > 1U) flush_reg = 0U;
 		return flush_reg;
-	case XUSBPS_EPPRIME_OFFSET: ++prime_reads; return prime_reg;
+	case XUSBPS_EPPRIME_OFFSET:
+		++prime_reads;
+		if (!prime_stuck && prime_reads > 1U) prime_reg = 0U;
+		return prime_reg;
+	case XUSBPS_EPCOMPL_OFFSET: return completion_reg;
 	default: assert(0); return 0;
 	}
 }
@@ -52,6 +59,11 @@ static u32 XUsbPs_ReadReg(uintptr_t base, u32 offset)
 static void XUsbPs_WriteReg(uintptr_t base, u32 offset, u32 value)
 {
 	(void)base;
+	if (offset == XUSBPS_EPCOMPL_OFFSET) {
+		completion_write |= value;
+		if (!completion_stuck) completion_reg &= ~value;
+		return;
+	}
 	assert(offset == XUSBPS_CMD_OFFSET);
 	if ((value & XUSBPS_CMD_ATDTW_MASK) && (deny_tripwire || reset_preempts)) {
 		cmd_reg = value & ~XUSBPS_CMD_ATDTW_MASK;
@@ -62,9 +74,11 @@ static void XUsbPs_WriteReg(uintptr_t base, u32 offset, u32 value)
 
 static void reset_mock(void)
 {
-	cmd_reg = ready_reg = prime_reg = flush_reg = 0U;
+	cmd_reg = ready_reg = prime_reg = flush_reg = completion_reg = 0U;
 	cmd_reads = epflush_reads = prime_reads = 0U;
 	deny_tripwire = reset_preempts = flush_stuck = disabled = 0;
+	prime_stuck = completion_stuck = 0;
+	completion_write = 0U;
 	descriptor_sentinel = 0x51a7U;
 }
 
@@ -121,6 +135,41 @@ static void test_flush_success_preserves_chain_for_terminal_disable(void)
 	assert(prime_reads > 0U);
 }
 
+static void test_secure_poll_limit_256(void)
+{
+	XUsbPs usb = {0};
+	u32 flush_polls = 0U, prime_polls = 0U;
+	reset_mock(); flush_stuck = 1;
+	assert(XUsbPs_BoundedQuiesceInEndpointWithLimit(
+		&usb, 1U, 0x00020000U, 0x00020000U, 256U,
+		&flush_polls, &prime_polls) == XST_FAILURE);
+	assert(flush_polls == 256U && prime_polls == 0U && epflush_reads == 256U);
+	reset_mock(); prime_stuck = 1; prime_reg = 0x00020000U;
+	assert(XUsbPs_BoundedQuiesceInEndpointWithLimit(
+		&usb, 1U, 0x00020000U, 0x00020000U, 256U,
+		&flush_polls, &prime_polls) == XST_FAILURE);
+	assert(flush_polls == 2U && prime_polls == 256U && prime_reads == 256U);
+	reset_mock();
+	assert(XUsbPs_BoundedQuiesceInEndpointWithLimit(
+		&usb, 1U, 0x00020000U, 0x00020000U, 256U,
+		&flush_polls, &prime_polls) == XST_SUCCESS);
+	assert(flush_polls == 2U && prime_polls == 1U &&
+	       flush_polls <= 256U && prime_polls <= 256U);
+}
+
+static void test_clear_only_old_ep1_in_completion(void)
+{
+	XUsbPs usb = {0};
+	const u32 in_mask = 1U << 17U;
+	const u32 unrelated = (1U << 16U) | 1U;
+	reset_mock(); completion_reg = in_mask | unrelated;
+	assert(XUsbPs_BoundedClearEndpointCompletion(&usb, in_mask) == XST_SUCCESS);
+	assert(completion_write == in_mask && completion_reg == unrelated);
+	reset_mock(); completion_reg = in_mask; completion_stuck = 1;
+	assert(XUsbPs_BoundedClearEndpointCompletion(&usb, in_mask) == XST_FAILURE);
+	assert(completion_write == in_mask && completion_reg == in_mask);
+}
+
 int main(void)
 {
 	test_tripwire_success();
@@ -128,6 +177,8 @@ int main(void)
 	test_reset_preempts_tripwire();
 	test_flush_failure_preserves_owned_chain();
 	test_flush_success_preserves_chain_for_terminal_disable();
+	test_secure_poll_limit_256();
+	test_clear_only_old_ep1_in_completion();
 	puts("usb bounded SDK register mocks: PASS");
 	return 0;
 }

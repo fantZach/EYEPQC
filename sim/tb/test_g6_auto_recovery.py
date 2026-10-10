@@ -8,10 +8,6 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
-spec = importlib.util.spec_from_file_location(
-    'build_g6_auto_recovery', ROOT / 'prj/build_g6_auto_recovery.py')
-builder = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(builder)
 run_spec = importlib.util.spec_from_file_location(
     'run_g7_auto_recovery', ROOT / 'prj/run_g7_auto_recovery.py')
 runner = importlib.util.module_from_spec(run_spec)
@@ -62,9 +58,9 @@ class G6AutoRecovery(unittest.TestCase):
         recovery = source.split('g6_auto_recovery_diag.recovery_status =', 1)[1]
         self.assertLess(recovery.index('g6_candidate_recover_camera()'),
                         recovery.index('eye_session_error(&session)'))
-        self.assertIn('g3_usb_zeroize();', recovery)
+        self.assertIn('secure_cleanup()', recovery)
         self.assertIn('frame_id = 0;', recovery)
-        self.assertIn('usb_cdc_clear_control_queue()', recovery)
+        self.assertNotIn('usb_cdc_clear_control_queue()', recovery)
         self.assertIn('phase = WAIT_HELLO;', recovery)
         self.assertIn('return G6_AUTO_RECOVERED;', recovery)
         self.assertIn('if (g6_auto_recovery_diag.recovery_status)', recovery)
@@ -72,41 +68,51 @@ class G6AutoRecovery(unittest.TestCase):
         self.assertIn('return 16U;', recovery)
         self.assertNotIn('g6_auto_recovery_diag.state = 2;', recovery)
         usb = (ROOT / 'prj/usb_probe_auto_recovery.c').read_text(encoding='utf-8')
-        self.assertIn('eye_usb_rearm_data(&usb, 0)', usb)
-        self.assertIn('rx_reset();', usb)
+        self.assertIn('XUsbPs_BoundedQuiesceInEndpointWithLimit', usb)
+        self.assertIn('XUsbPs_BoundedClearEndpointCompletion', usb)
+        self.assertIn('eye_usb_rebuild_direction(u, 1U, XUSBPS_EP_DIRECTION_IN)', usb)
         camera = (ROOT / 'src/ps/diag/g3_camera_auto_recovery.c').read_text(encoding='utf-8')
         reset = camera.split('int g6_candidate_recover_camera(void)', 1)[1]
-        for evidence in ('reset_dma()', 'g3_usb_zeroize()', 'g3_job.key',
-                         'g3_job.nonce_prefix', 'Xil_DCacheFlushRange',
-                         'configure_camera(CAMERA_AUTO_CFG)'):
+        for evidence in ('configure_camera(CAMERA_AUTO_CFG)', 'route(1, 0)',
+                         'g6_auto_recovery_diag.stage = 5;'):
             self.assertIn(evidence, reset)
-        self.assertNotIn('volatile uint8_t *secret = g3_job.key', reset)
-        self.assertIn('for (unsigned i = 0; i < sizeof g3_job.key; ++i) key[i] = 0;', reset)
-        self.assertIn('for (unsigned i = 0; i < sizeof g3_job.nonce_prefix; ++i)', reset)
+        g6 = (ROOT / 'src/ps/src/g6_usb.c').read_text(encoding='utf-8')
+        status14 = g6.split('if (status == 14U)', 1)[1].split('if (status == 15U)', 1)[0]
+        self.assertLess(status14.index('secure_cleanup()'),
+                        status14.index('g6_candidate_recover_camera()'))
+        self.assertIn('g3_usb_cleanup_stop_dma_and_clear_gcm', g6)
+        self.assertIn('g3_usb_cleanup_wipe_frame_and_sealed', g6)
 
-    def test_generated_g6_loop_handles_guard_once_without_second_flush(self):
-        with tempfile.TemporaryDirectory() as temp:
-            output = Path(temp) / 'candidate.c'
-            builder.generate_candidate_usb(
-                ROOT / 'src/ps/src/g6_usb.c',
-                ROOT / 'src/ps/diag/g6_usb_auto_recovery_tail.inc', output)
-            generated = output.read_text(encoding='utf-8')
-        branch = generated.split('if (status == G6_AUTO_RECOVERED)', 1)[1].split(
-            'if (status)', 1)[0]
-        self.assertIn('g6_capture_errors', branch)
-        self.assertIn('g6_dropped', branch)
-        self.assertIn('g6_auto_recovery_diag.state = 2;', branch)
-        error = generated.split('if (status == 16U)', 1)[1].split(
-            'if (++capture_errors', 1)[0]
-        self.assertIn('fail_closed();', error)
-        self.assertNotIn('g3_usb_flush', error)
-        tail = (ROOT / 'src/ps/diag/g6_usb_auto_recovery_tail.inc').read_text(encoding='utf-8')
-        self.assertIn('G6_AUTO_MALFORMED_DROP_LIMIT',
-                      (ROOT / 'src/ps/include/g6_auto_recovery.h').read_text(encoding='utf-8'))
-        self.assertIn('g6_auto_action_for_status', tail)
-        self.assertIn('g6_candidate_recover_camera()', generated)
-        self.assertIn('g6_transport_failure_diag.resume_status', generated)
-        self.assertIn('g6_transport_failure_diag.last_successful_frame_id', generated)
+    def test_candidate_cleanup_integration_preserves_auto_recovery_gates(self):
+        source = (ROOT / 'src/ps/src/g6_usb.c').read_text(encoding='utf-8')
+        self.assertIn('#ifdef G6_SECURE_CLEANUP', source)
+        status14 = source.split('if (status == 14U)', 1)[1].split('if (status == 15U)', 1)[0]
+        self.assertLess(status14.index('g6_auto_recovery_diag.state = 1U'),
+                        status14.index('secure_cleanup()'))
+        self.assertIn('g6_candidate_recover_camera()', status14)
+        self.assertIn('g6_auto_recovery_diag.state = 2U;', status14)
+        self.assertIn('g6_auto_recovery_diag.state = 3U;', status14)
+        malformed = source.split('if (status == 15U)', 1)[1].split(
+            'g6_auto_recovery_diag.state = 3U;\n            fail_closed();', 1)[0]
+        self.assertIn('g6_auto_action_for_status', malformed)
+        self.assertIn('G6_AUTO_ACTION_FAIL_CLOSED', malformed)
+        self.assertIn('secure_cleanup() || g6_candidate_recover_camera()', malformed)
+        transport = source.split('g6_secure_expected_usb_disconnect(', 1)[1].split('continue;', 1)[0]
+        self.assertIn('send_epoch', transport)
+        self.assertIn('usb_cdc_ready()', transport)
+        self.assertIn('g6_transport_failure_diag.transport_error_count', source)
+        # This candidate-only source path must leave ordinary G6 links free of
+        # the candidate wrapper symbol and new G3 cleanup APIs.
+        self.assertIn('#ifdef G6_SECURE_CLEANUP\nint usb_cdc_secure_cleanup_tx', source)
+        fail_closed = source.split('static void fail_closed(void)', 1)[1].split(
+            'static void retire_disconnected_session(void)', 1)[0]
+        disconnect = source.split('static void retire_disconnected_session(void)', 1)[1].split(
+            'static int handle_control', 1)[0]
+        stop = source.split('if (phase == STREAM && (type == EYE_STOP', 1)[1].split(
+            '\n    return 1;', 1)[0]
+        for canonical_path in (fail_closed, disconnect, stop):
+            self.assertIn('#else', canonical_path)
+            self.assertIn('g3_usb_zeroize();', canonical_path)
 
     def test_hardware_gate_requires_counters_and_new_session_evidence(self):
         values = {'magic': 0x47415231, 'state': 2, 'stage': 5, 'mode': 1,

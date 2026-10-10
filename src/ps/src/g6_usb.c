@@ -8,6 +8,10 @@
 #include "session.h"
 #include "protocol.h"
 #include "g6_control_dispatch.h"
+#ifdef G6_SECURE_CLEANUP
+#include "g6_auto_recovery.h"
+#include "g6_secure_cleanup.h"
+#endif
 #define MLK_CONFIG_PARAMETER_SET 512
 #define MLK_CONFIG_NAMESPACE_PREFIX eye_mlkem
 #define MLK_CONFIG_NO_RANDOMIZED_API
@@ -26,6 +30,11 @@ int g3_usb_capture(const uint8_t **data, unsigned *size);
 int g3_usb_flush(void);
 int g3_usb_resume(void);
 void g3_usb_zeroize(void);
+#ifdef G6_SECURE_CLEANUP
+int g3_usb_cleanup_stop_dma_and_clear_gcm(void);
+int g3_usb_cleanup_wipe_frame_and_sealed(void);
+int g6_candidate_recover_camera(void);
+#endif
 int g3_usb_encrypt(const uint8_t *plain, unsigned size, const uint8_t aad[40],
                    const uint8_t key[16], uint32_t epoch, uint64_t sequence,
                    const uint8_t **sealed);
@@ -33,6 +42,9 @@ int usb_cdc_init(void);
 int usb_cdc_ready(void);
 uint32_t usb_cdc_connection_epoch(void);
 int usb_cdc_send(uint8_t *data, uint32_t size);
+#ifdef G6_SECURE_CLEANUP
+int usb_cdc_secure_cleanup_tx(uint8_t *buffer, unsigned capacity);
+#endif
 int usb_cdc_take_control(uint8_t *out, uint32_t capacity);
 
 volatile uint8_t g6_sk_load[1632] __attribute__((aligned(64)));
@@ -48,9 +60,17 @@ volatile uint32_t g6_fatal_errors __attribute__((aligned(64)));
 volatile uint32_t g6_disconnects __attribute__((aligned(64)));
 volatile uint32_t g6_fault_inject __attribute__((aligned(64)));
 volatile uint32_t g6_injected_capture_errors __attribute__((aligned(64)));
+#ifdef G6_SECURE_CLEANUP
+volatile uint32_t g6_auto_recovery_request __attribute__((aligned(64)));
+volatile struct g6_transport_failure_diag g6_transport_failure_diag
+    __attribute__((aligned(64)));
+#endif
 
 static uint8_t private_key[1632], random_seed[32];
-static uint8_t hello[48], ack[48], tx[3 + 1456] __attribute__((aligned(64)));
+static uint8_t hello[48], ack[48], tx[1472] __attribute__((aligned(64)));
+_Static_assert(sizeof tx == 1472U && (sizeof tx & 63U) == 0U &&
+               sizeof tx >= 43U + 1400U + 16U,
+               "G6 TX buffer cleanup capacity");
 static struct eye_session session;
 static uint64_t random_counter;
 static uint32_t frame_id;
@@ -65,6 +85,28 @@ static void clear_handshake_cache(void) {
     wipe(hello, sizeof hello);
     wipe(ack, sizeof ack);
 }
+#ifdef G6_SECURE_CLEANUP
+static int cleanup_stop_dma_and_gcm(void *context) {
+    (void)context;
+    return g3_usb_cleanup_stop_dma_and_clear_gcm();
+}
+static int cleanup_wipe_frame_and_sealed(void *context) {
+    (void)context;
+    return g3_usb_cleanup_wipe_frame_and_sealed();
+}
+static int cleanup_usb_tx(void *context) {
+    (void)context;
+    return usb_cdc_secure_cleanup_tx(tx, sizeof tx);
+}
+static const struct g6_secure_cleanup_ops cleanup_ops = {
+    cleanup_stop_dma_and_gcm,
+    cleanup_wipe_frame_and_sealed,
+    cleanup_usb_tx
+};
+static int secure_cleanup(void) {
+    return g6_secure_cleanup_run(NULL, &cleanup_ops, &g6_secure_cleanup_diag);
+}
+#endif
 static void be16(uint8_t *p, unsigned n) { p[0] = n >> 8; p[1] = n; }
 static void be64(uint8_t *p, uint64_t n) {
     for (unsigned i = 0; i < 8; ++i) p[i] = n >> (56 - 8*i);
@@ -83,13 +125,37 @@ static int board_random(uint8_t out[32], const uint8_t host_random[32]) {
     wipe(input, sizeof input);
     return status;
 }
-static void fail_closed(void) {
-    g3_usb_zeroize();
+static void mark_fault(void) {
     eye_session_error(&session);
     clear_handshake_cache();
     phase = FAULT;
     ++g6_fatal_errors;
     ++g6_status;
+}
+static void fail_closed(void) {
+#ifdef G6_SECURE_CLEANUP
+    (void)secure_cleanup();
+#else
+    g3_usb_zeroize();
+#endif
+    mark_fault();
+}
+static void retire_disconnected_session(void) {
+#ifdef G6_SECURE_CLEANUP
+    if (secure_cleanup()) {
+        mark_fault();
+    } else {
+        eye_session_error(&session);
+        clear_handshake_cache();
+        phase = WAIT_HELLO;
+    }
+#else
+    g3_usb_zeroize();
+    eye_session_error(&session);
+    clear_handshake_cache();
+    phase = WAIT_HELLO;
+#endif
+    ++g6_disconnects;
 }
 static int handle_control(const uint8_t *message, unsigned length) {
     uint8_t type, body_ack[36] = {1, 1, 0, 1};
@@ -134,7 +200,14 @@ static int handle_control(const uint8_t *message, unsigned length) {
     }
     if (phase == STREAM && (type == EYE_STOP || type == EYE_REKEY) && length == 52) {
         if (eye_session_command(&session, message)) return 1;
+#ifdef G6_SECURE_CLEANUP
+        if (secure_cleanup()) {
+            mark_fault();
+            return 0;
+        }
+#else
         g3_usb_zeroize();
+#endif
         clear_handshake_cache();
         phase = WAIT_HELLO;
         return 0;
@@ -205,22 +278,15 @@ int main(void) {
     for (;;) {
         uint32_t current_epoch = usb_cdc_connection_epoch();
         if (current_epoch != connection_epoch) {
-            g3_usb_zeroize();
-            eye_session_error(&session);
-            clear_handshake_cache();
-            phase = WAIT_HELLO;
+            retire_disconnected_session();
             was_connected = capture_errors = 0;
             connection_epoch = current_epoch;
-            ++g6_disconnects;
+            continue;
         }
         if (!usb_cdc_ready()) {
             if (was_connected) {
-                g3_usb_zeroize();
-                eye_session_error(&session);
-                clear_handshake_cache();
-                phase = WAIT_HELLO;
+                retire_disconnected_session();
                 was_connected = 0;
-                ++g6_disconnects;
             }
             continue;
         }
@@ -228,8 +294,14 @@ int main(void) {
         if (phase == FAULT) continue;
         if (eye_g6_control_dispatch(control, sizeof control,
                                     take_control, process_control, NULL) < 0) {
-            ++g6_control_errors;
-            fail_closed();
+            if (!usb_cdc_ready() || usb_cdc_connection_epoch() != connection_epoch) {
+                retire_disconnected_session();
+                was_connected = 0;
+                connection_epoch = usb_cdc_connection_epoch();
+            } else {
+                ++g6_control_errors;
+                fail_closed();
+            }
             continue;
         }
         if (phase != STREAM) continue;
@@ -245,14 +317,84 @@ int main(void) {
         if (status) {
             ++g6_capture_errors;
             ++g6_dropped;
+#ifdef G6_SECURE_CLEANUP
+            if (status == 16U) {
+                g6_auto_recovery_diag.state = 3U;
+                fail_closed();
+                continue;
+            }
+            if (status == 14U) {
+                g6_auto_recovery_diag.state = 1U;
+                g6_auto_recovery_diag.recovery_status = (uint32_t)(
+                    secure_cleanup() ? 1 : g6_candidate_recover_camera());
+                if (g6_auto_recovery_diag.recovery_status) {
+                    g6_auto_recovery_diag.state = 3U;
+                    mark_fault();
+                    continue;
+                }
+                g6_auto_recovery_diag.state = 2U;
+                eye_session_error(&session);
+                clear_handshake_cache();
+                frame_id = 0U;
+                phase = WAIT_HELLO;
+                capture_errors = 0;
+                continue;
+            }
+            if (status == 15U) {
+                ++g6_auto_recovery_diag.malformed_drop_count;
+                if (g6_auto_action_for_status(status,
+                        g6_auto_recovery_diag.malformed_drop_count) ==
+                    G6_AUTO_ACTION_FAIL_CLOSED) {
+                    g6_auto_recovery_diag.state = 3U;
+                    fail_closed();
+                } else if (secure_cleanup() || g6_candidate_recover_camera()) {
+                    g6_auto_recovery_diag.state = 3U;
+                    mark_fault();
+                }
+                continue;
+            }
+            g6_auto_recovery_diag.state = 3U;
+            fail_closed();
+            continue;
+#endif
             if (++capture_errors > 10 || g3_usb_flush()) fail_closed();
             continue;
         }
+#ifdef G6_SECURE_CLEANUP
+        g6_auto_recovery_diag.malformed_drop_count = 0U;
+#endif
         capture_errors = 0;
+#ifdef G6_SECURE_CLEANUP
+        uint32_t send_epoch = usb_cdc_connection_epoch();
+        status = send_frame(jpeg, size);
+        int resume_status = g3_usb_resume();
+        if (!status && !resume_status)
+            g6_transport_failure_diag.last_successful_frame_id = frame_id - 1U;
+        if (resume_status || status) {
+            g6_transport_failure_diag.send_status = (uint32_t)status;
+            g6_transport_failure_diag.resume_status = (uint32_t)resume_status;
+            g6_transport_failure_diag.phase = (uint32_t)phase;
+            g6_transport_failure_diag.usb_ready = (uint32_t)usb_cdc_ready();
+            g6_transport_failure_diag.connection_epoch = usb_cdc_connection_epoch();
+            if (g6_secure_expected_usb_disconnect(
+                    (unsigned)status, (unsigned)resume_status,
+                    (unsigned)usb_cdc_ready(), send_epoch,
+                    usb_cdc_connection_epoch())) {
+                retire_disconnected_session();
+                was_connected = 0;
+                connection_epoch = usb_cdc_connection_epoch();
+                continue;
+            }
+            g6_transport_failure_diag.transport_error_count = g6_transport_errors + 1U;
+            ++g6_transport_errors;
+            fail_closed();
+        }
+#else
         status = send_frame(jpeg, size);
         if (g3_usb_resume() || status) {
             ++g6_transport_errors;
             fail_closed();
         }
+#endif
     }
 }

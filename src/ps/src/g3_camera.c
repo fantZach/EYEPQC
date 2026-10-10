@@ -12,6 +12,9 @@
 #include "xuartps.h"
 #include "sleep.h"
 #include "bsp_compat.h"
+#ifdef G6_SECURE_CLEANUP
+#include "g6_secure_cleanup.h"
+#endif
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -101,8 +104,8 @@ static void zeroize(void)
 #endif
 static int configure_camera(unsigned cfg)
 {
+    route(3, 1);
     if (reset_dma()) return 10;
-    route(1, 1);
     Xil_Out32(CAM_GPIO, cfg | 0x80000000U); usleep(10000);
     Xil_Out32(CAM_GPIO, cfg | 1U); usleep(10); Xil_Out32(CAM_GPIO, cfg);
     XTime start;
@@ -232,7 +235,7 @@ static unsigned run(void)
         g3_job.overflows = stat(3, 1, 0);
         g3_job.sent = stat(5, 1, 0);
     }
-    route(1, 1);
+    route(3, 1);
     if (!status && reset_dma()) status = 29;
     g3_job.frame_address = (uint32_t)(UINTPTR)g3_frame;
     g3_job.sealed_address = (uint32_t)(UINTPTR)g3_sealed;
@@ -248,7 +251,7 @@ int main(void)
     usleep(1);
     Xil_Out32(CAM_GPIO + 4, 0); Xil_Out32(CAM_GPIO + 12, 0xffffffffU);
     Xil_Out32(DMA_GPIO + 4, 0); Xil_Out32(DMA_GPIO + 12, 0xffffffffU);
-    route(1, 1);
+    route(3, 1);
     XAxiDma_Config *cc = eye_dma_config(CAP_BASE);
     XAxiDma_Config *dc = eye_dma_config(CRYPTO_BASE);
     if (stat(0, 1, 1) != 0x4d303531U || !cc || !dc ||
@@ -279,6 +282,11 @@ int main(void)
     }
 }
 #else
+#ifdef G6_SECURE_CLEANUP
+volatile struct g6_secure_cleanup_diag g6_secure_cleanup_diag
+    __attribute__((aligned(64))) = {.magic = G6_SECURE_CLEANUP_MAGIC};
+#endif
+
 int g3_usb_init(unsigned camera_cfg)
 {
     XUartPs uart;
@@ -313,7 +321,7 @@ int g3_usb_capture(const uint8_t **data, unsigned *size)
 }
 int g3_usb_flush(void)
 {
-    route(1, 1);
+    route(3, 1);
     if (reset_dma()) return 1;
     route(1, 0);
     return 0;
@@ -325,6 +333,79 @@ int g3_usb_resume(void)
     return 0;
 }
 void g3_usb_zeroize(void) { Xil_Out32(GCM_BASE, 2); }
+#ifdef G6_SECURE_CLEANUP
+static int cleanup_dma_status_safe(uint32_t status)
+{
+    return g6_secure_dma_channel_stopped(status,
+                                          XAXIDMA_ERR_ALL_MASK | XAXIDMA_IRQ_ERROR_MASK,
+                                          XAXIDMA_HALTED_MASK,
+                                          XAXIDMA_IDLE_MASK);
+}
+int g3_usb_cleanup_stop_dma_and_clear_gcm(void)
+{
+    volatile struct g6_secure_cleanup_diag *diag = &g6_secure_cleanup_diag;
+    XTime start;
+    /* Mode 3 makes camera/test valid and ready paths inactive; mode 1 does not. */
+    route(3, 1);
+    diag->route_mode = 3U;
+    __asm__ volatile("dsb sy" ::: "memory");
+    int reset_status = reset_dma();
+    diag->dma_reset_status = (uint32_t)reset_status;
+    if (reset_status) return 1;
+
+    uint32_t capture_status = XAxiDma_ReadReg(CAP_BASE,
+        XAXIDMA_RX_OFFSET + XAXIDMA_SR_OFFSET);
+    uint32_t crypto_rx_status = XAxiDma_ReadReg(CRYPTO_BASE,
+        XAXIDMA_RX_OFFSET + XAXIDMA_SR_OFFSET);
+    uint32_t crypto_tx_status = XAxiDma_ReadReg(CRYPTO_BASE,
+        XAXIDMA_TX_OFFSET + XAXIDMA_SR_OFFSET);
+    diag->capture_rx_status = capture_status;
+    diag->crypto_rx_status = crypto_rx_status;
+    diag->crypto_tx_status = crypto_tx_status;
+    if (!cleanup_dma_status_safe(capture_status) ||
+        !cleanup_dma_status_safe(crypto_rx_status) ||
+        !cleanup_dma_status_safe(crypto_tx_status)) return 2;
+
+    /* DMA is proven stopped before aborting GCM state. */
+    g3_usb_zeroize();
+    XTime_GetTime(&start);
+    for (;;) {
+        uint32_t status = Xil_In32(GCM_BASE + 4U);
+        diag->gcm_status = status;
+        if (g6_secure_gcm_status_cleared(status)) break;
+        if (elapsed_us(start) >= 100000U) return 3;
+    }
+    return 0;
+}
+
+static int cleanup_wipe_range(uint8_t *memory, unsigned length, uint32_t *zero_or)
+{
+    Xil_DCacheInvalidateRange((UINTPTR)memory, length);
+    g6_secure_wipe_bytes(memory, length);
+    Xil_DCacheFlushRange((UINTPTR)memory, length);
+    __asm__ volatile("dsb sy" ::: "memory");
+    Xil_DCacheInvalidateRange((UINTPTR)memory, length);
+    *zero_or = g6_secure_zero_or(memory, length);
+    return *zero_or == 0U ? 0 : 1;
+}
+
+int g3_usb_cleanup_wipe_frame_and_sealed(void)
+{
+    volatile struct g6_secure_cleanup_diag *diag = &g6_secure_cleanup_diag;
+    uint32_t frame_or = 0, sealed_or = 0;
+    diag->frame_address = (uint32_t)(UINTPTR)g3_frame;
+    diag->frame_capacity = sizeof g3_frame;
+    diag->sealed_address = (uint32_t)(UINTPTR)g3_sealed;
+    diag->sealed_capacity = sizeof g3_sealed;
+    int frame_status = cleanup_wipe_range(g3_frame, sizeof g3_frame, &frame_or);
+    diag->frame_zero_or = frame_or;
+    if (frame_status) return 1;
+    int sealed_status = cleanup_wipe_range(g3_sealed, sizeof g3_sealed, &sealed_or);
+    diag->sealed_zero_or = sealed_or;
+    if (sealed_status) return 2;
+    return 0;
+}
+#endif
 int g3_usb_encrypt(const uint8_t *plain, unsigned size, const uint8_t aad[40],
                    const uint8_t key[16], uint32_t epoch, uint64_t sequence,
                    const uint8_t **sealed)

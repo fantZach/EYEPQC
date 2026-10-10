@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / 'prj'))
 import build_software as base
 
 CPU_FLAGS = ['-mcpu=cortex-a9', '-mfpu=vfpv3', '-mfloat-abi=hard']
-VARIANT = 'g6-auto-camera-dma-recovery-usb-bounded-candidate-v4'
+VARIANT = 'g6-secure-buffer-cleanup-usb-bounded-candidate-v1'
 LOOP_OLD = '''        if (status) {
             ++g6_capture_errors;
             ++g6_dropped;
@@ -34,7 +34,18 @@ LOOP_NEW = '''        if (status == G6_AUTO_RECOVERED) {
                 fail_closed();
                 continue;
             }
-            if (++capture_errors > 10 || g3_usb_flush()) fail_closed();
+            if (status == 15U) {
+                if (secure_cleanup() || g6_candidate_recover_camera()) {
+                    mark_fault();
+                    continue;
+                }
+                eye_session_error(&session);
+                clear_handshake_cache();
+                phase = WAIT_HELLO;
+                capture_errors = 0;
+                continue;
+            }
+            fail_closed();
             continue;
         }'''
 TRANSPORT_OLD = '''        capture_errors = 0;
@@ -44,6 +55,7 @@ TRANSPORT_OLD = '''        capture_errors = 0;
             fail_closed();
         }'''
 TRANSPORT_NEW = '''        capture_errors = 0;
+        uint32_t send_epoch = usb_cdc_connection_epoch();
         status = send_frame(jpeg, size);
         int resume_status = g3_usb_resume();
         if (!status && !resume_status)
@@ -54,6 +66,15 @@ TRANSPORT_NEW = '''        capture_errors = 0;
             g6_transport_failure_diag.phase = (uint32_t)phase;
             g6_transport_failure_diag.usb_ready = (uint32_t)usb_cdc_ready();
             g6_transport_failure_diag.connection_epoch = usb_cdc_connection_epoch();
+            if (g6_secure_expected_usb_disconnect(
+                    (unsigned)status, (unsigned)resume_status,
+                    (unsigned)usb_cdc_ready(), send_epoch,
+                    usb_cdc_connection_epoch())) {
+                retire_disconnected_session();
+                was_connected = 0;
+                connection_epoch = usb_cdc_connection_epoch();
+                continue;
+            }
             g6_transport_failure_diag.transport_error_count = g6_transport_errors + 1U;
             ++g6_transport_errors;
             fail_closed();
@@ -151,7 +172,8 @@ def pin_bsp_inputs(bsp_workspace, workspace):
     return target_cpu, inputs
 
 
-def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
+def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha256,
+                  bsp_workspace=None):
     bsp_workspace = Path(bsp_workspace or workspace).resolve()
     with zipfile.ZipFile(xsa) as archive:
         names = set(archive.namelist())
@@ -169,17 +191,28 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
     if base_data.get('xsa_sha256') != xsa_hash:
         raise RuntimeError('XSA does not match accepted usbfix3 G6 manifest')
     baseline_usb = ROOT / 'src/ps/src/g6_usb.c'
-    expected_usb = base_data.get('sources', {}).get('src/ps/src/g6_usb.c')
-    if not expected_usb or digest(baseline_usb) != expected_usb:
-        raise RuntimeError('Baseline G6 USB source changed from accepted manifest')
+    current_usb_sha256 = digest(baseline_usb)
+    if current_usb_sha256 != expected_g6_source_sha256:
+        raise RuntimeError('G6 security source differs from explicit expected SHA-256')
+    source_baseline = dict(
+        schema='eyepqc-derived-source-baseline-v1',
+        derived_from=dict(manifest=str(base_manifest), sha256=digest(base_manifest),
+                          accepted_g6_source_sha256=base_data.get('sources', {}).get(
+                              'src/ps/src/g6_usb.c')),
+        candidate_g6_source=dict(path='src/ps/src/g6_usb.c',
+                                 sha256=current_usb_sha256),
+        note='Candidate source is intentionally modified; this record binds the new source to the accepted baseline manifest without claiming source identity.')
+    (workspace / 'source_baseline_manifest.json').write_text(
+        json.dumps(source_baseline, indent=2) + '\n', encoding='utf-8')
 
     app = workspace / 'g6_usb'
     build = app / 'build'
     build.mkdir(parents=True, exist_ok=True)
     pinned_cpu, bsp_inputs = pin_bsp_inputs(bsp_workspace, workspace)
-    candidate_usb = workspace / 'g6_usb_auto_recovery_generated.c'
-    generate_candidate_usb(baseline_usb,
-        ROOT / 'src/ps/diag/g6_usb_auto_recovery_tail.inc', candidate_usb)
+    # Candidate008 compiles the reviewed cleanup source directly. Its new hash
+    # is explicit above and captured in source_baseline_manifest.json; it is not
+    # passed off as the accepted pre-cleanup G6 source.
+    candidate_usb = baseline_usb
 
     gcc = tools / 'Vitis/gnu/aarch32/nt/gcc-arm-none-eabi/bin/arm-none-eabi-gcc.exe'
     if not gcc.is_file():
@@ -210,7 +243,7 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
         if not source.is_file():
             raise RuntimeError('Build source missing: ' + str(source))
     flags = [*CPU_FLAGS, '-std=c11', '-O3', '-g', '-Wall', '-Wextra', '-Werror',
-             '-DG4_USB', '-DUSB_LIBRARY', '-DG6_USB']
+             '-DG4_USB', '-DUSB_LIBRARY', '-DG6_USB', '-DG6_SECURE_CLEANUP']
     include_flags = [arg for path in include for arg in ('-I', str(path))]
     objects, commands = [], []
     patched_endpoint_object = None
@@ -253,7 +286,8 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
                 'g6_capture_errors': 4, 'g6_transport_errors': 4, 'g6_fatal_errors': 4,
                 'g6_disconnects': 4, 'g6_fault_inject': 4,
                 'g6_injected_capture_errors': 4, 'g6_auto_recovery_request': 4,
-                'g6_auto_recovery_diag': 56, 'g6_transport_failure_diag': 32}
+                'g6_auto_recovery_diag': 56, 'g6_auto_recovery_request': 4,
+                'g6_transport_failure_diag': 32, 'g6_secure_cleanup_diag': 108}
     owned = {}
     for name, size in expected.items():
         address, actual = abi.get(name, (0, 0))
@@ -278,12 +312,15 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
                     ROOT / 'sim/tb/test_g6_auto_recovery.py',
                     ROOT / 'sim/tb/test_g6_control_dispatch.py',
                     ROOT / 'sim/tb/test_g6_control_dispatch.c',
+                    ROOT / 'sim/tb/test_g6_secure_cleanup.py',
+                    ROOT / 'sim/tb/test_g6_secure_cleanup_harness.c',
                     ROOT / 'sim/tb/test_usb_bounded_sdk.py',
                     ROOT / 'sim/tb/test_usb_bounded_sdk_mock.c',
                     ROOT / 'sim/tb/test_usb_bounded_ch9_mock.c',
                     ROOT / 'sim/tb/test_usb_bounded_intr_mock.c',
                     ROOT / 'src/host/g6_board.py', ROOT / 'src/host/build_manifest.py',
                     ROOT / 'src/ps/include/g6_auto_recovery.h',
+                    ROOT / 'src/ps/include/g6_secure_cleanup.h',
                     ROOT / 'src/ps/include/g6_control_dispatch.h',
                     ROOT / 'src/ps/include/bsp_compat.h', ROOT / 'src/ps/include/session.h',
                     ROOT / 'src/ps/include/protocol.h', ROOT / 'src/ps/include/usb_recovery.h',
@@ -312,7 +349,7 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
     manifest = dict(application='g6_usb', variant=VARIANT,
                     base_application='g6_usb', base_manifest=str(base_manifest),
                     base_manifest_sha256=digest(base_manifest), xsa=str(xsa),
-                    xsa_sha256=xsa_hash, patch_id='capture-auto-recovery-usb-bounded-v4',
+                    xsa_sha256=xsa_hash, patch_id='g6-secure-buffer-cleanup-usb-bounded-v1',
                     trigger_modes={'1': 'PL camera reset/PWDN before normal S2MM capture',
                                    '2': 'PL capture route mode 3 disables all valid/ready before S2MM capture'},
                     sources=sources_hash, external_sources=external_sources,
@@ -322,6 +359,9 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
                         [str(gcc), '--version'], text=True).splitlines()[0],
                         gcc_relative_path=gcc_relative),
                     owned=owned, board_validated=False,
+                    source_baseline_manifest={
+                        'path': 'source_baseline_manifest.json',
+                        'sha256': digest(workspace / 'source_baseline_manifest.json')},
                     artifacts={p.relative_to(workspace).as_posix(): digest(p) for p in
                                (elf, build / 'g6_usb.map', app / '_ide/bitstream/m01.bit',
                                 app / '_ide/psinit/ps7_init.tcl',
@@ -332,8 +372,9 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
                                  sdk_overlay / 'xusbps_intr.c',
                                  sdk_overlay / 'usb_bounded_sdk_policy.h',
                                  workspace / 'usb_probe_bounded_generated.c',
-                                 workspace / 'usb_probe_auto_recovery_bounded_generated.c',
-                                 workspace / 'usb_bounded_sdk/manifest.json')})
+                                workspace / 'usb_probe_auto_recovery_bounded_generated.c',
+                                workspace / 'source_baseline_manifest.json',
+                                workspace / 'usb_bounded_sdk/manifest.json')})
     text = json.dumps(manifest, indent=2) + '\n'
     (workspace / 'build_manifest.json').write_text(text, encoding='utf-8')
     (workspace / 'g6_usb_manifest.json').write_text(text, encoding='utf-8')
@@ -349,6 +390,8 @@ def main():
                         default=ROOT / 'build/vitis/g6_auto_recovery_20261009_candidate006')
     parser.add_argument('--reuse-bsp', type=Path, default=None,
                         help='reuse an existing same-XSA BSP workspace without regenerating it')
+    parser.add_argument('--expected-g6-source-sha256', required=True,
+                        help='explicit SHA-256 of the modified G6 source for a derived candidate')
     parser.add_argument('--tool-root', type=Path, default=Path('E:/fpg/2026.1'))
     args = parser.parse_args()
     xsa, base_manifest, workspace, tools = (p.resolve() for p in
@@ -369,7 +412,9 @@ def main():
             parser.error('--reuse-bsp XSA hash differs from requested XSA')
     else:
         base.build_bsp(workspace, xsa, tools, boot_images=False)
-    manifest = build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=bsp_workspace)
+    manifest = build_variant(workspace, xsa, tools, base_manifest,
+                             args.expected_g6_source_sha256,
+                             bsp_workspace=bsp_workspace)
     print('G6_AUTO_RECOVERY_BUILD_OK', workspace, manifest['xsa_sha256'], flush=True)
 
 
