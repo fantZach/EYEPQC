@@ -4,6 +4,16 @@
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
 当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。
 
+## 2026-10-10：Keccak 实板功能、负收益 Benchmark 与交付准备
+
+用户明确本轮先做加速器和安全/交付工作；无需等待本轮 G0/G7 物理动作。独立 Keccak route4k 在 xc7z020 板上完成 SW 1 轮、HW 3 轮：ID/version、tc76 ML-KEM KAT、每轮 96 次真实硬件置换（无 fallback）及 watchdog timeout 后 96 次软件 fallback 均通过。实测 timer 333333343 Hz；完整解封装 HW 约 1.172 ms、SW 约 1.079 ms，HW 慢约 8.6%。MMIO 搬运开销约 17.2 us/置换，因此本版没有加速收益，不接入正式视频工程。
+
+实板前发现实验固件在未 DONE/清理后读不可访问寄存器，及新版 BSP 的 xil_printf 把 %l 按64位取参导致 Cortex-A9 32位参数错位；已修复实验源码并另建 safe_elfs，不覆盖旧产物。timeout 只合法读 STATUS 清零，不宣称全部 STATE/RESULT 读回清零。原 SW 日志输出损坏，保留诊断身份并拒绝性能分类。
+
+板测结束恢复原 006d，COM16 3 秒认证视频与 STOP/drain/DTR close 通过。首次恢复命令缺 tool-root，在 JTAG 前 WinError2；更正实际 E:/fpg/2026.1 后成功，没有用户物理动作或 SD/Flash 写入。当前结果见 [实板报告](keccak_board_benchmark_20261010.md)。生产安全源码审阅、实施路线和公开资料索引完成；源码/脱敏证据审阅包生成器、逐文件哈希与隔离 fixture 完成，见 [安全计划](production_security_plan_20261010.md)、[交付计划](submission_delivery_plan_20261010.md)。可信板端熵源、生产私钥存储、全域清零及正式比赛规则仍未闭环。
+
+上一批 19 文件提交 556a659 已在权限环境恢复后正常 push 到 GitHub；本轮新增实验与交付文件继续单独提交。以下保留先前上传失败及修复过程的历史状态。
+
 ## 2026-10-10：USB 修复完成、同构建恢复批次与 GitHub 整理
 
 最终 candidate006d/v4 已完成共享 SETUP gate、两方向有界 quiesce、静态回复缓冲区所有权、QH 第二 cache line 的 SETUP 保留及标准/CDC 类错误处理。ARM 编译链接及 180 项哈希检查通过；本轮 USB host mock 3/3、G6 11/11、Benchmark fixture 12/12 和仓库要求的 M00/M10/M12/G5 检查通过。

@@ -2,6 +2,10 @@
 
 本汇总由 [`prj/collect_benchmark_summary.py`](../prj/collect_benchmark_summary.py) 从少量明确列出的既有 JSON 证据生成。输出为 [`benchmark_summary_20261009.json`](benchmark_summary_20261009.json)。来源路径固定在脚本 allowlist 中；不会 glob“最新”目录，也不会自动把新失败/通过批次并进来。C route4k 离线实现已按 manifest 和源/产物哈希加入；006d 最终板测已另建固定来源独立审核摘要，见下文；本脚本的 10 条历史记录保持其原始范围。脚本不打开 JPEG/录像载荷；仅抽取 allowlist 内的构建身份、场景、时间、帧/字节/计数器字段，并将输入文件的 SHA-256 与仓库相对路径写入来源列表。
 
+## 新增隔离 Keccak 实板数据（2026-10-10）
+
+[新实板报告](keccak_board_benchmark_20261010.md) 与 [JSON](keccak_board_benchmark_20261010.json) 独立记录 safe_elfs 的 SW 1 轮/HW 3 轮、原始 ticks 与计数器频率、同 boot 完整解封装比较和超时 fallback。功能通过，硬件路径约慢 8.6%；STATUS 清理通过，但不证明全域清零。旧 10 条汇总中的 C 项继续表示原离线实现，不改写为板测或覆盖其测量 null。
+
 ## 字段
 
 - `record_id`：唯一运行记录 ID；每个 build、故障场景和测试窗口各占一条记录，不跨运行合并。

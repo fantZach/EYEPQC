@@ -4,7 +4,8 @@
 目标见 [doc/goals.md](doc/goals.md)，最新进度见 [report/progress.md](report/progress.md)。
 比赛提交前的证据索引与未完成验收项见 [提交检查表](report/competition_submission.md)；
 该清单明确区分历史板测与当前工作副本验证。
-最新同步见 [2026-10-10 同步记录](report/github_sync_20261010.md)。USB EP0 所有权修复已完成；最终 candidate006d 短时认证视频、摄像头 reset/PWDN 20/20 与 routing stall 20/20 均通过，构建身份及逐轮脱敏证据见 [006d 验收报告](report/g7_candidate006d_acceptance_20261010.md)。G0/G7 整体仍未通过；006d 的 PC 退出/DTR 20 次和物理 USB 拔插 20 次回归待测。Keccak 独立 PS+PL 工程和两种 ARM 固件已离线构建，尚无实板性能，见 [C 线交付](report/parallel_C_20261009.md)。历史数据与新增批次分别索引于 [Benchmark 汇总](report/benchmark_summary_20261009.md) 和 [验收矩阵](report/acceptance_matrix_20261009.md)。
+最新同步见 [2026-10-10 同步记录](report/github_sync_20261010.md)。USB EP0 所有权修复已完成；最终 candidate006d 短时认证视频、摄像头 reset/PWDN 20/20 与 routing stall 20/20 均通过，构建身份及逐轮脱敏证据见 [006d 验收报告](report/g7_candidate006d_acceptance_20261010.md)。G0/G7 整体仍未通过；006d 的 PC 退出/DTR 20 次和物理 USB 拔插 20 次回归待测。Keccak 独立 PS+PL 工程已实板验证：修复实验固件后 SW 1 轮、HW 3 轮标准向量和超时回退通过；完整 ML-KEM 解封装的硬件路径约慢 8.6%，暂不集成视频工程，见 [实板 Benchmark](report/keccak_board_benchmark_20261010.md)。历史数据与新增批次分别索引于 [Benchmark 汇总](report/benchmark_summary_20261009.md) 和 [验收矩阵](report/acceptance_matrix_20261009.md)。
+生产安全缺口与材料审阅包见 [安全计划](report/production_security_plan_20261010.md) 和 [交付计划](report/submission_delivery_plan_20261010.md)；可信板端熵源、生产密钥存储和全域清零仍未完成。
 项目设计与已有实验数据汇总见[技术报告草稿](report/technical_report.md)，
 电脑端构建和本轮验证边界见[构建记录](report/pc_build.md)，
 关键协作决策与纠错见[协作记录](report/collaboration_log.md)。

@@ -28,8 +28,10 @@ M04/M05 原生 XSim 已通过，软件修正与统一入口见 [软件阶段交�
 | Vivado 2026.1 综合/实现/bitstream | 当前 XSA 器件为 `xc7z020clg400-2`；时序 WNS +0.013 ns、WHS +0.018 ns。DRC 保留 `PLCK-12` 时钟专用路由警告，不作零警告宣称。 |
 | 当前电脑端交付 | `build/vitis/usbfix3_20261007` 有四套 ARM 固件、同 XSA 的 bitstream/PS 初始化、FSBL/BOOT.BIN 和 SHA-256 清单；启动来源/BSP/哈希预检通过，构建清单仍为 `board_validated=false`。目录被 Git 忽略，需重建或单独作为附件提供。 |
 | 可复跑的离线检查 | `run_demo.ps1 -Mode Check` 覆盖 M04/M05 原生 XSim、M08 GCM、G6 内存 USB 集成及 USB 恢复 helper；最新结果见 [软件交付记录](software_ready.md)。不访问板卡。 |
-| 本轮新增离线交付 | B 的 G0 离线复核、统一验收矩阵、现场流程与脱敏 Benchmark 已完成；fixture 单测 12/12。C 的独立 Keccak route4k PS+PL 工程、匹配 XSA/bitstream 和两种 A9 固件已通过离线构建/hash 检查，但未上板、未测性能，不能作为加速收益证据。 |
+| 2026-10-09 离线交付（历史范围） | B 的 G0 离线复核、统一验收矩阵、现场流程与脱敏 Benchmark 已完成；fixture 单测 12/12。C 的独立 Keccak route4k PS+PL 工程、匹配 XSA/bitstream 和两种 A9 固件已通过离线构建/hash 检查，但未上板、未测性能，不能作为加速收益证据。 |
 | 本轮板卡证据 | candidate006d/v4 已完成 EP0 所有权修复；180 项哈希检查通过，短测 471 帧、47.3579 fps；camera-reset 与 routing-stall 各 20/20，逐轮同 manifest/ELF/XSA，新握手/认证帧及计数器通过，无恢复 JTAG 重载。受控 PL 故障和约 3 秒软件 deadline 与物理传感器拔除/硬件 timeout IRQ 区分。旧 usbfix3 的 PC 退出和严格物理 USB 拔插各 20 次保留历史身份；最终 006d 的这两项待复测。candidate004 枚举失败、candidate005 未上板不改写。G0/G7 整体尚未通过，见 [006d 报告](g7_candidate006d_acceptance_20261010.md) 与 [验收矩阵](acceptance_matrix_20261009.md)。 |
+| 新增 Keccak 实板证据 | safe_elfs 配匹配 route4k XSA：SW 1/HW 3 轮、KAT/ID/真实硬件调用及 timeout fallback 通过；端到端解封装 HW 约慢 8.6%，没有加速收益。STATUS 清理与全域清零区别见 [实板报告](keccak_board_benchmark_20261010.md)。 |
+| 电脑端材料归档 | 安全源码审阅与实施路线、脱敏源码/证据审阅包生成器及内容 hash/路径核对完成，见 [安全计划](production_security_plan_20261010.md)、[交付计划](submission_delivery_plan_20261010.md)。正式规则未提供，审阅包不作最终规则符合性声明。 |
 
 ## 提交前必须补齐
 

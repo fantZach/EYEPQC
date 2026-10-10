@@ -22,8 +22,8 @@
 | G7 摄像头/DMA 异常恢复候选 | 最终 006d 同 manifest/ELF/XSA：camera-reset 20/20、routing-stall 20/20；S2MM 实际 Busy 至 3000001–3000002 us 软件 deadline，新 HELLO/session/key 和认证视频恢复；故障计数各 +1，fatal/control/transport 无增加；无恢复 JTAG 重载 | 完成（受控 PL 故障和软件 deadline 范围） | 保留 [逐轮摘要](g7_candidate006d_acceptance_20261010.json)；不外推物理传感器拔除或硬件 timeout IRQ。G7 整体还缺同构建 USB/PC 回归 | 否（两组已封存）；物理摄像头场景另行安排 |
 | G7 长时间运行 | 约 50 分钟长测按用户例外记录，未实测满 2 小时 | 完成（时长例外）；2 小时实测未测 | 保留豁免与实测时长的区别，不写成 2 小时实测通过 | 否（若用户要求补实测则需占板长测） |
 | 实机录像/导出/回放 | `report/demo_software_ready.md`：15 秒窗口、722/722 回调帧保存，MP4/AVI 各解码 722 帧；包含换钥空档 | 完成（短测） | 长录与不同负载仍需独立证据；不把 722 帧短测写成长时可靠性 | 否；A 独占板卡，若连接/供电异常才用户介入 |
-| 生产密钥、可信熵、全域清零 | `report/security_gap_audit.md`：私钥/seed 通过 JTAG 开发注入；未验证可信板端熵源；PS/缓存/DDR 明文/PL/USB 队列等全域清零未验证 | 未完成 | 先确定板端熵源与密钥 provisioning/存储，定义清零域与读回证据，再做生产安全门禁 | 设计决策与后续板级验证；本轮不接触秘密 |
-| C Keccak PS AXI-Lite 隔离工程 | `build/parallel_20261009/C/route4k/build_manifest.json`：Zynq-7020 route4k XSA SHA-256 `70fe149c62b3a2cc402adfb78fac625520151309015d89815576784a1fd250a2`；地址 `0x43C10000–0x43C10FFF`，WNS +0.306 ns/WHS +0.074 ns、DRC 0 | 离线实现完成；板级/寄存器功能/性能未测 | G0–G7 完成后再按统一固件、向量和时钟接入 PS baseline 比较；本 XSA 不代替正式视频工程 | 否（当前为离线实现） |
+| 生产密钥、可信熵、全域清零 | 已完成源码审阅与 [实施计划](production_security_plan_20261010.md)，既有显式清理范围逐项列明；JTAG/主机 seed 仍是开发态，未验证可信熵、生产存储和全域清零 | 源审阅/计划完成；生产安全未通过 | 按实际熵/存储可行性和产品威胁模型建立接口、fail-closed 与秘密清理矩阵；安全目标需要时集中确认 | 需要部署/器件方案信息时再询问；本轮未写永久配置 |
+| C Keccak PS AXI-Lite 隔离工程 | 原 route4k 实现/XSA 哈希不变；新 safe_elfs 修复 MMIO 条件与 printf ABI 后，实板 SW 1/HW 3 轮，ID/version、tc76 KAT、96 HW 调用及 96 timeout fallback 通过。完整 ML-KEM HW 约慢 8.6%，STATUS 清理为 0 | 功能在所列范围完成；本版无加速收益；全域清零读回未证 | 按用户本轮授权提前测试，结束已恢复006d。优化 MMIO/批处理后再实测，不把当前隔离 XSA 代替视频工程；见 [Benchmark](keccak_board_benchmark_20261010.md) | 无需当前物理动作 |
 | 统一 Benchmark 和比赛材料 | 新增 `report/benchmark_summary_20261009.json`，显式列出 10 条隔离记录；包括 C route4k 离线 Keccak 实现/XSA 哈希验证（不含板测/性能指标）；脚本/测试/字段说明见 `prj/collect_benchmark_summary.py`、`sim/tb/test_benchmark_summary.py`、`report/benchmark_summary_20261009.md` | 电脑端汇总完成；正式规则/格式与答辩材料待定 | 缺少结构化原始数据的 G4/G5 和重复批次仍保持未汇总；继续收集同构建下的窗口、分辨率、吞吐、延迟与资源数据；新增 006d 固定来源逐轮独立摘要；规则未给定前不造论文/PPT/评分数据 | 否 |
 
 ## 本轮可直接完成的用户侧操作

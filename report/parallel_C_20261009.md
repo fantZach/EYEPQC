@@ -1,5 +1,7 @@
 # C 线：Keccak PS+PL 独立离线实验交付
 
+2026-10-10 更新：根据用户新授权，独立加速器已提前完成实板测试，见 [新 Benchmark](keccak_board_benchmark_20261010.md)。实验固件修复后另建 `build/parallel_20261010/C/firmware_delivery_safe_elfs`；原 20261009 ELF/manifest 保留历史身份，其 project_source hash 因修复已不匹配当前源码，不再作为当前上板预检依据。三轮功能与 fallback 通过，但完整 ML-KEM 硬件路径约慢 8.6%，未集成正式视频。下文是原离线交付快照，原“待测/等待 G0/G7”描述是当时安排。
+
 ## 交付结论
 
 已在 `build/parallel_20261009/C/` 生成与现有视频工程隔离的 Zynq-7020 PS+PL 工程、完整 route4k 实现、匹配 XSA/bitstream，以及两种 ARM bare-metal benchmark 固件。Vivado 2026.1 实现与时序/DRC 检查通过；classic HSI 为新 XSA 生成 BSP，ARM GCC 编译通过。所有结果均为本机离线构建或仿真/mock 证据；本轮未访问 UART、USB、JTAG，未下载固件，也没有板端性能数据。
