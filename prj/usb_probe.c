@@ -42,7 +42,11 @@ static void rx_push(u8 value) {
     u32 next = (rx_head + 1U) & 2047U;
     if (next == rx_tail) { rx_bad = 1; return; }
     rx_ring[rx_head] = value;
+#if defined(__arm__) && !defined(G6_USB_NATIVE_TEST)
     __asm__ volatile("dmb sy" ::: "memory");
+#else
+    __asm__ volatile("" ::: "memory");
+#endif
     rx_head = next;
 }
 #endif
@@ -251,6 +255,7 @@ static void usb_event(void *ref, u32 mask) {
 }
 
 int usb_cdc_init(void) {
+#ifndef G6_USB_NATIVE_TEST
 #ifdef SDT
     XUsbPs_Config *uc = XUsbPs_LookupConfig(XPAR_XUSBPS_0_BASEADDR);
 #else
@@ -273,7 +278,15 @@ int usb_cdc_init(void) {
                                 (Xil_ExceptionHandler)XScuGic_InterruptHandler, &usb_gic);
     Xil_ExceptionEnable();
 #endif
+#else
+    XUsbPs_Config *uc = NULL;
+    XUsbPs_DeviceConfig dc = {0};
+    (void)uc;
+    (void)dc;
+    return 1;
+#endif
 
+#ifndef G6_USB_NATIVE_TEST
     dc.NumEndpoints = 3;
     for (int i=0; i<3; ++i) {
         dc.EpCfg[i].Out.Type = i ? XUSBPS_EP_TYPE_BULK : XUSBPS_EP_TYPE_CONTROL;
@@ -296,6 +309,7 @@ int usb_cdc_init(void) {
     XUsbPs_IntrEnable(&usb, XUSBPS_IXR_UR_MASK | XUSBPS_IXR_UI_MASK);
     XUsbPs_Start(&usb);
     return 0;
+#endif
 }
 
 int usb_cdc_ready(void) {

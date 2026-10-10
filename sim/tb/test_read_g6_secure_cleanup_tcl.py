@@ -8,7 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "prj" / "read_g6_secure_cleanup.tcl"
 VALID_ARGS = [
-    "0x100000", "108",
+    "0x100000", "120",
     "0x100100", "64",
     "0x100200", "64",
     "0x100300", "64",
@@ -40,7 +40,7 @@ def run_script(
         0x4736434C, 6, 0, 0, 3, 0, 1, 1, 2, 0,
         frame_addr, frame_size, 0, sealed_addr, sealed_size, 0,
         0, 0, 0, 0, 1000, 1, 1, 0,
-        tx_addr, tx_size, 0,
+        tx_addr, tx_size, 0, 0, 1, 2,
     ]
     for index, value in (diag_overrides or {}).items():
         diag[index] = value
@@ -121,6 +121,9 @@ class ReadG6SecureCleanupTests(unittest.TestCase):
         self.assertIn("G6_CLEANUP_READBACK_PASS", output)
         self.assertIn("route=3", output)
         self.assertIn("dma_reset=00000000", output)
+        self.assertIn("usb_ownership_eprdystatus=00000000", output)
+        self.assertIn("usb_ownership_eprdy_polls=1", output)
+        self.assertIn("usb_cleanup_path=2", output)
         self.assertNotIn("DEADBEEF", output)
         self.assertNotIn("3735928559", output)
         self.assertNotRegex(
@@ -130,7 +133,7 @@ class ReadG6SecureCleanupTests(unittest.TestCase):
 
     def test_invalid_args_fail_before_connecting_to_hardware(self):
         mutations = [
-            lambda a: a.__setitem__(1, "104"),
+            lambda a: a.__setitem__(1, "108"),
             lambda a: a.__setitem__(0, "0x100004"),
             lambda a: (a.__setitem__(2, "0x3fffffc0"), a.__setitem__(3, "128")),
             lambda a: a.__setitem__(3, "1048577"),
@@ -164,6 +167,7 @@ class ReadG6SecureCleanupTests(unittest.TestCase):
             (9, 4),       # GCM status bits 0..2 must be clear
             (16, 1), (17, 1), (18, 1), (19, 1), (23, 1),
             (12, 1), (15, 1), (26, 1),
+            (27, 1), (28, 0), (29, 0), (29, 3),
         ]
         for index, value in cases:
             with self.subTest(index=index, value=value):

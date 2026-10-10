@@ -270,45 +270,111 @@ static inline int XUsbPs_BoundedTripwireSample(XUsbPs *InstancePtr, u32 BitMask,
 }
 
 /* The request builder has already attached and activated descriptors when the
- * ATDTW check runs. Never roll those fields back speculatively. A completed
- * flush plus a clear PRIME bit is the ownership proof; disable is best-effort
- * only and EP0 enable bits are read-only. */
+ * ATDTW check runs. Never roll those fields back speculatively. A successful
+ * flush, clear PRIME, and inactive ENDPTSTAT readback are required before
+ * touching descriptors. EP0 enable bits are read-only and exempt from disable
+ * readback; their DMA ownership still requires all three status gates. */
 static inline int XUsbPs_BoundedQuiesceEndpointWithLimit(
-							XUsbPs *InstancePtr, u8 EpNum,
-							u8 Direction, u32 PrimeMask,
-							u32 FlushMask, u32 PollLimit,
-							u32 *FlushPolls, u32 *PrimePolls)
-{
-	u32 Poll;
-	int FlushDone = 0;
-	int PrimeClear = 0;
+											XUsbPs *InstancePtr, u8 EpNum,
+											u8 Direction, u32 PrimeMask,
+											u32 FlushMask, u32 PollLimit,
+											u32 *FlushPolls, u32 *PrimePolls);
+static inline int XUsbPs_BoundedQuiesceEndpointWithStatusWithLimit(
+											XUsbPs *InstancePtr, u8 EpNum,
+											u8 Direction, u32 PrimeMask,
+											u32 FlushMask, u32 PollLimit,
+											u32 *FlushPolls, u32 *PrimePolls,
+											u32 *ActivePolls, u32 *ActiveStatus);
+static inline int XUsbPs_BoundedQuiesceInEndpointWithStatusWithLimit(
+											XUsbPs *InstancePtr, u8 EpNum,
+											u32 PrimeMask, u32 FlushMask,
+											u32 PollLimit, u32 *FlushPolls,
+											u32 *PrimePolls, u32 *ActivePolls,
+											u32 *ActiveStatus);
 
-	if (PollLimit == 0U) return XST_FAILURE;
-	XUsbPs_EpFlush(InstancePtr, EpNum, Direction);
-	for (Poll = 0; Poll < PollLimit; ++Poll) {
-		if ((XUsbPs_ReadReg(InstancePtr->Config.BaseAddress,
-				    XUSBPS_EPFLUSH_OFFSET) & FlushMask) == 0U) {
-			FlushDone = 1;
-			break;
+static inline void XUsbPs_BoundedDsb(void)
+{
+#if defined(__arm__) && !defined(G6_USB_NATIVE_TEST)
+	__asm__ volatile("dsb sy" ::: "memory");
+#else
+	__asm__ volatile("" ::: "memory");
+#endif
+}
+
+/* Disable, flush, and confirm ENDPTSTAT inactive before callers touch any
+ * descriptor or completion state. Flush/prime/status counters each have one
+ * shared PollLimit across all re-flush attempts. ENDPTSTAT uses the same
+ * endpoint-direction mask as FLUSH; active endpoints are de-primed again. */
+static inline int XUsbPs_BoundedQuiesceEndpointWithStatusWithLimit(
+											XUsbPs *InstancePtr, u8 EpNum,
+											u8 Direction, u32 PrimeMask,
+											u32 FlushMask, u32 PollLimit,
+											u32 *FlushPolls, u32 *PrimePolls,
+											u32 *ActivePolls, u32 *ActiveStatus)
+{
+	u32 F = 0U, P = 0U, A = 0U, Status = 0xffffffffU, DisableMask = 0U;
+	int Result = XST_FAILURE;
+	if (InstancePtr == NULL || PollLimit == 0U || PrimeMask == 0U ||
+	    FlushMask == 0U || Direction == 0U) goto done;
+	if ((Direction & XUSBPS_EP_DIRECTION_OUT) != 0U)
+		DisableMask |= XUSBPS_EPCR_RXE_MASK;
+	if ((Direction & XUSBPS_EP_DIRECTION_IN) != 0U)
+		DisableMask |= XUSBPS_EPCR_TXE_MASK;
+	if (DisableMask == 0U) goto done;
+	XUsbPs_EpDisable(InstancePtr, EpNum, Direction);
+	XUsbPs_BoundedDsb();
+	/* EP0 enable bits are read-only. Endpoint 1+ must read back disabled before
+	 * the controller is asked to de-prime their DMA queue. */
+	if (EpNum != 0U &&
+	    (XUsbPs_ReadReg(InstancePtr->Config.BaseAddress,
+			    XUSBPS_EPCRn_OFFSET(EpNum)) & DisableMask) != 0U)
+		goto done;
+	while (F < PollLimit && P < PollLimit && A < PollLimit) {
+		int FlushDone = 0, PrimeClear = 0;
+		XUsbPs_EpFlush(InstancePtr, EpNum, Direction);
+		while (F < PollLimit) {
+			++F;
+			if ((XUsbPs_ReadReg(InstancePtr->Config.BaseAddress,
+					    XUSBPS_EPFLUSH_OFFSET) & FlushMask) == 0U) {
+				FlushDone = 1;
+				break;
+			}
 		}
-	}
-	if (FlushPolls != NULL) *FlushPolls = FlushDone ? Poll + 1U : PollLimit;
-	if (FlushDone) {
-		for (Poll = 0; Poll < PollLimit; ++Poll) {
+		if (!FlushDone) break;
+		while (P < PollLimit) {
+			++P;
 			if ((XUsbPs_ReadReg(InstancePtr->Config.BaseAddress,
 					    XUSBPS_EPPRIME_OFFSET) & PrimeMask) == 0U) {
 				PrimeClear = 1;
 				break;
 			}
 		}
+		if (!PrimeClear) break;
+		Status = XUsbPs_ReadReg(InstancePtr->Config.BaseAddress,
+					XUSBPS_EPRDY_OFFSET) & FlushMask;
+		++A;
+		if (Status == 0U) {
+			Result = XST_SUCCESS;
+			break;
+		}
 	}
-	if (PrimePolls != NULL)
-		*PrimePolls = PrimeClear ? Poll + 1U : (FlushDone ? PollLimit : 0U);
+done:
+	if (FlushPolls != NULL) *FlushPolls = F;
+	if (PrimePolls != NULL) *PrimePolls = P;
+	if (ActivePolls != NULL) *ActivePolls = A;
+	if (ActiveStatus != NULL) *ActiveStatus = Status;
+	return Result;
+}
 
-	/* Best-effort request only. EP0 TXE/RXE are read-only; ownership safety
-	 * comes exclusively from the bounded FLUSH and PRIME observations above. */
-	XUsbPs_EpDisable(InstancePtr, EpNum, Direction);
-	return (FlushDone && PrimeClear) ? XST_SUCCESS : XST_FAILURE;
+static inline int XUsbPs_BoundedQuiesceEndpointWithLimit(
+											XUsbPs *InstancePtr, u8 EpNum,
+											u8 Direction, u32 PrimeMask,
+											u32 FlushMask, u32 PollLimit,
+											u32 *FlushPolls, u32 *PrimePolls)
+{
+	return XUsbPs_BoundedQuiesceEndpointWithStatusWithLimit(
+		InstancePtr, EpNum, Direction, PrimeMask, FlushMask, PollLimit,
+		FlushPolls, PrimePolls, NULL, NULL);
 }
 
 static inline int XUsbPs_BoundedQuiesceEndpoint(XUsbPs *InstancePtr, u8 EpNum,
@@ -340,6 +406,18 @@ static inline int XUsbPs_BoundedQuiesceInEndpointWithLimit(
 		PollLimit, FlushPolls, PrimePolls);
 }
 
+static inline int XUsbPs_BoundedQuiesceInEndpointWithStatusWithLimit(
+											XUsbPs *InstancePtr, u8 EpNum,
+											u32 PrimeMask, u32 FlushMask,
+											u32 PollLimit, u32 *FlushPolls,
+											u32 *PrimePolls, u32 *ActivePolls,
+											u32 *ActiveStatus)
+{
+	return XUsbPs_BoundedQuiesceEndpointWithStatusWithLimit(
+		InstancePtr, EpNum, XUSBPS_EP_DIRECTION_IN, PrimeMask, FlushMask,
+		PollLimit, FlushPolls, PrimePolls, ActivePolls, ActiveStatus);
+}
+
 /* EPCOMPL is write-one-to-clear. Retire only the already-quiesced direction
  * before rebuilding its dTD ring, then verify the stale completion is gone. */
 static inline int XUsbPs_BoundedClearEndpointCompletion(XUsbPs *InstancePtr,
@@ -348,7 +426,7 @@ static inline int XUsbPs_BoundedClearEndpointCompletion(XUsbPs *InstancePtr,
 	if (InstancePtr == NULL || CompletionMask == 0U) return XST_FAILURE;
 	XUsbPs_WriteReg(InstancePtr->Config.BaseAddress,
 			XUSBPS_EPCOMPL_OFFSET, CompletionMask);
-#if defined(__arm__)
+#if defined(__arm__) && !defined(G6_USB_NATIVE_TEST)
 	__asm__ volatile("dsb sy" ::: "memory");
 #else
 	__asm__ volatile("" ::: "memory");

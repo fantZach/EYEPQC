@@ -22,6 +22,8 @@ struct fake_hardware {
     unsigned usb_flush_ok;
     uint32_t usb_flush_status;
     uint32_t usb_prime_status;
+    uint32_t usb_eprdystatus;
+    uint32_t usb_eprdypolls;
     int fail_frame_wipe;
     int fail_tx_rebuild;
     unsigned calls[8];
@@ -59,7 +61,9 @@ static int usb_quiesce(void *opaque)
     fixture->sequence = fixture->sequence * 10U + 1U;
     return g6_secure_usb_tx_unowned((int)fixture->hw->usb_flush_ok,
                                      fixture->hw->usb_flush_status,
-                                     fixture->hw->usb_prime_status) ? 0 : 21;
+                                     fixture->hw->usb_prime_status,
+                                     fixture->hw->usb_eprdystatus,
+                                     fixture->hw->usb_eprdypolls) ? 0 : 21;
 }
 
 static int usb_wipe(void *opaque)
@@ -131,6 +135,7 @@ static int test_gates_and_order(void)
     hw.dma_status[0] = hw.dma_status[1] = hw.dma_status[2] = DMA_HALTED;
     hw.gcm_status = 0;
     hw.usb_flush_ok = 1;
+    hw.usb_eprdypolls = 1U;
     const unsigned bad_statuses[] = {0U, DMA_HALTED | DMA_IRQ_ERROR};
     for (unsigned i = 0; i < sizeof bad_statuses / sizeof bad_statuses[0]; ++i) {
         struct fake_hardware failed = hw;
@@ -191,10 +196,22 @@ static int test_gates_and_order(void)
     }
     {
         struct fake_hardware failed = hw;
+        failed.usb_eprdystatus = 1U << 17;
+        if (!g6_secure_cleanup_run(&failed, &cleanup_ops, &diag) ||
+            failed.count != 3U) return 24;
+    }
+    {
+        struct fake_hardware failed = hw;
+        failed.usb_eprdypolls = 0U;
+        if (!g6_secure_cleanup_run(&failed, &cleanup_ops, &diag) ||
+            failed.count != 3U) return 25;
+    }
+    {
+        struct fake_hardware failed = hw;
         failed.fail_frame_wipe = 1;
         if (!g6_secure_cleanup_run(&failed, &cleanup_ops, &diag) ||
             failed.count != 2U || diag.failed_stage != G6_CLEANUP_FRAME_AND_SEALED)
-            return 24;
+            return 26;
     }
     hw.count = 0;
     if (g6_secure_cleanup_run(&hw, &cleanup_ops, &diag) || hw.count != 3U ||
@@ -210,6 +227,7 @@ static int test_tx_sequence_and_disconnect_classification(void)
     struct g6_secure_cleanup_diag diag = {0};
     struct usb_fixture fixture = {0};
     hw.usb_flush_ok = 1;
+    hw.usb_eprdypolls = 1U;
     if (run_usb_cleanup(&hw, &diag, &fixture) || fixture.sequence != 123U ||
         fixture.wiped != 1U || fixture.rebuilt != 1U) return 1;
     fixture = (struct usb_fixture){0};
@@ -218,14 +236,19 @@ static int test_tx_sequence_and_disconnect_classification(void)
         fixture.wiped || fixture.rebuilt) return 2;
     fixture = (struct usb_fixture){0};
     hw.usb_prime_status = 0U;
+    hw.usb_eprdystatus = 1U << 17;
+    if (!run_usb_cleanup(&hw, &diag, &fixture) || fixture.sequence != 1U ||
+        fixture.wiped || fixture.rebuilt) return 3;
+    fixture = (struct usb_fixture){0};
+    hw.usb_eprdystatus = 0U;
     hw.fail_tx_rebuild = 1;
     if (!run_usb_cleanup(&hw, &diag, &fixture) || fixture.sequence != 123U ||
-        fixture.wiped != 1U || fixture.rebuilt != 1U) return 3;
+        fixture.wiped != 1U || fixture.rebuilt != 1U) return 4;
     if (!g6_secure_expected_usb_disconnect(4U, 0U, 0U, 7U, 7U) ||
         !g6_secure_expected_usb_disconnect(4U, 0U, 1U, 7U, 8U) ||
         g6_secure_expected_usb_disconnect(4U, 0U, 1U, 7U, 7U) ||
         g6_secure_expected_usb_disconnect(3U, 0U, 0U, 7U, 8U) ||
-        g6_secure_expected_usb_disconnect(4U, 1U, 0U, 7U, 8U)) return 4;
+        g6_secure_expected_usb_disconnect(4U, 1U, 0U, 7U, 8U)) return 5;
     return 0;
 }
 

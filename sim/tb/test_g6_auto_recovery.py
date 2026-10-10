@@ -68,7 +68,7 @@ class G6AutoRecovery(unittest.TestCase):
         self.assertIn('return 16U;', recovery)
         self.assertNotIn('g6_auto_recovery_diag.state = 2;', recovery)
         usb = (ROOT / 'prj/usb_probe_auto_recovery.c').read_text(encoding='utf-8')
-        self.assertIn('XUsbPs_BoundedQuiesceInEndpointWithLimit', usb)
+        self.assertIn('XUsbPs_BoundedQuiesceInEndpointWithStatusWithLimit', usb)
         self.assertIn('XUsbPs_BoundedClearEndpointCompletion', usb)
         self.assertIn('eye_usb_rebuild_direction(u, 1U, XUSBPS_EP_DIRECTION_IN)', usb)
         camera = (ROOT / 'src/ps/diag/g3_camera_auto_recovery.c').read_text(encoding='utf-8')

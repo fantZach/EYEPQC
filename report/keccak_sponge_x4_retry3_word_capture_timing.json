@@ -1,0 +1,73 @@
+{
+  "result": "KECCAK_SPONGE_X4_RETRY3_IMPLEMENTED_TIMING_PASS_OFFLINE_ONLY",
+  "output_repo_relative": "build/parallel_20261010/C/sx4_retry3_word_capture",
+  "target": "xc7z020clg400-2",
+  "source_snapshot_sha256": "8bf672aa94e76a8f84541d98408fb2a0ca30973cd87899d9ef0f8e3b4a1ea301",
+  "source_snapshot_files_sha256": {
+    "prj/build_m01.tcl": "2d0ccb2e57a8fb978ee515240d177eebe0d5bde8d1294436de268f75a7c1d17c",
+    "src/rtl/crypto/keccak_sponge_x4_axi_lite.sv": "db68bbebee36314ae1d884b2aa89c0a19524222adfcc5724a194f4556522f807",
+    "prj/keccak_sponge_x4_system_build.py": "8d1313990b18784f59bff203be889ad5990e9859ec43f2116b537a8f07eafb63",
+    "prj/keccak_sponge_x4_system.tcl": "045404dddf3985500b0dcdb49d439bd2640bbe09d77aca5015eaf78a8caec5b7",
+    "src/rtl/crypto/keccak_f1600.sv": "8bf2073c069963123c1ce3adecf47e16c15e3a33f941762a45b4a31c979506da",
+    "src/rtl/crypto/keccak_round.sv": "134785d2168c19877cfdce35530ba76b2f437a06559cc78de6d001f45f8474e9"
+  },
+  "xsa_sha256": "ed634c6d480de36c16af64962093069cc120e04af5b38498978e210bf404318d",
+  "bitstream_sha256": "e8c2239c68dd3d4d8d6c6bb0fe6923a2e46ff4baa2e58688c42a2e64b23de7ef",
+  "timing_report_sha256": "e4fd9e0d788a580b275c4115c6b6e6080ee538d3cb6eac1bd85c799739b09a3b",
+  "drc_report_sha256": "ad86f77ba85330477db13dc14df2141a23f1f961a63a8339a7aeb7ccefb7c854",
+  "timing": {
+    "clock_period": 10.0,
+    "wns": 0.029,
+    "tns": 0.0,
+    "max_failing_endpoints": 0,
+    "whs": 0.082,
+    "ths": 0.0,
+    "min_failing_endpoints": 0,
+    "fully_routed": true
+  },
+  "resources": {
+    "slice_luts": 26579,
+    "slice_registers": 21437,
+    "bram_tiles": 0,
+    "dsp": 0
+  },
+  "critical_setup_path": {
+    "source": "system_i/keccak_0/inst/watchdog_count_q_reg[3]/C",
+    "destination": "system_i/keccak_0/inst/state_q_reg[1][1430]/CE",
+    "slack_ns": 0.029,
+    "data_path_delay_ns": 9.687,
+    "logic_delay_ns": 2.755,
+    "route_delay_ns": 6.932,
+    "logic_levels": 14,
+    "cells": "CARRY4=9 LUT3=1 LUT4=2 LUT5=2"
+  },
+  "drc": "0 violations; design fully routed",
+  "xsim": {
+    "path": "build/parallel_20261010/C/sx4_retry3_word_capture/validation/xsim_boundary_test.log",
+    "sha256": "fda336c79c4da065fde2ea5b4e8f5d35c8b08e7702d09bae8124f476eff3e59f",
+    "status": "PASS",
+    "test": "6 SHAKE128x4 boundary lengths 0,1,34,167,168,169 against hashlib; clear/timeout checks"
+  },
+  "offline_mlkem": {
+    "path": "build/mlkem_sponge_x4_offline/result.json",
+    "sha256": "c2e845e3e17f4d78548257554fe9a4a16ae3939373a7cbc30b01854e626c0877",
+    "status": "MLKEM_SPONGE_X4_OFFLINE_PASS",
+    "unique_vectors": 60,
+    "runs": 120,
+    "counts": {
+      "keygen": 25,
+      "encapsulation": 25,
+      "decapsulation": 10
+    },
+    "path_types": [
+      "hardware_mock",
+      "timeout_fallback"
+    ],
+    "board_evidence": false
+  },
+  "limits": [
+    "WNS margin is only 0.029 ns; positive timing does not prove board operation",
+    "120 ML-KEM ACVP runs use host MMIO model and C permutation reference, not PL hardware",
+    "no JTAG or serial access was performed by this report author"
+  ]
+}

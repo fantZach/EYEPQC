@@ -56,6 +56,10 @@ typedef struct { XUsbPs_DeviceConfig DeviceConfig; XUsbPs_Config Config; } XUsbP
 #define XUSBPS_EPCR1_OFFSET     0x108U
 #define XUSBPS_EPCR2_OFFSET     0x10cU
 #define XUSBPS_EPPRIME_OFFSET   0x110U
+#define XUSBPS_EPRDY_OFFSET     0x1b8U
+#define XUSBPS_EPCRn_OFFSET(ep) (0x120U + ((ep) * 4U))
+#define XUSBPS_EPCR_TXE_MASK    0x00800000U
+#define XUSBPS_EPCR_RXE_MASK    0x00000080U
 #define XUSBPS_EPCR_TXT_BULK_MASK 0x1U
 #define XUSBPS_EPCR_RXT_BULK_MASK 0x2U
 #define XUSBPS_EPCR_TXR_MASK      0x4U
@@ -109,9 +113,15 @@ HARNESS_C = r"""
 static XUsbPs device;
 static XUsbPs_dQH qh[3][2];
 static XUsbPs_dTD td[3][2][4];
-static int flush_stuck, prime_stuck, reconfigure_fail_at, reconfigure_calls;
+static int flush_stuck, prime_stuck, ep1_in_active, disable_stuck;
+static unsigned active_clear_after;
+static uint32_t prime_stuck_mask;
+static uint32_t epcr[3];
+static int reconfigure_fail_at, reconfigure_calls;
 static unsigned disable_calls, enable_calls, prime_calls, zeroed_on_reconfigure;
-static unsigned completion_clear_calls;
+static unsigned completion_clear_calls, endptstat_reads, flush_write_calls;
+static char event_log[32768];
+static unsigned event_count;
 static uint32_t flush_value;
 static uint32_t ep1_bits, ep2_bits;
 
@@ -130,6 +140,11 @@ void XUsbPs_EpDisable(XUsbPs *u, unsigned ep, unsigned dir) {
     (void)u; assert((ep == 1 && (dir == XUSBPS_EP_DIRECTION_IN || dir == XUSBPS_EP_DIRECTION_OUT)) ||
                    (ep == 2 && dir == XUSBPS_EP_DIRECTION_IN));
     ++disable_calls;
+    event_log[event_count++] = 'D';
+    if (!disable_stuck) {
+        if (dir & XUSBPS_EP_DIRECTION_IN) epcr[ep] &= ~XUSBPS_EPCR_TXE_MASK;
+        if (dir & XUSBPS_EP_DIRECTION_OUT) epcr[ep] &= ~XUSBPS_EPCR_RXE_MASK;
+    }
 }
 void XUsbPs_EpEnable(XUsbPs *u, unsigned ep, unsigned dir) {
     (void)u; assert((ep == 1 && (dir == XUSBPS_EP_DIRECTION_IN || dir == XUSBPS_EP_DIRECTION_OUT)) ||
@@ -144,13 +159,38 @@ void XUsbPs_SetBits(XUsbPs *u, unsigned offset, uint32_t bits) {
 }
 void XUsbPs_WriteReg(uintptr_t base, unsigned offset, uint32_t value) {
     (void)base;
-    if (offset == XUSBPS_EPFLUSH_OFFSET) flush_value = value;
-    else if (offset == XUSBPS_EPCOMPL_OFFSET) ++completion_clear_calls;
+    if (offset == XUSBPS_EPFLUSH_OFFSET) {
+        flush_value = value;
+        ++flush_write_calls;
+        event_log[event_count++] = 'F';
+    } else if (offset == XUSBPS_EPCOMPL_OFFSET) {
+        ++completion_clear_calls;
+        event_log[event_count++] = 'C';
+    }
 }
 uint32_t XUsbPs_ReadReg(uintptr_t base, unsigned offset) {
     (void)base;
-    if (offset == XUSBPS_EPFLUSH_OFFSET) return flush_stuck ? flush_value : 0;
-    if (offset == XUSBPS_EPPRIME_OFFSET) return prime_stuck ? (1U << 17) : 0;
+    for (unsigned ep = 0; ep < 3; ++ep)
+        if (offset == XUSBPS_EPCRn_OFFSET(ep)) {
+            event_log[event_count++] = 'R';
+            return epcr[ep];
+        }
+    if (offset == XUSBPS_EPFLUSH_OFFSET) {
+        event_log[event_count++] = 'f';
+        return flush_stuck ? flush_value : 0;
+    }
+    if (offset == XUSBPS_EPPRIME_OFFSET) {
+        event_log[event_count++] = 'p';
+        return prime_stuck ? prime_stuck_mask : 0;
+    }
+    if (offset == XUSBPS_EPRDY_OFFSET) {
+        ++endptstat_reads;
+        event_log[event_count++] = 'S';
+        if (ep1_in_active &&
+            (active_clear_after == 0U || endptstat_reads <= active_clear_after))
+            return 1U << 17;
+        return 0;
+    }
     return 0;
 }
 int XUsbPs_EpPrime(XUsbPs *u, unsigned ep, unsigned dir) {
@@ -210,9 +250,15 @@ static void setup_case(void) {
         device.DeviceConfig.EpCfg[ep].In.NumBufs = 3;
     }
     device.Config.BaseAddress = 0x1000;
-    flush_stuck = prime_stuck = reconfigure_fail_at = reconfigure_calls = 0;
+    flush_stuck = prime_stuck = ep1_in_active = disable_stuck = 0;
+    active_clear_after = prime_stuck_mask = 0;
+    memset(epcr, 0, sizeof(epcr));
+    for (unsigned ep = 0; ep < 3; ++ep)
+        epcr[ep] = XUSBPS_EPCR_TXE_MASK | XUSBPS_EPCR_RXE_MASK;
+    reconfigure_fail_at = reconfigure_calls = 0;
     disable_calls = enable_calls = prime_calls = zeroed_on_reconfigure = 0;
-    completion_clear_calls = 0;
+    completion_clear_calls = endptstat_reads = flush_write_calls = 0;
+    memset(event_log, 0, sizeof(event_log)); event_count = 0;
     flush_value = 0;
     ep1_bits = ep2_bits = 0;
 }
@@ -247,6 +293,8 @@ static void seed_stale_queues(void) {
 static void test_success_rebuilds_all_data_queues(void) {
     setup_case(); seed_stale_queues();
     assert(eye_usb_rearm_data(&device, 1) == 0);
+    assert(event_log[0] == 'D' && event_log[1] == 'R' && event_log[2] == 'F' &&
+           event_log[3] == 'f' && event_log[4] == 'p' && event_log[5] == 'S');
     assert(disable_calls == 3 && reconfigure_calls == 3);
     assert(zeroed_on_reconfigure == 3);
     assert(enable_calls == 3 && prime_calls == 1);
@@ -280,20 +328,67 @@ static void test_dtr_preserves_data_toggle(void) {
 static void test_stuck_flush_never_reenables(void) {
     setup_case(); seed_stale_queues(); flush_stuck = 1;
     assert(eye_usb_rearm_data(&device, 1) == 1);
-    assert(disable_calls == 3 && reconfigure_calls == 0);
+    assert(disable_calls == 1 && reconfigure_calls == 0);
     assert(enable_calls == 0 && prime_calls == 0);
 }
 
 static void test_stuck_prime_aborts_before_descriptor_mutation(void) {
-    setup_case(); seed_stale_queues(); prime_stuck = 1;
+    setup_case(); seed_stale_queues(); prime_stuck = 1; prime_stuck_mask = 1U << 1;
     XUsbPs_dQH qh_before[3][2];
     XUsbPs_dTD td_before[3][2][4];
     memcpy(qh_before, qh, sizeof(qh));
     memcpy(td_before, td, sizeof(td));
     assert(eye_usb_rearm_data(&device, 1) == 1);
-    assert(disable_calls == 3 && reconfigure_calls == 0);
+    assert(disable_calls == 1 && reconfigure_calls == 0);
     assert(enable_calls == 0 && prime_calls == 0);
     assert(completion_clear_calls == 0);
+    assert(memcmp(qh_before, qh, sizeof(qh)) == 0);
+    assert(memcmp(td_before, td, sizeof(td)) == 0);
+}
+
+static void test_stuck_endptstat_aborts_before_shared_mutation(void) {
+    setup_case(); seed_stale_queues(); ep1_in_active = 1;
+    XUsbPs_dQH qh_before[3][2];
+    XUsbPs_dTD td_before[3][2][4];
+    memcpy(qh_before, qh, sizeof(qh));
+    memcpy(td_before, td, sizeof(td));
+    assert(eye_usb_rearm_data(&device, 1) == 1);
+    assert(endptstat_reads == EYE_USB_REARM_POLL_LIMIT + 1U);
+    assert(completion_clear_calls == 0 && reconfigure_calls == 0);
+    assert(enable_calls == 0 && prime_calls == 0);
+    assert(memcmp(qh_before, qh, sizeof(qh)) == 0);
+    assert(memcmp(td_before, td, sizeof(td)) == 0);
+}
+
+static void test_late_endptstat_clear_reflushes_before_rebuild(void) {
+    setup_case(); seed_stale_queues(); ep1_in_active = 1; active_clear_after = 2U;
+    assert(eye_usb_rearm_data(&device, 1) == 0);
+    assert(endptstat_reads == 4U); /* OUT, IN busy, IN clear, EP2 clear */
+    assert(flush_write_calls == 4U); /* EP1 IN was flushed again once */
+    assert(completion_clear_calls == 1 && reconfigure_calls == 3);
+    unsigned first_completion = 0U, last_status = 0U;
+    int saw_reflush_after_active = 0;
+    for (unsigned i = 0; i < event_count; ++i) {
+        if (event_log[i] == 'S') {
+            last_status = i;
+            if (i + 1U < event_count && event_log[i + 1U] == 'F')
+                saw_reflush_after_active = 1;
+        }
+        if (event_log[i] == 'C') { first_completion = i; break; }
+    }
+    assert(first_completion > last_status);
+    assert(saw_reflush_after_active);
+}
+
+static void test_disable_readback_failure_prevents_flush_and_wipe(void) {
+    setup_case(); seed_stale_queues(); disable_stuck = 1;
+    XUsbPs_dQH qh_before[3][2];
+    XUsbPs_dTD td_before[3][2][4];
+    memcpy(qh_before, qh, sizeof(qh));
+    memcpy(td_before, td, sizeof(td));
+    assert(eye_usb_rearm_data(&device, 1) == 1);
+    assert(flush_write_calls == 0U && completion_clear_calls == 0U);
+    assert(reconfigure_calls == 0 && enable_calls == 0);
     assert(memcmp(qh_before, qh, sizeof(qh)) == 0);
     assert(memcmp(td_before, td, sizeof(td)) == 0);
 }
@@ -310,8 +405,11 @@ int main(void) {
     test_dtr_preserves_data_toggle();
     test_stuck_flush_never_reenables();
     test_stuck_prime_aborts_before_descriptor_mutation();
+    test_stuck_endptstat_aborts_before_shared_mutation();
+    test_late_endptstat_clear_reflushes_before_rebuild();
+    test_disable_readback_failure_prevents_flush_and_wipe();
     test_reconfigure_failure_never_reenables();
-    puts("usb recovery helper fake-API tests: 5/5 PASS");
+    puts("usb recovery helper fake-API tests: 8/8 PASS");
     return 0;
 }
 """
@@ -344,8 +442,9 @@ class UsbRecoveryNativeTest(unittest.TestCase):
                 env=env,
             )
             self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
-            result = subprocess.run([str(exe)], check=True, text=True, capture_output=True, cwd=ROOT)
-            self.assertIn("5/5 PASS", result.stdout)
+            result = subprocess.run([str(exe)], check=False, text=True, capture_output=True, cwd=ROOT)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("8/8 PASS", result.stdout)
 
 
 if __name__ == "__main__":

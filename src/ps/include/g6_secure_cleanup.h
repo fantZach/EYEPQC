@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #define G6_SECURE_CLEANUP_MAGIC 0x4736434cU
+#define G6_SECURE_TX_CAPACITY 1472U
 
 enum g6_secure_cleanup_stage {
     G6_CLEANUP_IDLE = 0,
@@ -15,6 +16,13 @@ enum g6_secure_cleanup_stage {
     G6_CLEANUP_USB_TX_REBUILD = 5,
     G6_CLEANUP_COMPLETE = 6,
     G6_CLEANUP_FAILED = 0xffffffffU
+};
+
+enum g6_secure_usb_cleanup_path {
+    G6_USB_CLEANUP_PATH_UNSET = 0,
+    G6_USB_CLEANUP_PATH_IDLE_WIPE = 1,
+    G6_USB_CLEANUP_PATH_QUIESCE_REBUILD = 2,
+    G6_USB_CLEANUP_PATH_FAILED = 3
 };
 
 /* JTAG-readable cleanup evidence. These fields contain addresses, lengths,
@@ -47,16 +55,23 @@ struct g6_secure_cleanup_diag {
     volatile uint32_t tx_address;
     volatile uint32_t tx_capacity;
     volatile uint32_t tx_zero_or;
+    /* Appended ABI: ownership evidence and selected secure cleanup path. */
+    volatile uint32_t usb_ownership_eprdystatus;
+    volatile uint32_t usb_ownership_eprdy_polls;
+    volatile uint32_t usb_cleanup_path;
 };
 
-_Static_assert(sizeof(struct g6_secure_cleanup_diag) == 108U,
+_Static_assert(sizeof(struct g6_secure_cleanup_diag) == 120U,
                "G6 cleanup diagnostic ABI size changed");
 _Static_assert(offsetof(struct g6_secure_cleanup_diag, frame_address) == 40U &&
                offsetof(struct g6_secure_cleanup_diag, sealed_address) == 52U &&
                offsetof(struct g6_secure_cleanup_diag, usb_completion_status) == 76U &&
                offsetof(struct g6_secure_cleanup_diag, tx_address) == 96U &&
                offsetof(struct g6_secure_cleanup_diag, tx_capacity) == 100U &&
-               offsetof(struct g6_secure_cleanup_diag, tx_zero_or) == 104U,
+               offsetof(struct g6_secure_cleanup_diag, tx_zero_or) == 104U &&
+               offsetof(struct g6_secure_cleanup_diag, usb_ownership_eprdystatus) == 108U &&
+               offsetof(struct g6_secure_cleanup_diag, usb_ownership_eprdy_polls) == 112U &&
+               offsetof(struct g6_secure_cleanup_diag, usb_cleanup_path) == 116U,
                "G6 cleanup diagnostic field offsets changed");
 
 extern volatile struct g6_secure_cleanup_diag g6_secure_cleanup_diag;
@@ -159,9 +174,12 @@ static inline int g6_secure_gcm_status_cleared(uint32_t status)
 
 static inline int g6_secure_usb_tx_unowned(int flush_succeeded,
                                             uint32_t flush_status,
-                                            uint32_t prime_status)
+                                            uint32_t prime_status,
+                                            uint32_t eprdy_status,
+                                            uint32_t eprdy_polls)
 {
-    return flush_succeeded && flush_status == 0U && prime_status == 0U;
+    return flush_succeeded && flush_status == 0U && prime_status == 0U &&
+           eprdy_polls != 0U && eprdy_status == 0U;
 }
 
 /* send_frame() maps usb_cdc_send failures to status 4. A normal host close is

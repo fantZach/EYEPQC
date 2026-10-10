@@ -131,7 +131,8 @@ def test_register_mock_compiles_and_runs_when_native_gcc_exists():
                 capture_output=True,
                 text=True,
             )
-            completed = subprocess.run([str(exe)], check=True, capture_output=True, text=True)
+            completed = subprocess.run([str(exe)], check=False, capture_output=True, text=True)
+            assert completed.returncode == 0, completed.stdout + completed.stderr
             assert "PASS" in completed.stdout
         else:
             raise AssertionError("Native GCC is required to execute the register-mock harness")
@@ -161,6 +162,7 @@ void XTime_GetTime(XTime *time_value);
 #define XUSBPS_EP_DIRECTION_IN 0x01U
 #define XUSBPS_EPFLUSH_TX_SHIFT 16U
 #define XUSBPS_EPCR_TXE_MASK 0x00000004U
+#define XUSBPS_EPCR_RXE_MASK 0x00000008U
 #define XUSBPS_EPCR_RXS_MASK 0x00000001U
 #define XUSBPS_EPCR_TXS_MASK 0x00000002U
 #define XUSBPS_EPCRn_OFFSET(n) (0x100U + (u32)(n) * 4U)
@@ -184,6 +186,7 @@ void XTime_GetTime(XTime *time_value);
 #define XUSBPS_CMD_ATDTW_MASK 0x4000U
 #define XUSBPS_EPCRn_OFFSET(n) (0x100U + (u32)(n) * 4U)
 #define XUSBPS_EPCR_TXE_MASK 0x00000004U
+#define XUSBPS_EPCR_RXE_MASK 0x00000008U
 #define XUSBPS_EPCR_RXS_MASK 0x00000001U
 #define XUSBPS_EPCR_TXS_MASK 0x00000002U
 #define XUSBPS_EPRDY_OFFSET 0x0c8U

@@ -9,12 +9,18 @@
 #include "g6_secure_cleanup.h"
 #include "g6_rekey_diag.h"
 
+#ifndef UINTPTR
+#define UINTPTR uintptr_t
+#endif
+
 #define main g6_usb_firmware_main
 #include "../../src/ps/src/g6_usb.c"
 #undef main
 
 volatile struct g6_secure_cleanup_diag g6_secure_cleanup_diag;
 volatile struct g6_auto_recovery_diag g6_auto_recovery_diag;
+static unsigned cleanup_diag_flush_calls;
+static unsigned gcm_clear_calls;
 
 void usb_cdc_g6_diag_fill(volatile struct g6_rekey_diag *diag)
 {
@@ -23,11 +29,11 @@ void usb_cdc_g6_diag_fill(volatile struct g6_rekey_diag *diag)
 
 void Xil_DCacheFlushRange(uintptr_t address, uint32_t length)
 {
-    (void)address;
-    (void)length;
+    if (address == (uintptr_t)&g6_secure_cleanup_diag &&
+        length == sizeof g6_secure_cleanup_diag)
+        ++cleanup_diag_flush_calls;
 }
 
-static unsigned gcm_clear_calls;
 static unsigned cleanup_calls[3];
 static unsigned cleanup_fail_at;
 static unsigned cleanup_order[3];
@@ -66,6 +72,7 @@ static void setup_case(enum phase initial_phase, enum eye_session_state state)
     phase = initial_phase;
 
     gcm_clear_calls = 0U;
+    cleanup_diag_flush_calls = 0U;
     memset(cleanup_calls, 0, sizeof cleanup_calls);
     memset(cleanup_order, 0, sizeof cleanup_order);
     cleanup_order_count = 0U;
@@ -278,6 +285,7 @@ static int test_fail_closed(void)
         fail_closed();
         if (phase != FAULT || g6_fatal_errors != 21U || g6_status != 11U ||
             !callbacks_stopped_at(fail) || !cleanup_failed_diag(fail) ||
+            cleanup_diag_flush_calls != 1U ||
             !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
             return (int)(10U + fail);
     }
@@ -285,6 +293,7 @@ static int test_fail_closed(void)
     fail_closed();
     if (phase != FAULT || g6_fatal_errors != 21U || g6_status != 11U ||
         gcm_clear_calls != 1U || cleanup_order_count != 0U ||
+        cleanup_diag_flush_calls != 0U ||
         !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
         return 1;
 #endif
@@ -299,6 +308,7 @@ static int test_disconnect(void)
     if (phase != WAIT_HELLO || g6_disconnects != 41U ||
         !callbacks_stopped_at(3U) || g6_secure_cleanup_diag.stage != G6_CLEANUP_COMPLETE ||
         g6_secure_cleanup_diag.result != 0U || gcm_clear_calls != 1U ||
+        cleanup_diag_flush_calls != 1U ||
         !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
         return 1;
     for (unsigned fail = 1U; fail <= 3U; ++fail) {
@@ -308,6 +318,7 @@ static int test_disconnect(void)
         if (phase != FAULT || g6_disconnects != 41U ||
             g6_fatal_errors != 21U || g6_status != 11U ||
             !callbacks_stopped_at(fail) || !cleanup_failed_diag(fail) ||
+            cleanup_diag_flush_calls != 1U ||
             !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
             return (int)(10U + fail);
     }
@@ -315,6 +326,7 @@ static int test_disconnect(void)
     retire_disconnected_session();
     if (phase != WAIT_HELLO || g6_disconnects != 41U || g6_fatal_errors != 20U ||
         gcm_clear_calls != 1U || cleanup_order_count != 0U ||
+        cleanup_diag_flush_calls != 0U ||
         !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
         return 1;
 #endif
@@ -334,17 +346,20 @@ static int exercise_stop_or_rekey(uint8_t command_type, unsigned fail_stage)
     if (fail_stage) {
         if (phase != FAULT || g6_fatal_errors != 21U || g6_status != 11U ||
             !callbacks_stopped_at(fail_stage) || !cleanup_failed_diag(fail_stage) ||
+            cleanup_diag_flush_calls != 1U ||
             !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
             return 3;
     } else if (phase != WAIT_HELLO || !callbacks_stopped_at(3U) ||
                g6_secure_cleanup_diag.stage != G6_CLEANUP_COMPLETE ||
                g6_secure_cleanup_diag.result != 0U || gcm_clear_calls != 1U ||
+               cleanup_diag_flush_calls != 1U ||
                !session_closed(expected) || !long_term_material_preserved()) {
         return 4;
     }
 #else
     if (fail_stage || phase != WAIT_HELLO || gcm_clear_calls != 1U ||
-        cleanup_order_count != 0U || !session_closed(expected) ||
+        cleanup_order_count != 0U || cleanup_diag_flush_calls != 0U ||
+        !session_closed(expected) ||
         !long_term_material_preserved()) return 5;
 #endif
     return 0;
@@ -385,10 +400,13 @@ static int exercise_auth_failure(unsigned fail_stage)
     if (!callbacks_stopped_at(fail_stage ? fail_stage : 3U) ||
         (fail_stage && !cleanup_failed_diag(fail_stage)) ||
         (!fail_stage && (g6_secure_cleanup_diag.stage != G6_CLEANUP_COMPLETE ||
-                         g6_secure_cleanup_diag.result != 0U || gcm_clear_calls != 1U)))
+                         g6_secure_cleanup_diag.result != 0U || gcm_clear_calls != 1U ||
+                         cleanup_diag_flush_calls != 1U)) ||
+        (fail_stage && cleanup_diag_flush_calls != 1U))
         return 4;
 #else
-    if (fail_stage || gcm_clear_calls != 1U || cleanup_order_count != 0U) return 5;
+    if (fail_stage || gcm_clear_calls != 1U || cleanup_order_count != 0U ||
+        cleanup_diag_flush_calls != 0U) return 5;
 #endif
     return 0;
 }

@@ -1,0 +1,158 @@
+{
+  "schema": "eyepqc-candidate-evidence-v1",
+  "candidate": "candidate010-idle-fastpath-v1",
+  "scope": "offline build and software verification, two short dual-session board runs, one zeroization readback, and one failed receiver-exit recovery trial",
+  "build": {
+    "output": "build/vitis/g6_secure_cleanup_20261010_candidate010_idle_fastpath_rerun",
+    "variant": "g6-secure-buffer-cleanup-usb-bounded-candidate010-idle-fastpath-v1",
+    "board_validated": false,
+    "g6_source_sha256": "f6ffe9e101c3f46b0c8b73f2b8b5b9112e00bf5417fc1a66d626cad7c2c85c26",
+    "xsa_sha256": "46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024",
+    "base_manifest_sha256": "8363a42eba7ec44525feadcf6c4120022dcf06a22fe5b440601d05ada29238db",
+    "manifest_sha256": "c064a826f74d35262a2ad830146fd7fcf43b61176fc5204e58d7651c9526b8c6",
+    "elf_sha256": "4e48ba2b0d9690f72d602d0dc1087a644f137189400bcf4ae9beb2dade5d0ff6",
+    "owned_diagnostics": {
+      "g6_secure_cleanup_diag": {
+        "address": 1160000,
+        "size": 120
+      },
+      "g6_rekey_diagnostic": {
+        "address": 1160192,
+        "size": 116
+      }
+    },
+    "symbols_from_manifest": {
+      "g6_secure_cleanup_diag": {
+        "address": "0x0011b340",
+        "size": 120
+      },
+      "g3_frame": {
+        "address": "0x001319c0",
+        "size": 65600
+      },
+      "g3_sealed": {
+        "address": "0x00120fc0",
+        "size": 68096
+      },
+      "tx": {
+        "address": "0x00141c40",
+        "size": 1472
+      }
+    }
+  },
+  "cleanup_diag_abi": {
+    "size_bytes": 120,
+    "magic": "0x4736434c",
+    "complete_stage": 6,
+    "appended_fields": [
+      {
+        "name": "usb_ownership_eprdystatus",
+        "offset_bytes": 108
+      },
+      {
+        "name": "usb_ownership_eprdy_polls",
+        "offset_bytes": 112
+      },
+      {
+        "name": "usb_cleanup_path",
+        "offset_bytes": 116
+      }
+    ],
+    "path_values": {
+      "idle_wipe": 1,
+      "quiesce_rebuild": 2,
+      "failed": 3
+    }
+  },
+  "verification": {
+    "unittest_result": "PASS",
+    "unittest_count": 18,
+    "modules": [
+      "sim.tb.test_g6_auto_recovery",
+      "sim.tb.test_g6_cleanup_paths",
+      "sim.tb.test_g6_secure_cleanup",
+      "sim.tb.test_g6_usb_idle_fastpath",
+      "sim.tb.test_read_g6_secure_cleanup_tcl",
+      "sim.tb.test_usb_bounded_sdk",
+      "sim.tb.test_usb_recovery"
+    ],
+    "native_probe_harness": "PASS; real candidate probe path and pinned XUsbPs descriptor macros",
+    "cases": [
+      "idle wipe preserves QH, descriptor ring/cursors, TX enable and completion state",
+      "active/non-idle falls back and fails closed when ownership cannot be established",
+      "malformed ring metadata fails closed before wipe/rebuild",
+      "completion, QH active/error, and sticky endpoint fault reject idle path"
+    ],
+    "reader": "Tcl parser and mocked AP0 range checks pass; output contains aggregate zero/nonzero only"
+  },
+  "hardware_evidence": {
+    "included": true,
+    "source": "root-operated fresh candidate010 board runs and read-only AP0 DDR reader",
+    "short_dual_session_runs": [
+      {
+        "result": "PASS",
+        "load": true,
+        "seconds_per_session": 3,
+        "sessions": [
+          {"frames": 140, "authenticated_packets": 1265, "grouped_packets": 1265, "fps": 47.40141520162449},
+          {"frames": 142, "authenticated_packets": 1278, "grouped_packets": 1278, "fps": 47.27502719821041}
+        ],
+        "capture": "data/captures/g6_usb_20261010_193204_878899/result.json",
+        "capture_sha256": "09f77d7f8902d7aa5367c63400b2d9d9db0de0a966cccef432bac97555adc005"
+      },
+      {
+        "result": "PASS",
+        "load": false,
+        "seconds_per_session": 3,
+        "sessions": [
+          {"frames": 140, "authenticated_packets": 1264, "grouped_packets": 1264, "fps": 47.406685481774375},
+          {"frames": 140, "authenticated_packets": 1264, "grouped_packets": 1264, "fps": 47.24573670109949}
+        ],
+        "capture": "data/captures/g6_usb_20261010_193320_845222/result.json",
+        "capture_sha256": "3b30836dd7d60f3ec4c6389f3ce826b55ba079ab2d08e39318739e9e7c02d37c"
+      }
+    ],
+    "cleanup_readback": {
+      "status": "PASS",
+      "path": 2,
+      "eprdy": 0,
+      "eprdy_samples": 1,
+      "zeroized_bytes": 135168,
+      "reader_output": "build/continuation_20261010/cleanup010_stop.stdout.log"
+    },
+    "receiver_exit_trial": {
+      "result": "FAIL",
+      "stage": "receiver_terminated",
+      "failure": "recovery process HELLO_ACK timeout",
+      "trial": "report/g7_runs/g7_batch_receiver_exit_20261010_193345_582_f1f7896d/trial_01_try01.json",
+      "recovery_capture": "data/captures/g6_usb_20261010_193348_017669/result.json",
+      "after_failure_health": "build/continuation_20261010/health010_after_exit_failure.stdout.log"
+    },
+    "trial_count": 1,
+    "required_independent_trials": 20,
+    "acceptance_gate_complete": false,
+    "note": "Two short clean dual-session runs passed; the first receiver-exit recovery failed. No completion claim is valid until the 20-trial receiver-exit gate passes."
+  },
+  "limitations": [
+    "Candidate010 has two 3-second, two-session board PASS runs, followed by a failed receiver-exit recovery; the required 20-trial gate is incomplete.",
+    "REKEY queue rearm/rebuild behavior remains present; the single board run does not establish that the prior HELLO_ACK timeout is fixed.",
+    "The cleanup reader proves only the supplied PS DDR ranges; it does not prove full PL-memory/key zeroization."
+  ],
+  "source_sha256": {
+    "src/ps/src/g6_usb.c": "f6ffe9e101c3f46b0c8b73f2b8b5b9112e00bf5417fc1a66d626cad7c2c85c26",
+    "src/ps/include/g6_secure_cleanup.h": "7fb6f0da4fc84a6f62907e58cf2c95c71f40874fa9cbcb76b2e664b95c000434",
+    "src/ps/diag/usb_bounded_sdk_policy.h": "fcc672247be4cabacd1d398faf872d57cb02a62f1780566ce7532e9ac2e96f4d",
+    "src/ps/include/usb_recovery.h": "8360d1b95973c8e26a1e1862f2da4fc3a171e2d08d902e585e5a37da896eaa50",
+    "prj/usb_probe.c": "88672f80060ada815b0cef5c59d3795bc7fec0ad7cfea013ef6d0e963f415546",
+    "prj/usb_probe_auto_recovery.c": "0cfeefb4979171ce0b4e437ae082cefbb2c84b8a456dadf81988068b6337efcf",
+    "prj/read_g6_secure_cleanup.tcl": "308cba3f3052f53db9cd833fe26c7417f06ff50ee8497a2dba0b5e79e0807d1d",
+    "prj/build_g6_auto_recovery.py": "0e4002fbaec14540f38ffc71f94dd4a6c7793d966a77fabf2f3faa22f8c75d87",
+    "sim/tb/test_g6_auto_recovery.py": "663a3f6a5ab96b3e532bd78bbf1d2ddefee694d174c1da5b34eb37ff14762a17",
+    "sim/tb/test_g6_cleanup_paths.c": "88702e1364de2977de9be52887d6648b20cfebc4947e30b633e51fdd21018b58",
+    "sim/tb/test_g6_cleanup_paths.py": "76df9040dac7fe642e0615e02346644cf6e354439ba15dac9405d8b04ad6b36f",
+    "sim/tb/test_g6_secure_cleanup_harness.c": "36f844d129bc3e44a24f6ad2e45efb71c742c5887991768641da97d1d48be80e",
+    "sim/tb/test_g6_usb_idle_fastpath.c": "349919a617301ef0f7b78e168f803a46dcaef2f854e034f23a5eecdcf210f7ea",
+    "sim/tb/test_g6_usb_idle_fastpath.py": "8d6078267c5424bd6496a37a57c88645075ffe9de335b278a1d3a4debc001061",
+    "sim/tb/test_read_g6_secure_cleanup_tcl.py": "fa94b85c9f51cf4eac1d68d6dccab50caa3ce6527e8b571d61a1861b22643094"
+  }
+}

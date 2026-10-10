@@ -9,7 +9,62 @@
 #define EYE_USB_REARM_POLL_LIMIT 4096U
 #endif
 
-/* Called only after the data endpoints have been disabled and flushed. The
+/* EP1/EP2 data queues are writable only after endpoint disable reads back,
+ * FLUSH and PRIME clear, and ENDPTSTAT (EPRDY) reports inactive. If a packet
+ * was in flight when FLUSH completed, issue another bounded FLUSH. Each poll
+ * class has a total budget, including retries. */
+static int eye_usb_quiesce_data_endpoint(XUsbPs *u, unsigned ep, unsigned dir,
+                                         u32 mask) {
+    u32 disabled_mask = 0U;
+    u32 flush_polls = 0U, prime_polls = 0U, active_polls = 0U;
+    u32 active_status = 0U;
+    if (u == NULL || ep == 0U || mask == 0U) return 1;
+    if (dir & XUSBPS_EP_DIRECTION_OUT) disabled_mask |= XUSBPS_EPCR_RXE_MASK;
+    if (dir & XUSBPS_EP_DIRECTION_IN) disabled_mask |= XUSBPS_EPCR_TXE_MASK;
+    if (disabled_mask == 0U) return 1;
+
+    XUsbPs_EpDisable(u, ep, dir);
+#if defined(__arm__) && !defined(G6_USB_NATIVE_TEST)
+    __asm__ volatile("dsb sy" ::: "memory");
+#else
+    __asm__ volatile("" ::: "memory");
+#endif
+    if ((XUsbPs_ReadReg(u->Config.BaseAddress, XUSBPS_EPCRn_OFFSET(ep)) &
+         disabled_mask) != 0U) return 1;
+
+    while (flush_polls < EYE_USB_REARM_POLL_LIMIT &&
+           prime_polls < EYE_USB_REARM_POLL_LIMIT &&
+           active_polls < EYE_USB_REARM_POLL_LIMIT) {
+        int flush_done = 0, prime_clear = 0;
+        XUsbPs_WriteReg(u->Config.BaseAddress, XUSBPS_EPFLUSH_OFFSET, mask);
+        while (flush_polls < EYE_USB_REARM_POLL_LIMIT) {
+            ++flush_polls;
+            if ((XUsbPs_ReadReg(u->Config.BaseAddress, XUSBPS_EPFLUSH_OFFSET) &
+                 mask) == 0U) {
+                flush_done = 1;
+                break;
+            }
+        }
+        if (!flush_done) break;
+        while (prime_polls < EYE_USB_REARM_POLL_LIMIT) {
+            ++prime_polls;
+            if ((XUsbPs_ReadReg(u->Config.BaseAddress, XUSBPS_EPPRIME_OFFSET) &
+                 mask) == 0U) {
+                prime_clear = 1;
+                break;
+            }
+        }
+        if (!prime_clear) break;
+        active_status = XUsbPs_ReadReg(u->Config.BaseAddress,
+                                       XUSBPS_EPRDY_OFFSET) & mask;
+        ++active_polls;
+        if (active_status == 0U) return 0;
+    }
+    return 1;
+}
+
+/* Called only after the data endpoints have read back disabled and passed
+ * FLUSH, PRIME, and inactive ENDPTSTAT. The
  * SDK reconfiguration resets cursors/links but preserves old ACTIVE/error bits
  * and parts of the QH overlay, so clear the stopped DMA objects first. EP0 and
  * the controller stay running; this must not trigger another USB bus reset. */
@@ -49,18 +104,11 @@ static int eye_usb_rebuild_direction(XUsbPs *u, unsigned ep, unsigned dir) {
 
 static int eye_usb_rearm_data(XUsbPs *u, int reset_toggle) {
     const u32 mask = (1U << 1) | (1U << 17) | (1U << 18);
-    XUsbPs_EpDisable(u, 1, XUSBPS_EP_DIRECTION_OUT);
-    XUsbPs_EpDisable(u, 1, XUSBPS_EP_DIRECTION_IN);
-    XUsbPs_EpDisable(u, 2, XUSBPS_EP_DIRECTION_IN);
-    XUsbPs_WriteReg(u->Config.BaseAddress, XUSBPS_EPFLUSH_OFFSET, mask);
-    unsigned remaining = EYE_USB_REARM_POLL_LIMIT;
-    while ((XUsbPs_ReadReg(u->Config.BaseAddress, XUSBPS_EPFLUSH_OFFSET) & mask)
-           && --remaining) {}
-    if (!remaining) return 1;
-    remaining = EYE_USB_REARM_POLL_LIMIT;
-    while ((XUsbPs_ReadReg(u->Config.BaseAddress, XUSBPS_EPPRIME_OFFSET) & mask)
-           && --remaining) {}
-    if (!remaining) return 1;
+    if (u == NULL ||
+        eye_usb_quiesce_data_endpoint(u, 1U, XUSBPS_EP_DIRECTION_OUT, 1U << 1) ||
+        eye_usb_quiesce_data_endpoint(u, 1U, XUSBPS_EP_DIRECTION_IN, 1U << 17) ||
+        eye_usb_quiesce_data_endpoint(u, 2U, XUSBPS_EP_DIRECTION_IN, 1U << 18))
+        return 1;
     XUsbPs_WriteReg(u->Config.BaseAddress, XUSBPS_EPCOMPL_OFFSET, mask);
     if (eye_usb_rebuild_direction(u, 1, XUSBPS_EP_DIRECTION_OUT) ||
         eye_usb_rebuild_direction(u, 1, XUSBPS_EP_DIRECTION_IN) ||

@@ -71,7 +71,7 @@ volatile struct g6_transport_failure_diag g6_transport_failure_diag
 #endif
 
 static uint8_t private_key[1632], random_seed[32];
-static uint8_t hello[48], ack[48], tx[1472] __attribute__((aligned(64)));
+static uint8_t hello[48], ack[48], tx[G6_SECURE_TX_CAPACITY] __attribute__((aligned(64)));
 _Static_assert(sizeof tx == 1472U && (sizeof tx & 63U) == 0U &&
                sizeof tx >= 43U + 1400U + 16U,
                "G6 TX buffer cleanup capacity");
@@ -175,6 +175,15 @@ static int secure_cleanup(void) {
     publish_rekey_diag();
     int status = g6_secure_cleanup_run(NULL, &cleanup_ops, &g6_secure_cleanup_diag);
     diag_cleanup_last_result = (uint32_t)status;
+#ifdef G6_SECURE_CLEANUP
+    Xil_DCacheFlushRange((UINTPTR)&g6_secure_cleanup_diag,
+                         sizeof g6_secure_cleanup_diag);
+#if defined(__arm__)
+    __asm__ volatile("dsb sy" ::: "memory");
+#else
+    __asm__ volatile("" ::: "memory");
+#endif
+#endif
     publish_rekey_diag();
     return status;
 }

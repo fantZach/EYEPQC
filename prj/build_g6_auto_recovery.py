@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / 'prj'))
 import build_software as base
 
 CPU_FLAGS = ['-mcpu=cortex-a9', '-mfpu=vfpv3', '-mfloat-abi=hard']
-VARIANT = 'g6-secure-buffer-cleanup-usb-bounded-candidate009-diagnostic-v1'
+VARIANT = 'g6-secure-buffer-cleanup-usb-bounded-candidate010-idle-fastpath-v1'
 LOOP_OLD = '''        if (status) {
             ++g6_capture_errors;
             ++g6_dropped;
@@ -286,8 +286,8 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
                 'g6_capture_errors': 4, 'g6_transport_errors': 4, 'g6_fatal_errors': 4,
                 'g6_disconnects': 4, 'g6_fault_inject': 4,
                 'g6_injected_capture_errors': 4, 'g6_auto_recovery_request': 4,
-                'g6_auto_recovery_diag': 56, 'g6_auto_recovery_request': 4,
-                'g6_transport_failure_diag': 32, 'g6_secure_cleanup_diag': 108,
+                'g6_auto_recovery_diag': 56,
+                'g6_transport_failure_diag': 32, 'g6_secure_cleanup_diag': 120,
                 'g6_rekey_diagnostic': 116}
     owned = {}
     for name, size in expected.items():
@@ -316,6 +316,10 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
                     ROOT / 'sim/tb/test_g6_control_dispatch.c',
                     ROOT / 'sim/tb/test_g6_secure_cleanup.py',
                     ROOT / 'sim/tb/test_g6_secure_cleanup_harness.c',
+                    ROOT / 'sim/tb/test_g6_cleanup_paths.py',
+                    ROOT / 'sim/tb/test_g6_cleanup_paths.c',
+                    ROOT / 'sim/tb/test_g6_usb_idle_fastpath.py',
+                    ROOT / 'sim/tb/test_g6_usb_idle_fastpath.c',
                     ROOT / 'sim/tb/test_read_g6_rekey_diag_tcl.py',
                     ROOT / 'sim/tb/test_usb_bounded_sdk.py',
                     ROOT / 'sim/tb/test_usb_bounded_sdk_mock.c',
@@ -354,7 +358,7 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
                     base_application='g6_usb', base_manifest=str(base_manifest),
                     base_manifest_sha256=digest(base_manifest), xsa=str(xsa),
                     xsa_sha256=xsa_hash,
-                    patch_id='g6-secure-buffer-cleanup-usb-bounded-candidate009-diagnostic-v1',
+                    patch_id=VARIANT,
                     trigger_modes={'1': 'PL camera reset/PWDN before normal S2MM capture',
                                    '2': 'PL capture route mode 3 disables all valid/ready before S2MM capture'},
                     sources=sources_hash, external_sources=external_sources,
@@ -392,7 +396,7 @@ def main():
     parser.add_argument('--base-manifest', type=Path,
                         default=ROOT / 'build/vitis/usbfix3_20261007/g6_usb_manifest.json')
     parser.add_argument('--output', type=Path,
-                        default=ROOT / 'build/vitis/g6_auto_recovery_20261009_candidate006')
+                        default=ROOT / 'build/vitis/g6_secure_cleanup_20261010_candidate010_idle_fastpath')
     parser.add_argument('--reuse-bsp', type=Path, default=None,
                         help='reuse an existing same-XSA BSP workspace without regenerating it')
     parser.add_argument('--expected-g6-source-sha256', required=True,

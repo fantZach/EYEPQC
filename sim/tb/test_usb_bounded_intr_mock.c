@@ -336,7 +336,12 @@ void XUsbPs_EpDisable(XUsbPs *instance, u8 ep, u8 direction)
 {
 	assert(instance == &usb && ep <= 2U);
 	++disable_count;
-	if (ep != 0U) return;
+	if (ep != 0U) {
+		u32 mask = ((direction & XUSBPS_EP_DIRECTION_OUT) ? XUSBPS_EPCR_RXE_MASK : 0U) |
+			   ((direction & XUSBPS_EP_DIRECTION_IN) ? XUSBPS_EPCR_TXE_MASK : 0U);
+		regs[XUSBPS_EPCRn_OFFSET(ep) / 4U] &= ~mask;
+		return;
+	}
 	if (direction & XUSBPS_EP_DIRECTION_OUT) out_disabled = 1;
 	if (direction & XUSBPS_EP_DIRECTION_IN) in_disabled = 1;
 }
@@ -345,7 +350,12 @@ void XUsbPs_EpEnable(XUsbPs *instance, u8 ep, u8 direction)
 {
 	assert(instance == &usb && ep <= 2U);
 	++enable_count;
-	if (ep != 0U) return;
+	if (ep != 0U) {
+		u32 mask = ((direction & XUSBPS_EP_DIRECTION_OUT) ? XUSBPS_EPCR_RXE_MASK : 0U) |
+			   ((direction & XUSBPS_EP_DIRECTION_IN) ? XUSBPS_EPCR_TXE_MASK : 0U);
+		regs[XUSBPS_EPCRn_OFFSET(ep) / 4U] |= mask;
+		return;
+	}
 	if (direction & XUSBPS_EP_DIRECTION_OUT) out_disabled = 0;
 	if (direction & XUSBPS_EP_DIRECTION_IN) in_disabled = 0;
 }

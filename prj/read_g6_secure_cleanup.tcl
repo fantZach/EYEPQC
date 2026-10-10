@@ -75,10 +75,10 @@ if {[catch {
         set $name [parse_u32 $name [set $name]]
     }
 
-    if {$diag_size != 108} {
-        error "Diagnostic size must match the 108-byte G6 cleanup ABI"
+    if {$diag_size != 120} {
+        error "Diagnostic size must match the 120-byte G6 cleanup ABI"
     }
-    validate_range diag $diag_addr $diag_size 108
+    validate_range diag $diag_addr $diag_size 120
     foreach {name address size} [list \
         frame $frame_addr $frame_size \
         sealed $sealed_addr $sealed_size \
@@ -101,9 +101,9 @@ if {[catch {
     set connected 1
     targets -set -filter {name == "APU"}
 
-    # G6_SECURE_CLEANUP_MAGIC, 27-word / 108-byte ABI. Keep the complete
+    # G6_SECURE_CLEANUP_MAGIC, 30-word / 120-byte ABI. Keep the complete
     # diagnostic in memory; print status fields only, never buffer contents.
-    set diag_before [mrd_u32 $diag_addr 27]
+    set diag_before [mrd_u32 $diag_addr 30]
     set magic [lindex $diag_before 0]
     set stage_before [lindex $diag_before 1]
     set result_before [lindex $diag_before 2]
@@ -130,6 +130,9 @@ if {[catch {
     set diag_tx_addr [lindex $diag_before 24]
     set diag_tx_size [lindex $diag_before 25]
     set diag_tx_zero_or [lindex $diag_before 26]
+    set usb_ownership_eprdystatus [lindex $diag_before 27]
+    set usb_ownership_eprdy_polls [lindex $diag_before 28]
+    set usb_cleanup_path [lindex $diag_before 29]
 
     if {$magic != 0x4736434c || $stage_before != 6 || $result_before != 0} {
         error "Cleanup diagnostic is not successful COMPLETE state"
@@ -139,13 +142,18 @@ if {[catch {
         $diag_tx_addr != $tx_addr || $diag_tx_size != $tx_size} {
         error "Cleanup diagnostic address/capacity does not match supplied ELF values"
     }
+    if {$usb_ownership_eprdystatus != 0 || $usb_ownership_eprdy_polls == 0 ||
+        $usb_cleanup_path < 1 || $usb_cleanup_path > 2} {
+        error "Cleanup diagnostic does not prove USB ownership or a known cleanup path"
+    }
 
-    puts [format "G6_CLEANUP_DIAG magic=%08x stage=%u result=%u route=%u dma_reset=%08x capture_rx=%08x crypto_rx=%08x crypto_tx=%08x gcm=%08x usb_quiesce=%u usb_flush=%u usb_prime=%u usb_completion=%u usb_poll_limit=%u usb_flush_polls=%u usb_prime_polls=%u usb_rebuild=%u diag_zero_or_frame=%u diag_zero_or_sealed=%u diag_zero_or_tx=%u" \
+    puts [format "G6_CLEANUP_DIAG magic=%08x stage=%u result=%u route=%u dma_reset=%08x capture_rx=%08x crypto_rx=%08x crypto_tx=%08x gcm=%08x usb_quiesce=%u usb_flush=%u usb_prime=%u usb_completion=%u usb_poll_limit=%u usb_flush_polls=%u usb_prime_polls=%u usb_rebuild=%u usb_ownership_eprdystatus=%08x usb_ownership_eprdy_polls=%u usb_cleanup_path=%u diag_zero_or_frame=%u diag_zero_or_sealed=%u diag_zero_or_tx=%u" \
         $magic $stage_before $result_before $route_mode $dma_reset_status \
         $capture_rx_status $crypto_rx_status $crypto_tx_status $gcm_status \
         $usb_quiesce_status $usb_flush_status $usb_prime_status \
         $usb_completion_status $usb_poll_limit $usb_flush_polls \
-        $usb_prime_polls $usb_rebuild_status $diag_frame_zero_or \
+        $usb_prime_polls $usb_rebuild_status $usb_ownership_eprdystatus \
+        $usb_ownership_eprdy_polls $usb_cleanup_path $diag_frame_zero_or \
         $diag_sealed_zero_or $diag_tx_zero_or]
 
     # Match g3_usb_cleanup_stop_dma_and_clear_gcm(): route 3, successful reset,
@@ -177,7 +185,7 @@ if {[catch {
     set tx_zero [read_zero_or tx $tx_addr $tx_size]
     set total_bytes [expr {$frame_size + $sealed_size + $tx_size}]
 
-    set diag_after [mrd_u32 $diag_addr 27]
+    set diag_after [mrd_u32 $diag_addr 30]
     set stage_after [lindex $diag_after 1]
     set result_after [lindex $diag_after 2]
     if {$stage_after != $stage_before || $stage_after != 6 ||
