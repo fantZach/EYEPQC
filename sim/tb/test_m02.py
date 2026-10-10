@@ -76,6 +76,23 @@ class M02(unittest.TestCase):
                 result = subprocess.run([shell, "-NoProfile", "-File", str(ROOT / "prj/run_m02_jtag.ps1"),
                     "-ToolRoot", str(work), "-LogPath", str(work / "failure.log")], capture_output=True, text=True)
                 self.assertNotEqual(result.returncode, 0, "Do not accept xsdb's zero exit after a Tcl error")
+                fake.write_text("@echo off\necho M02_JTAG_OK sensor_resets=1 test\nexit /b 0\n")
+                result = subprocess.run([shell, "-NoProfile", "-File", str(ROOT / "prj/run_m02_jtag.ps1"),
+                    "-ToolRoot", str(work), "-SensorResets", "1", "-LogPath", str(work / "one_reset.log")],
+                    capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("M02_JTAG_OK sensor_resets=1", (work / "one_reset.log").read_text())
+                fake.write_text("@echo off\necho M02_JTAG_EXPECTED_FAILURE sensor_resets=1 configured=0 capture_resetn=0 failed=1 error=2 status=02020000\nexit /b 0\n")
+                result = subprocess.run([shell, "-NoProfile", "-File", str(ROOT / "prj/run_m02_jtag.ps1"),
+                    "-ToolRoot", str(work), "-SensorResets", "1", "-ExpectCameraFailure",
+                    "-LogPath", str(work / "expected_failure.log")], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("M02_JTAG_EXPECTED_FAILURE", (work / "expected_failure.log").read_text())
+                fake.write_text("@echo off\necho M02_JTAG_EXPECTED_FAILURE sensor_resets=1 configured=0 capture_resetn=0 failed=1 error=0 status=02020000\nexit /b 0\n")
+                result = subprocess.run([shell, "-NoProfile", "-File", str(ROOT / "prj/run_m02_jtag.ps1"),
+                    "-ToolRoot", str(work), "-SensorResets", "1", "-ExpectCameraFailure",
+                    "-LogPath", str(work / "invalid_expected_failure.log")], capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0, "Reject an expected failure without a controller error code")
 
 
 if __name__ == "__main__":
