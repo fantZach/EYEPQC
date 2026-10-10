@@ -16,7 +16,11 @@ typedef uint8_t u8;
 #define XUSBPS_BOUNDED_POLL_LIMIT 32U
 
 typedef struct { uintptr_t BaseAddress; } MockConfig;
-typedef struct { MockConfig Config; } XUsbPs;
+typedef struct { u32 active; } XUsbPs_dTD;
+typedef struct { XUsbPs_dTD *dTDHead; XUsbPs_dTD *dTDTail; } XUsbPs_EpIn;
+typedef struct { XUsbPs_EpIn In; } XUsbPs_Ep;
+typedef struct { XUsbPs_Ep Ep[1]; } XUsbPs_DeviceConfig;
+typedef struct { MockConfig Config; XUsbPs_DeviceConfig DeviceConfig; } XUsbPs;
 
 static u32 cmd_reg, ready_reg, prime_reg, flush_reg;
 static u32 cmd_reads, epflush_reads, prime_reads;
@@ -27,6 +31,7 @@ static u32 XUsbPs_ReadReg(uintptr_t base, u32 offset);
 static void XUsbPs_WriteReg(uintptr_t base, u32 offset, u32 value);
 #define XUsbPs_EpFlush(instance, ep, dir) do { (void)(instance); (void)(dir); flush_reg = (1U << ((ep) + XUSBPS_EPFLUSH_TX_SHIFT)); } while (0)
 #define XUsbPs_EpDisable(instance, ep, dir) do { (void)(instance); (void)(ep); (void)(dir); disabled = 1; } while (0)
+#define XUSBPS_BOUNDED_POLICY_NO_CH9 1
 #include "usb_bounded_sdk_policy.h"
 
 static u32 XUsbPs_ReadReg(uintptr_t base, u32 offset)
@@ -65,7 +70,7 @@ static void reset_mock(void)
 
 static void test_tripwire_success(void)
 {
-	XUsbPs usb = {{0}};
+	XUsbPs usb = {0};
 	u32 ready = 99U;
 	reset_mock(); ready_reg = 0x4U;
 	assert(XUsbPs_BoundedTripwireSample(&usb, 0x4U, &ready) == XST_SUCCESS);
@@ -76,7 +81,7 @@ static void test_tripwire_success(void)
 
 static void test_tripwire_stuck_low(void)
 {
-	XUsbPs usb = {{0}};
+	XUsbPs usb = {0};
 	u32 ready = 99U;
 	reset_mock(); deny_tripwire = 1;
 	assert(XUsbPs_BoundedTripwireSample(&usb, 0x4U, &ready) == XST_FAILURE);
@@ -86,7 +91,7 @@ static void test_tripwire_stuck_low(void)
 
 static void test_reset_preempts_tripwire(void)
 {
-	XUsbPs usb = {{0}};
+	XUsbPs usb = {0};
 	u32 ready = 99U;
 	reset_mock(); reset_preempts = 1;
 	assert(XUsbPs_BoundedTripwireSample(&usb, 0x4U, &ready) == XST_FAILURE);
@@ -96,7 +101,7 @@ static void test_reset_preempts_tripwire(void)
 
 static void test_flush_failure_preserves_owned_chain(void)
 {
-	XUsbPs usb = {{0}};
+	XUsbPs usb = {0};
 	reset_mock(); flush_stuck = 1;
 	assert(XUsbPs_BoundedQuiesceInEndpoint(&usb, 1U, 0x00020000U,
 					       0x00020000U) == XST_FAILURE);
@@ -107,7 +112,7 @@ static void test_flush_failure_preserves_owned_chain(void)
 
 static void test_flush_success_preserves_chain_for_terminal_disable(void)
 {
-	XUsbPs usb = {{0}};
+	XUsbPs usb = {0};
 	reset_mock();
 	assert(XUsbPs_BoundedQuiesceInEndpoint(&usb, 1U, 0x00020000U,
 					       0x00020000U) == XST_SUCCESS);

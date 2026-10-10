@@ -1,0 +1,1240 @@
+{
+  "schema_version": 1,
+  "snapshot_date": "2026-10-10",
+  "measurement_date": "2026-10-09",
+  "variant": "g6-auto-camera-dma-recovery-usb-bounded-candidate-v4",
+  "build": {
+    "manifest_sha256": "0eb922b903f4f87b555a09cce67e928d5a910a37ece3ba359aebe055ffe28abc",
+    "elf_sha256": "e93ad4b6551bb993821a8e396d8f4c4c1f40c6bd6292247391ff129a0d9e8051",
+    "xsa_sha256": "46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024"
+  },
+  "manifest_checks_passed": 180,
+  "manifest_board_validated_at_build": false,
+  "build_source": {
+    "path": "build/vitis/g6_auto_recovery_20261009_candidate006d/g6_usb_manifest.json",
+    "sha256": "0eb922b903f4f87b555a09cce67e928d5a910a37ece3ba359aebe055ffe28abc"
+  },
+  "short_baseline": {
+    "status": "passed",
+    "seconds": 9.924431599996751,
+    "frames": 471,
+    "bytes": 4659270,
+    "fps": 47.35787589086249,
+    "authenticated_packets": 3768,
+    "board_counters": null,
+    "source": {
+      "path": "data/captures/g6_usb_20261009_205804_775591/result.json",
+      "sha256": "4a2e3a6d0880e96e27dc5c763295444a67f2eda74b48752e1dfd757c447cfd1c"
+    }
+  },
+  "batches": [
+    {
+      "mode": "camera-reset",
+      "status": "passed",
+      "passed": 20,
+      "requested": 20,
+      "jtag_loads": 1,
+      "jtag_reloads_between_trials": false,
+      "unique_session_count": 40,
+      "unique_key_fingerprint_count": 40,
+      "completed_utc": "2026-10-09T13:06:22.209435+00:00",
+      "source": {
+        "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/batch_summary.json",
+        "sha256": "e5e3ef765272be13b5a3f754621e46b3b7d347fceedfd4b38312447be2eed39f"
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 94,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_01/trial.json",
+              "sha256": "6fca4f05aade1a9920ec8c9ec563c4f5862d6dd5d6ac7658c4d8db1ea4a3e297"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210103_989721/result.json",
+              "sha256": "142df1e7d647b78cd98ab5ccc4a987491ccdbfb5f12f7e821c409b6d2f0f7cab"
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 94,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_02/trial.json",
+              "sha256": "c1becf38ca976c2890b96e8917eabbdee5bae87927557c9429e2836815f01a6c"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210119_991837/result.json",
+              "sha256": "48e9e8a28c8a343d6050c263667b595d29375a403c199b730975e2fd292cc11f"
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_03/trial.json",
+              "sha256": "ca239dd7b0ef0b095b4bb813245058b136f5790029e3f571535109923375cb43"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210135_093751/result.json",
+              "sha256": "ff1128ca1a0a3af187b10bd1f22f904029d8c2fa9f12be5a22ee8b34769c7ea3"
+            }
+          ]
+        },
+        {
+          "trial": 4,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_04/trial.json",
+              "sha256": "27cbfac6eddacac24f799d6f5d3cf8662746b88777ee32a769e03e731d83f7fb"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210152_520176/result.json",
+              "sha256": "b17b254f67e48cb433b17e4b302abfefa2f2412051c6ad992aa20b5adb6f77fc"
+            }
+          ]
+        },
+        {
+          "trial": 5,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_05/trial.json",
+              "sha256": "a379655ea4e8700bd47283ddeb659f4a317420c9b6b5b71bf5d4730d31c13933"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210207_927643/result.json",
+              "sha256": "bfa1574ca1f9ecf938a1d0442601dd9cad3262701ee4de62758b152fada5a937"
+            }
+          ]
+        },
+        {
+          "trial": 6,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 94,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_06/trial.json",
+              "sha256": "fb7c90c14f617e9fa1cb25d72b15e04a2e3b05b75fb1810bf87251a9eca8bfd9"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210225_219675/result.json",
+              "sha256": "195436642008e776782a441e88da5ee3cb2f1c6bdd897999f80189bd300cd55b"
+            }
+          ]
+        },
+        {
+          "trial": 7,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 3,
+          "frames_after_recovery": 94,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_07/trial.json",
+              "sha256": "81aecf1306b234abdb651f0a8ba9bb3b1605563f835597f26310a11fd9c46a83"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210241_043283/result.json",
+              "sha256": "0f951acde6cd71e4b6a1e4000574a81019bf83de2d24204b9cdf2728d2edaddb"
+            }
+          ]
+        },
+        {
+          "trial": 8,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_08/trial.json",
+              "sha256": "f95297c2946ab95a7ea7eed13bd6758d41e9795c70f662ca57510abf0c4db4e9"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210256_753535/result.json",
+              "sha256": "e2e8a7a2860410e1cb20a851f64cfcae91e5bd1e6ca92a1ca3e22676c2a36168"
+            }
+          ]
+        },
+        {
+          "trial": 9,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 6,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_09/trial.json",
+              "sha256": "9090f31cd53b6a51c14a703a3ce0d8f3d75bf9b782de513a294331a2141be6d8"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210311_034248/result.json",
+              "sha256": "15ac6c540d47418078173b8b651649d48afa848a02388f1e086f064db229c52c"
+            }
+          ]
+        },
+        {
+          "trial": 10,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 3,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_10/trial.json",
+              "sha256": "de7356bda7d0b691dd06ea79b89c1de9a1c93c546dd79b1ec0f5aa8f9ee9516b"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210327_134867/result.json",
+              "sha256": "c205dc087d74a2a6ce00b41d4a621b53b49da794b457bf993b2ef4e2367ed238"
+            }
+          ]
+        },
+        {
+          "trial": 11,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_11/trial.json",
+              "sha256": "5fe3858295227b0183f0a96565517ed6a01fa1b6103e1a1bc002b081c8c9a381"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210343_865990/result.json",
+              "sha256": "0c9bd52096bb15a61a1425dc9abaa0aa192b625b5b661ae0e2e811622727461d"
+            }
+          ]
+        },
+        {
+          "trial": 12,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_12/trial.json",
+              "sha256": "1be3d348efcc00d93b6cccbbb734c8fcc54f12be97ab581f73fcf01a6a88f4db"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210359_774094/result.json",
+              "sha256": "085f3297ce0123cf8c137e144666a8ad7d6191fafe2a174cad422a2c1291e08f"
+            }
+          ]
+        },
+        {
+          "trial": 13,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_13/trial.json",
+              "sha256": "2f61954b31d77204686fb663753055d874574b2fab8c2d90d2481c72bd45bf46"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210415_076180/result.json",
+              "sha256": "81cb0c902e1e403771afbf9a97b22fc2ab809a0d79ea148ea92de862dd68e8fc"
+            }
+          ]
+        },
+        {
+          "trial": 14,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_14/trial.json",
+              "sha256": "f1bb372eb8badb65acc6836f0c27419b286800523e87dad4b886faadaf3b5d88"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210430_781996/result.json",
+              "sha256": "63572f02a3bcc432cbde76a55682f097b151123df22bd0a23941cc1ffe84a72b"
+            }
+          ]
+        },
+        {
+          "trial": 15,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 3,
+          "frames_after_recovery": 94,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_15/trial.json",
+              "sha256": "cca1678d585987fa3ba011e3e3b24b6ee6551b5969749e0bab0c34ba326d34b6"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210447_125461/result.json",
+              "sha256": "02c44998138dc2d7b42da0473d571824bf258b56443117b7fb0e02becb3d6f81"
+            }
+          ]
+        },
+        {
+          "trial": 16,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_16/trial.json",
+              "sha256": "a813592daff7c1e175c87e6834d984c7176c315e8000884d100c74166c6429c8"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210504_352342/result.json",
+              "sha256": "34ce8b0d292464c157834e205c8cbf8f09f5e0f8fee5ac86ebf6ea998231d71e"
+            }
+          ]
+        },
+        {
+          "trial": 17,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_17/trial.json",
+              "sha256": "baaad94a9fe6b4ca9f105e6393bd9b1fe66b148131bc04d6689480bafda227ff"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210522_030854/result.json",
+              "sha256": "b52c9c1cce7a041ea6ae061a964698c68a2ececcd2016527e5b697202c5f6d22"
+            }
+          ]
+        },
+        {
+          "trial": 18,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_18/trial.json",
+              "sha256": "7325efa2ea63d2958a2ddcbb63185ceb249b1166639034f743b479927acfcf4b"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210539_489538/result.json",
+              "sha256": "9ed788652117801352771326942b5877213706e0d965206e27a6dfa3396d883d"
+            }
+          ]
+        },
+        {
+          "trial": 19,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_19/trial.json",
+              "sha256": "deb7bfd1d66a24ef37804544b92ab03b712f130ca297807eb46ae9d78fad9c24"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210556_821037/result.json",
+              "sha256": "22639938f78463490153748258c06a5fc7c45fee8c2268dd3e050bda0bb8bd0c"
+            }
+          ]
+        },
+        {
+          "trial": 20,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_camera-reset_20261009_130040_000419_94c71338/trial_20/trial.json",
+              "sha256": "dba9ad44beb4fdc9d9a61748002dc1187208982b114e935254e3e9b4712aab5b"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210614_168435/result.json",
+              "sha256": "6696fd024be30dddf497105bc2653985e8424c1ff6f0caf07c5d4d4801e166ee"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "routing-stall",
+      "status": "passed",
+      "passed": 20,
+      "requested": 20,
+      "jtag_loads": 1,
+      "jtag_reloads_between_trials": false,
+      "unique_session_count": 40,
+      "unique_key_fingerprint_count": 40,
+      "completed_utc": "2026-10-09T13:12:06.710048+00:00",
+      "source": {
+        "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/batch_summary.json",
+        "sha256": "41773b11355fa47eec788264e6a16e84ac1721c169c5b2c95b12e3f9cb06299f"
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_01/trial.json",
+              "sha256": "ac1da7e4ab31225564cccb95cb99a2807b52449dedf509db2370d47f7fe447c2"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210653_551521/result.json",
+              "sha256": "a6834a546458043e218be4f0f990217372ce25c75ec28fc27479c7f93838ddc0"
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_02/trial.json",
+              "sha256": "393f5f62bfa568ee779e38e348d08e0554f7db6928adbc76d67d9a22d0aca09f"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210710_669097/result.json",
+              "sha256": "959b30ee5c3690ca1955f7ad87ad80e2c6f598dbdc602c97eaf81c96cd804b0b"
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 94,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_03/trial.json",
+              "sha256": "759ae44fda3ffa1b913f001ccb702985d34e2146c47780ba57436afe6a4cfdc7"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210725_602917/result.json",
+              "sha256": "c63b8754c9424a32a20876075c748e229571defa06d1a25ef1e7e5f4ca1e2672"
+            }
+          ]
+        },
+        {
+          "trial": 4,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_04/trial.json",
+              "sha256": "ae39cd09cc4c17b2788a96e306fd4593dd5887b97d0b6e4ea0cd81ea953273bc"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210742_027960/result.json",
+              "sha256": "40f4a4e5386c6876bc1e0454416faec814618c75451bd706dcea13fa83f64037"
+            }
+          ]
+        },
+        {
+          "trial": 5,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_05/trial.json",
+              "sha256": "5b868bdff15621eacde4f888f4c9b38bce6e2483e84e4377911ff7681f74b449"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210758_522770/result.json",
+              "sha256": "457a244f668582ca867e504d14d2320673c9a63b79d751ff2dfb16cdd52d7661"
+            }
+          ]
+        },
+        {
+          "trial": 6,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 3,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_06/trial.json",
+              "sha256": "f214b44b5dc140b10824c65774428c8b30cd1f4ea7e765112d2433dc5df2b9d1"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210815_342884/result.json",
+              "sha256": "910f8c4093fb105d89c02e601bd153ae460767a7185d6751a56a907233f9118e"
+            }
+          ]
+        },
+        {
+          "trial": 7,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_07/trial.json",
+              "sha256": "6955bad76ecee58812d24307df9d09b5b9fd226fbd0527c5c5581a752f939269"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210831_970573/result.json",
+              "sha256": "2f2f90acacaa7ff8990e22ef9eb85d3a44eca275e458ee3bbfdefcdecd73d3dd"
+            }
+          ]
+        },
+        {
+          "trial": 8,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 92,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_08/trial.json",
+              "sha256": "36297b12626cb13d62b6fe8281142df45d3a876b9db7e647234385386b190813"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210849_178237/result.json",
+              "sha256": "758b1292fb3e4735e4e49aee508109083491537862350c798490a48f48dec2d3"
+            }
+          ]
+        },
+        {
+          "trial": 9,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 94,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_09/trial.json",
+              "sha256": "0fefaa9aaecf61738d07a749ef134579f72c683aea59393cb530b8d938f6fd7a"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210905_983133/result.json",
+              "sha256": "4b9c0b79ff6c5b46ff2ac2245ff47946a4fa6c69a2e0c26e8f4348668eb17e37"
+            }
+          ]
+        },
+        {
+          "trial": 10,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_10/trial.json",
+              "sha256": "a8f45c53934487e22669008685d72c2aa0e76c4529abb445701f801ef00afa0d"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210923_271322/result.json",
+              "sha256": "d18934484a7f8b07f740bfba3cafe72fdac27f967bd55044e15b36a51eaa87c4"
+            }
+          ]
+        },
+        {
+          "trial": 11,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_11/trial.json",
+              "sha256": "ce24fc4cc4365f1511553660410147571b1e7ea944e1bc07f8ff00bb3054b147"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210940_177642/result.json",
+              "sha256": "01afb3025a1cff8e329d54c96d01033fd363286c4ad048e516746627198441d7"
+            }
+          ]
+        },
+        {
+          "trial": 12,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 7,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_12/trial.json",
+              "sha256": "71c05d6601f192493c844bcda21dc0283f9b76c2f849e94ecc3ca3e7cd175cad"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_210956_907822/result.json",
+              "sha256": "18e8c7b5fe3937f806b3f21cc2bc21b28a4352ecb5ec55b2fd1911a80522ea8e"
+            }
+          ]
+        },
+        {
+          "trial": 13,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_13/trial.json",
+              "sha256": "9e9f9aeea19ed91fcde377005a2c78812740c44d8b01cf7297109f11392bfa6a"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_211012_886626/result.json",
+              "sha256": "595a2fdf44d0af15b3e3f97acb0135f2efe519843c0f36fc2e199d6f09756b23"
+            }
+          ]
+        },
+        {
+          "trial": 14,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 3,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_14/trial.json",
+              "sha256": "d4d4c9ccba543fee759d1f073d7986e45b57c96ab07b239fe53ba2edd6399b4d"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_211027_718344/result.json",
+              "sha256": "f54f5cc6de80ffeaa2f21bc644e380a9d1d121fe7fc7af76a3b88f96b6eec790"
+            }
+          ]
+        },
+        {
+          "trial": 15,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 3,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_15/trial.json",
+              "sha256": "7a2b493defb42b86a2bc60dc387c934609092f2a7f5d2b1ab910e7725429adcb"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_211044_791225/result.json",
+              "sha256": "f950155f9fc74b43af0d8a82765114b4ba26573c26529360f30452bc14baf37d"
+            }
+          ]
+        },
+        {
+          "trial": 16,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_16/trial.json",
+              "sha256": "ede869c4f5e786b72d53d7d575da7c08078ce0fc547040c2bc4110fca902a9cf"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_211056_987669/result.json",
+              "sha256": "5ac1de9b8692306afe696cdae82e0abd4766466a480af468117a5731fa3e5a39"
+            }
+          ]
+        },
+        {
+          "trial": 17,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_17/trial.json",
+              "sha256": "d89c0f2af35940e3f9de00c0a64bdc005d9fffd7706b688ad51564179918b55f"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_211113_184522/result.json",
+              "sha256": "426063fafa8d96358ee7dd1d898b110c733cb6b99543b91f82a6150e268fdef7"
+            }
+          ]
+        },
+        {
+          "trial": 18,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_18/trial.json",
+              "sha256": "a16d2a3c7bbaae008c5891fc7b92d9ac3c5256e9a190d5672a154eac081a748d"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_211128_047072/result.json",
+              "sha256": "433104bae3d3f7a60f17254a4e63862259234986af158efe0668b66d6c59a066"
+            }
+          ]
+        },
+        {
+          "trial": 19,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 3,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000002,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_19/trial.json",
+              "sha256": "f3310b9af3116349401eb9366d4109b3c5ec9bf4bbcea19b9acc7cd8a9a220ae"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_211143_037893/result.json",
+              "sha256": "7577463c7b198f9848bbf1eed0a90b8957d37479ee1315cad6e1073192f06f6f"
+            }
+          ]
+        },
+        {
+          "trial": 20,
+          "status": "passed",
+          "session_changed": true,
+          "key_changed": true,
+          "fresh_hello": true,
+          "receiver_live_before_fault": true,
+          "frames_before_fault": 4,
+          "frames_after_recovery": 93,
+          "busy_deadline_elapsed_us": 3000001,
+          "counter_deltas": {
+            "capture": 1,
+            "dropped": 1,
+            "fatal": 0,
+            "control": 0,
+            "transport": 0
+          },
+          "jtag_reload_for_recovery": false,
+          "sources": [
+            {
+              "path": "report/g7_runs/g7_auto_recovery_routing-stall_20261009_130631_779051_71ff6ed5/trial_20/trial.json",
+              "sha256": "e568c16a75088d6c5e3f5cac42a5ad95fb6463ca0ab3dacaf0e5d20accc70afe"
+            },
+            {
+              "path": "data/captures/g6_usb_20261009_211159_435238/result.json",
+              "sha256": "c491e419fd0ca3dbc41cf222daa87fd1fd699c09095bc8d1f62beb13a3450dc9"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "g7_overall": "incomplete",
+  "same_build_pending": [
+    "receiver-exit/DTR 20 trials",
+    "physical USB unplug 20 trials"
+  ],
+  "scope": {
+    "faults": "Controlled PL camera reset/PWDN and controlled PL routing stall",
+    "timeout": "Real S2MM Busy reaches a software deadline; not a hardware timeout IRQ",
+    "physical_camera_unplug_tested": false,
+    "two_hour_run_measured": false,
+    "current_device_state_checked": false,
+    "raw_evidence_in_git": false,
+    "fault_receiver_status": "running checkpoint; harness stops its own live reader after firmware recovery"
+  }
+}

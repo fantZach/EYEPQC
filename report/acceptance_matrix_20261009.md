@@ -1,4 +1,4 @@
-# EYEPQC 统一验收矩阵（2026-10-09）
+# EYEPQC 统一验收矩阵（建立 2026-10-09，更新 2026-10-10）
 
 状态口径：**完成**仅指所列构建与证据满足该行判据；**部分**表示已有单轮/短窗口证据但重复或场景范围未满足；**未测**表示没有该门禁的有效测量；**失败**表示该批次发生失败，不将失败轮次删除或并入通过数。旧证据不自动代表当前候选构建。
 
@@ -16,16 +16,16 @@
 | G4 明文 USB 摄像头流与显示 | `doc/steps.md` / `doc/goals.md` 记载历史 30 分钟约 47.258 fps | 完成（历史构建/证据范围） | 在统一 Benchmark 关联构建及原始记录 | 否 |
 | G5 PL AES-GCM USB 视频、Tag 拒绝 | 历史 60 秒约 47.270 fps，真实包 Tag 篡改被拒绝 | 完成（测试密钥限定） | 明示固定测试密钥不代表生产密钥方案 | 否 |
 | G6 ML-KEM 会话、Finished、重放保护和换钥 | 开发态 JTAG 注入私钥/seed；历史实板双会话、认证流和篡改拒绝记录 | 完成（开发态功能）；生产安全未通过 | 生产密钥/熵源路线单独闭环 | 否（设计/实现工作） |
-| G7 主机接收进程退出恢复 | `usbfix3_20261007` 下 20/20 新握手恢复，无逐轮 JTAG 重载 | 完成（仅该故障与构建） | 记录为主机进程退出批次，不代表摄像头/DMA | 否 |
-| G7 USB 物理拔插恢复 | 严格 active-stream 有效 20/20：原批次 17 + 修复后替补 3；失败记录保留 | 完成（仅物理 USB 拔插项） | 不外推至摄像头/DMA 故障 | 已完成既有操作 |
-| G7 候选 USB 枚举与 EP0 所有权 | candidate004 实板 USB 枚举失败；用户拔插后旧 `usbfix3_20261007` 基线恢复 COM16 和认证视频（约 47.36 fps），不推断原因。candidate005 仅离线冻结/构建、未上板；随后发现 `usb_probe.c` class SETUP 绕过 `StdDevReq` 所有权 gate，`GET_LINE_CODING` 的静态 `line_coding` 可能在旧 EP0 IN dTD quiesce 前被 `SET_LINE_CODING` DATA_RX 改写 | 候选修复待完成；candidate004 失败保留 | candidate006 需把共同 gate 放到所有 Setup dispatch 之前，统一 class EP0 send 状态处理，并测试 `GET_LINE_CODING → SET_LINE_CODING` 未完成 IN/OUT 时序；host 测试和离线 build 通过后才可单独安排板测 | 否；A 独占板卡，若连接/供电异常才用户介入 |
-| G7 摄像头/DMA 异常恢复候选 | camera-reset candidate7 单轮、routing-stall candidate6 单轮通过，构建不同；另有故障触发前未取到基线的失败尝试 | 部分；候选单轮不合并 | 各自基线/候选身份不混并；后续按批准的单一候选批次复测并保存原始失败。真实 S2MM Busy 到约 3 秒软件 deadline 的证据与受控 PL 故障、物理传感器拔除分开记录 | 否；A 独占板卡，若连接/供电异常才用户介入。G7 原文不额外要求硬件 timeout IRQ |
+| G7 主机接收进程退出恢复 | 旧 usbfix3_20261007 下 20/20；最终 006d 尚无同构建完整批次 | 历史构建完成；006d 待测 | 先重验 CDC/manifest/无重复 reader，再跑同一 006d 的 PC 退出/DTR 20 次；新 HELLO、认证帧和无 JTAG 重载逐轮留证 | 否（自动故障脚本；接线异常时介入） |
+| G7 USB 物理拔插恢复 | 旧 usbfix3 严格 active-stream 20/20（原17+补3）；最终 006d 尚无同构建完整批次 | 历史构建完成；006d 待测 | PC 退出回归后，同一 006d 做物理 USB 拔插 20 次；旧记录不代替 | 是：按提示拔插 USB Slave 数据线，保持供电/JTAG |
+| G7 候选 USB 枚举与 EP0 所有权 | candidate006d/v4 共享 SETUP gate、静态 buffer 所有权、QH cache line/完成状态和 CDC 类错误路径已修复；USB mock 3/3、ARM 链接、180 项 manifest 检查和实板认证短测通过。candidate004 失败保留，candidate005 未上板 | 修复及所列验证完成；不能推出所有 USB 故障已通过 | 同构建 PC 退出/DTR 与物理 USB 回归；详见 [006d 报告](g7_candidate006d_acceptance_20261010.md) | 当前整理不需动作 |
+| G7 摄像头/DMA 异常恢复候选 | 最终 006d 同 manifest/ELF/XSA：camera-reset 20/20、routing-stall 20/20；S2MM 实际 Busy 至 3000001–3000002 us 软件 deadline，新 HELLO/session/key 和认证视频恢复；故障计数各 +1，fatal/control/transport 无增加；无恢复 JTAG 重载 | 完成（受控 PL 故障和软件 deadline 范围） | 保留 [逐轮摘要](g7_candidate006d_acceptance_20261010.json)；不外推物理传感器拔除或硬件 timeout IRQ。G7 整体还缺同构建 USB/PC 回归 | 否（两组已封存）；物理摄像头场景另行安排 |
 | G7 长时间运行 | 约 50 分钟长测按用户例外记录，未实测满 2 小时 | 完成（时长例外）；2 小时实测未测 | 保留豁免与实测时长的区别，不写成 2 小时实测通过 | 否（若用户要求补实测则需占板长测） |
 | 实机录像/导出/回放 | `report/demo_software_ready.md`：15 秒窗口、722/722 回调帧保存，MP4/AVI 各解码 722 帧；包含换钥空档 | 完成（短测） | 长录与不同负载仍需独立证据；不把 722 帧短测写成长时可靠性 | 否；A 独占板卡，若连接/供电异常才用户介入 |
 | 生产密钥、可信熵、全域清零 | `report/security_gap_audit.md`：私钥/seed 通过 JTAG 开发注入；未验证可信板端熵源；PS/缓存/DDR 明文/PL/USB 队列等全域清零未验证 | 未完成 | 先确定板端熵源与密钥 provisioning/存储，定义清零域与读回证据，再做生产安全门禁 | 设计决策与后续板级验证；本轮不接触秘密 |
 | C Keccak PS AXI-Lite 隔离工程 | `build/parallel_20261009/C/route4k/build_manifest.json`：Zynq-7020 route4k XSA SHA-256 `70fe149c62b3a2cc402adfb78fac625520151309015d89815576784a1fd250a2`；地址 `0x43C10000–0x43C10FFF`，WNS +0.306 ns/WHS +0.074 ns、DRC 0 | 离线实现完成；板级/寄存器功能/性能未测 | G0–G7 完成后再按统一固件、向量和时钟接入 PS baseline 比较；本 XSA 不代替正式视频工程 | 否（当前为离线实现） |
-| 统一 Benchmark 和比赛材料 | 新增 `report/benchmark_summary_20261009.json`，显式列出 10 条隔离记录；包括 C route4k 离线 Keccak 实现/XSA 哈希验证（不含板测/性能指标）；脚本/测试/字段说明见 `prj/collect_benchmark_summary.py`、`sim/tb/test_benchmark_summary.py`、`report/benchmark_summary_20261009.md` | 电脑端汇总完成；正式规则/格式与答辩材料待定 | 缺少结构化原始数据的 G4/G5 和重复批次仍保持未汇总；继续收集同构建下的窗口、分辨率、吞吐、延迟与资源数据；规则未给定前不造论文/PPT/评分数据 | 否 |
+| 统一 Benchmark 和比赛材料 | 新增 `report/benchmark_summary_20261009.json`，显式列出 10 条隔离记录；包括 C route4k 离线 Keccak 实现/XSA 哈希验证（不含板测/性能指标）；脚本/测试/字段说明见 `prj/collect_benchmark_summary.py`、`sim/tb/test_benchmark_summary.py`、`report/benchmark_summary_20261009.md` | 电脑端汇总完成；正式规则/格式与答辩材料待定 | 缺少结构化原始数据的 G4/G5 和重复批次仍保持未汇总；继续收集同构建下的窗口、分辨率、吞吐、延迟与资源数据；新增 006d 固定来源逐轮独立摘要；规则未给定前不造论文/PPT/评分数据 | 否 |
 
 ## 本轮可直接完成的用户侧操作
 
-完成 G0 的 SD/复位/冷启动门禁前，现场需提供读卡器和可写入的专用 SD 卡，并确认对应板卡版本的 SD 启动拨码/跳帽和复位键；板上现有 SD 卡保持原样，不写入。之后由 A 作为唯一板卡拥有者安排独占窗口，按 [B 线流程](parallel_B_20261009.md) 执行并留存日志。
+完成 G0 的 SD/复位/冷启动门禁前，现场需提供读卡器和可写入的专用 SD 卡，并确认对应板卡版本的 SD 启动拨码/跳帽和复位键；板上现有 SD 卡保持原样，不写入。之后由执行代理或根代理作为唯一板卡拥有者安排独占窗口，按 [B 线流程](parallel_B_20261009.md) 执行并留存日志。

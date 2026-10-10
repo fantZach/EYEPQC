@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / 'prj'))
 import build_software as base
 
 CPU_FLAGS = ['-mcpu=cortex-a9', '-mfpu=vfpv3', '-mfloat-abi=hard']
-VARIANT = 'g6-auto-camera-dma-recovery-usb-bounded-candidate-v3'
+VARIANT = 'g6-auto-camera-dma-recovery-usb-bounded-candidate-v4'
 LOOP_OLD = '''        if (status) {
             ++g6_capture_errors;
             ++g6_dropped;
@@ -105,6 +105,22 @@ def generate_candidate_usb(base_source, tail_source, output):
     return source
 
 
+def generate_bounded_probe_unit(probe_source, wrapper_source, output):
+    """Combine the generated probe and candidate helper in one translation unit.
+
+    The baseline wrapper includes usb_probe.c; substitute only that include with
+    the generated bounded overlay so candidate builds never link both variants.
+    """
+    wrapper = wrapper_source.read_text(encoding='utf-8')
+    include = '#include "usb_probe.c"'
+    if wrapper.count(include) != 1:
+        raise RuntimeError('USB recovery wrapper include changed; refusing ambiguous probe build')
+    generated = probe_source.read_text(encoding='utf-8')
+    combined = wrapper.replace(include, generated, 1)
+    output.write_text(combined, encoding='utf-8', newline='\n')
+    return combined
+
+
 def pin_bsp_inputs(bsp_workspace, workspace):
     """Snapshot the exact generated BSP headers and link inputs used by this build."""
     source_cpu = Path(bsp_workspace) / 'bsp/ps7_cortexa9_0'
@@ -172,8 +188,14 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
               '--out', workspace], ROOT, workspace / 'usb_bounded_sdk_generate.log')
     patched_endpoint = sdk_overlay / 'xusbps_endpoint.c'
     patched_ch9 = sdk_overlay / 'xusbps_ch9.c'
+    patched_intr = sdk_overlay / 'xusbps_intr.c'
+    candidate_probe = workspace / 'usb_probe_bounded_generated.c'
+    candidate_probe_unit = workspace / 'usb_probe_auto_recovery_bounded_generated.c'
+    generate_bounded_probe_unit(candidate_probe, ROOT / 'prj/usb_probe_auto_recovery.c',
+                                candidate_probe_unit)
     sources = [ROOT / 'src/ps/diag/g3_camera_auto_recovery.c', candidate_usb,
-               ROOT / 'prj/usb_probe_auto_recovery.c', patched_endpoint, patched_ch9,
+               candidate_probe_unit,
+               patched_endpoint, patched_ch9, patched_intr,
                *[ROOT / 'src/ps/src' / f for f in ('session.c', 'protocol.c', 'm09_mlkem.c')],
                *[ROOT / 'src/third_party/tinycrypt/lib/source' / f
                  for f in ('sha256.c', 'utils.c')]]
@@ -188,6 +210,7 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
     include_flags = [arg for path in include for arg in ('-I', str(path))]
     objects, commands = [], []
     patched_endpoint_object = None
+    patched_intr_object = None
     for index, source in enumerate(sources):
         obj = build / f'{index}_{source.stem}.o'
         command = [gcc, *flags, *include_flags, '-c', source, '-o', obj]
@@ -197,6 +220,8 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
         objects.append(obj)
         if source.resolve() == patched_endpoint.resolve():
             patched_endpoint_object = obj
+        if source.resolve() == patched_intr.resolve():
+            patched_intr_object = obj
 
     cpu = pinned_cpu
     elf = build / 'g6_usb.elf'
@@ -209,8 +234,12 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
     map_text = (build / 'g6_usb.map').read_text(encoding='utf-8', errors='replace')
     if not patched_endpoint_object or str(patched_endpoint_object) not in map_text:
         raise RuntimeError('Link map does not contain the isolated patched USB endpoint object')
+    if not patched_intr_object or str(patched_intr_object) not in map_text:
+        raise RuntimeError('Link map does not contain the isolated patched USB interrupt object')
     if 'libxil.a(usbps_v2_11_xusbps_endpoint.o)' in map_text:
         raise RuntimeError('Unpatched libxil USB endpoint object was also linked')
+    if 'libxil.a(usbps_v2_11_xusbps_intr.o)' in map_text:
+        raise RuntimeError('Unpatched libxil USB interrupt object was also linked')
     base.run([gcc.with_name('arm-none-eabi-readelf.exe'), '-h', elf], ROOT,
              build / 'elf_header.txt')
     abi = nm_symbols(gcc.with_name('arm-none-eabi-nm.exe'), elf)
@@ -243,6 +272,10 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
                     ROOT / 'prj/read_g6_auto_health.tcl',
                     ROOT / 'prj/run_g7_auto_recovery.py',
                     ROOT / 'sim/tb/test_g6_auto_recovery.py',
+                    ROOT / 'sim/tb/test_usb_bounded_sdk.py',
+                    ROOT / 'sim/tb/test_usb_bounded_sdk_mock.c',
+                    ROOT / 'sim/tb/test_usb_bounded_ch9_mock.c',
+                    ROOT / 'sim/tb/test_usb_bounded_intr_mock.c',
                     ROOT / 'src/host/g6_board.py', ROOT / 'src/host/build_manifest.py',
                     ROOT / 'src/ps/include/g6_auto_recovery.h',
                     ROOT / 'src/ps/include/bsp_compat.h', ROOT / 'src/ps/include/session.h',
@@ -250,7 +283,7 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
                     ROOT / 'src/ps/include/mvp_gcm.h', ROOT / 'src/ps/include/dma_buffers.h',
                     ROOT / 'src/ps/src/session.c', ROOT / 'src/ps/src/protocol.c',
                     ROOT / 'src/ps/src/m09_mlkem.c', ROOT / 'prj/usb_probe_auto_recovery.c',
-                    ROOT / 'prj/usb_probe.c', ROOT / 'prj/a9_ddr.ld',
+                    ROOT / 'prj/usb_probe.c', candidate_probe, candidate_probe_unit, ROOT / 'prj/a9_ddr.ld',
                     ROOT / 'prj/prepare_usb_bounded_sdk.py',
                     ROOT / 'prj/build_g6_auto_recovery.py', ROOT / 'prj/build_software.py',
                     ROOT / 'prj/generate_bsp.tcl', candidate_usb]
@@ -261,16 +294,18 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
                     for path in source_paths if path.is_file() and ROOT in path.parents}
     sdk_src_relative = (sdk_root / 'src/xusbps_endpoint.c').relative_to(tools).as_posix()
     sdk_ch9_relative = (sdk_root / 'examples/xusbps_ch9.c').relative_to(tools).as_posix()
+    sdk_intr_relative = (sdk_root / 'src/xusbps_intr.c').relative_to(tools).as_posix()
     sdk_ch9_header_relative = (sdk_root / 'examples/xusbps_ch9.h').relative_to(tools).as_posix()
     gcc_relative = gcc.resolve().relative_to(tools.resolve()).as_posix()
     external_sources = {sdk_src_relative: digest(sdk_root / 'src/xusbps_endpoint.c'),
                         sdk_ch9_relative: digest(sdk_root / 'examples/xusbps_ch9.c'),
+                        sdk_intr_relative: digest(sdk_root / 'src/xusbps_intr.c'),
                         sdk_ch9_header_relative: digest(sdk_root / 'examples/xusbps_ch9.h'),
                         gcc_relative: digest(gcc)}
     manifest = dict(application='g6_usb', variant=VARIANT,
                     base_application='g6_usb', base_manifest=str(base_manifest),
                     base_manifest_sha256=digest(base_manifest), xsa=str(xsa),
-                    xsa_sha256=xsa_hash, patch_id='capture-auto-recovery-usb-bounded-v3',
+                    xsa_sha256=xsa_hash, patch_id='capture-auto-recovery-usb-bounded-v4',
                     trigger_modes={'1': 'PL camera reset/PWDN before normal S2MM capture',
                                    '2': 'PL capture route mode 3 disables all valid/ready before S2MM capture'},
                     sources=sources_hash, external_sources=external_sources,
@@ -283,10 +318,15 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
                     artifacts={p.relative_to(workspace).as_posix(): digest(p) for p in
                                (elf, build / 'g6_usb.map', app / '_ide/bitstream/m01.bit',
                                 app / '_ide/psinit/ps7_init.tcl',
-                                sdk_overlay / 'xusbps_endpoint.c',
-                                sdk_overlay / 'xusbps_ch9.c',
-                                sdk_overlay / 'usb_bounded_sdk_policy.h',
-                                workspace / 'usb_bounded_sdk/manifest.json')})
+                                app / 'compile_commands.json',
+                                workspace / 'usb_bounded_sdk_generate.log',
+                                 sdk_overlay / 'xusbps_endpoint.c',
+                                 sdk_overlay / 'xusbps_ch9.c',
+                                 sdk_overlay / 'xusbps_intr.c',
+                                 sdk_overlay / 'usb_bounded_sdk_policy.h',
+                                 workspace / 'usb_probe_bounded_generated.c',
+                                 workspace / 'usb_probe_auto_recovery_bounded_generated.c',
+                                 workspace / 'usb_bounded_sdk/manifest.json')})
     text = json.dumps(manifest, indent=2) + '\n'
     (workspace / 'build_manifest.json').write_text(text, encoding='utf-8')
     (workspace / 'g6_usb_manifest.json').write_text(text, encoding='utf-8')
@@ -299,7 +339,7 @@ def main():
     parser.add_argument('--base-manifest', type=Path,
                         default=ROOT / 'build/vitis/usbfix3_20261007/g6_usb_manifest.json')
     parser.add_argument('--output', type=Path,
-                        default=ROOT / 'build/vitis/g6_auto_recovery_20261008_candidate4')
+                        default=ROOT / 'build/vitis/g6_auto_recovery_20261009_candidate006')
     parser.add_argument('--reuse-bsp', type=Path, default=None,
                         help='reuse an existing same-XSA BSP workspace without regenerating it')
     parser.add_argument('--tool-root', type=Path, default=Path('E:/fpg/2026.1'))

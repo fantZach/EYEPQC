@@ -1,8 +1,16 @@
 # Implementation progress
 
-更新：2026-10-09。实施依据 `doc/steps.md`，采用 Ponytail：复用密码库与标准库，
+更新：2026-10-10。实施依据 `doc/steps.md`，采用 Ponytail：复用密码库与标准库，
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
 当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。
+
+## 2026-10-10：USB 修复完成、同构建恢复批次与 GitHub 整理
+
+最终 candidate006d/v4 已完成共享 SETUP gate、两方向有界 quiesce、静态回复缓冲区所有权、QH 第二 cache line 的 SETUP 保留及标准/CDC 类错误处理。ARM 编译链接及 180 项哈希检查通过；本轮 USB host mock 3/3、G6 11/11、Benchmark fixture 12/12 和仓库要求的 M00/M10/M12/G5 检查通过。
+
+2026-10-09 实板短测 471 帧、47.3579 fps；同一 manifest/ELF/XSA 的 camera-reset 与 routing-stall 各 20/20，通过本轮逐轮只读审核。每批首次加载、恢复无 JTAG 重载；新 HELLO、session/key novelty、认证帧及故障计数器差值均核实。这里是受控 PL 故障与真实 S2MM Busy 达到约 3 秒软件 deadline；不是硬件 timeout IRQ 或物理传感器拔除。
+
+G7 整体尚未通过：最终 006d 的 PC 退出/DTR 20 次与物理 USB 拔插 20 次待测，旧 usbfix3 批次不能代替。G0 仍缺 SD 独立启动、物理复位及 30 分钟冷启动；原 SD 卡保持原样。Keccak 实板功能/性能和生产安全仍未验收。GitHub 本轮仅准备代码、测试与脱敏摘要，不访问板卡；写入因连接器审批策略被拒绝，上传尚未完成，本地提交与 bundle 已保存；见 [同步范围](github_sync_20261010.md)、[006d 报告](g7_candidate006d_acceptance_20261010.md) 和 [执行计划](next_stage_plan.md)。以下按日期保留历史过程，旧的“修复中/板测暂停”描述不代表最新状态。
 
 ## 2026-10-09：离线交付整合与验收边界
 

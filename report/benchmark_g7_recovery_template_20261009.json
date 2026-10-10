@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "record_type": "g7_recovery_batch_template",
+  "policy": {
+    "aggregation": "one record per trial; no pooling across builds or scenarios",
+    "build_identity": "all trials in a batch must match the allowlisted candidate manifest, ELF, and XSA hashes",
+    "partial_batch": "status remains in_progress until the source batch reaches a terminal state",
+    "failure": "retain every failed, timed-out, or incomplete trial; never drop it from counts",
+    "missing_values": "null; do not infer counters or measurements",
+    "privacy": "do not copy absolute paths, session/key hashes, keys, seeds, images, or video payloads"
+  },
+  "batch": {
+    "record_id": null,
+    "scenario": null,
+    "variant": "g6-auto-camera-dma-recovery-usb-bounded-candidate-v4",
+    "manifest_sha256": null,
+    "elf_sha256": null,
+    "xsa_sha256": null,
+    "status": "in_progress",
+    "attempts_requested": 20,
+    "attempts_observed": null,
+    "unique_old_sessions": null,
+    "unique_new_sessions": null,
+    "all_new_sessions_distinct_from_old": null,
+    "unique_old_key_fingerprints": null,
+    "unique_new_key_fingerprints": null,
+    "all_new_keys_distinct_from_old": null,
+    "jtag_loads": null,
+    "jtag_reloads_between_trials": null
+  },
+  "trial_template": {
+    "trial": null,
+    "status": null,
+    "fault_class": null,
+    "actual_s2mm_busy_observed": null,
+    "software_deadline_observed": null,
+    "fault_elapsed_us": null,
+    "verified_frames_before_fault": null,
+    "verified_recovery_frames": null,
+    "recovery_seconds": null,
+    "recovery_fps": null,
+    "fresh_hello": null,
+    "jtag_reload_for_recovery": null,
+    "session_id_changed": null,
+    "key_fingerprint_changed": null,
+    "counter_deltas": {
+      "capture_errors": null,
+      "dropped": null,
+      "fatal": null,
+      "control": null,
+      "transport": null
+    },
+    "source_trial_json": null
+  },
+  "allowed_scenarios": ["camera-reset", "routing-stall"],
+  "allowed_fault_classes": [
+    "actual_s2mm_busy_to_software_deadline",
+    "controlled_pl_camera_reset",
+    "controlled_pl_routing_stall"
+  ],
+  "source_references": [
+    {
+      "path": null,
+      "sha256": null
+    }
+  ]
+}

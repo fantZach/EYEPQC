@@ -1,12 +1,14 @@
 # 比赛提交检查表
 
-更新：2026-10-09。本文件是当前源码仓库的提交索引，不代表比赛组委会验收；正式格式与评分规则尚未提供。
+更新：2026-10-10。本文件是当前源码仓库的提交索引，不代表比赛组委会验收；正式格式与评分规则尚未提供。
 历史发布范围见 [2026-10-08 同步记录](github_sync_20261008.md)；本轮状态、脱敏证据摘要和隔离 Keccak 交付分别见 [验收矩阵](acceptance_matrix_20261009.md)、[Benchmark 汇总](benchmark_summary_20261009.md) 与 [C 线报告](parallel_C_20261009.md)。
 
 **同日更新：** 新的 `build/vitis/software_ready` 已具备 G3/G4/G5/G6、FSBL 和 `BOOT.BIN`；
 M04/M05 原生 XSim 已通过，软件修正与统一入口见 [软件阶段交付](software_ready.md)。
 该轮电脑端构建缺口已补齐；后续实板通过项与剩余门禁分别列于下文。
 首次实机使用 [bringup 指南](../doc/bringup.md)，不要继续使用源码哈希已失效的旧 `g3_delivery`。
+
+最新 USB 修复及同构建 40 轮恢复的审核见 [006d 报告](g7_candidate006d_acceptance_20261010.md) 与 [本轮同步](github_sync_20261010.md)。
 
 ## 提交包索引
 
@@ -27,7 +29,7 @@ M04/M05 原生 XSim 已通过，软件修正与统一入口见 [软件阶段交�
 | 当前电脑端交付 | `build/vitis/usbfix3_20261007` 有四套 ARM 固件、同 XSA 的 bitstream/PS 初始化、FSBL/BOOT.BIN 和 SHA-256 清单；启动来源/BSP/哈希预检通过，构建清单仍为 `board_validated=false`。目录被 Git 忽略，需重建或单独作为附件提供。 |
 | 可复跑的离线检查 | `run_demo.ps1 -Mode Check` 覆盖 M04/M05 原生 XSim、M08 GCM、G6 内存 USB 集成及 USB 恢复 helper；最新结果见 [软件交付记录](software_ready.md)。不访问板卡。 |
 | 本轮新增离线交付 | B 的 G0 离线复核、统一验收矩阵、现场流程与脱敏 Benchmark 已完成；fixture 单测 12/12。C 的独立 Keccak route4k PS+PL 工程、匹配 XSA/bitstream 和两种 A9 固件已通过离线构建/hash 检查，但未上板、未测性能，不能作为加速收益证据。 |
-| 本轮板卡证据 | candidate004 USB 枚举失败；candidate005 只做离线冻结/构建，未上板。后续只读审查发现 class SETUP 路径可在旧 EP0 IN dTD 未 quiesce 时改写共享 `line_coding`，candidate006 的共同 SETUP gate、类请求统一发送/状态处理和 host 时序测试待完成，板测暂停。用户拔插后旧 usbfix3 基线恢复 COM16 与认证视频（记录约 47.36 fps），不推断原因。2026-10-07 的 G3 单帧及 G6 双会话已复现；`usbfix3_20261007` 于 2026-10-08 完成主机接收进程退出恢复 20/20。USB 原批次 20/20 次 PnP/恢复成功，其中 trial 8/14/18 有 host `os.replace` WinError 5，未能证明拔线时 receiver 存活；修复后另 3 轮替补通过，严格 active-stream USB 有效数为原 17 + 补 3 = 20。各轮新 session/key、无 JTAG 重载；板端统计未读回。G0/G7 整体未通过，摄像头故障恢复和真实 DMA 超时仍未完成整体验收。详见 [G7 软件恢复记录](g7_software_recovery.md)、[接收退出批次](g7_receiver_exit_batch.md) 和 [USB 拔插审计](g7_usb_unplug_batch.md)。 |
+| 本轮板卡证据 | candidate006d/v4 已完成 EP0 所有权修复；180 项哈希检查通过，短测 471 帧、47.3579 fps；camera-reset 与 routing-stall 各 20/20，逐轮同 manifest/ELF/XSA，新握手/认证帧及计数器通过，无恢复 JTAG 重载。受控 PL 故障和约 3 秒软件 deadline 与物理传感器拔除/硬件 timeout IRQ 区分。旧 usbfix3 的 PC 退出和严格物理 USB 拔插各 20 次保留历史身份；最终 006d 的这两项待复测。candidate004 枚举失败、candidate005 未上板不改写。G0/G7 整体尚未通过，见 [006d 报告](g7_candidate006d_acceptance_20261010.md) 与 [验收矩阵](acceptance_matrix_20261009.md)。 |
 
 ## 提交前必须补齐
 
@@ -39,7 +41,7 @@ M04/M05 原生 XSim 已通过，软件修正与统一入口见 [软件阶段交�
 2. 本轮 G3 实拍结果已保存并复核 GCM 认证、JPEG 解码和邮箱清零。提交包仍需整理对应实拍、日志和构建身份，禁止将它算作 20 次冷启动或持续视频验收。
 3. 若比赛要求 SD 卡冷启动，使用已生成并预检的同 XSA 启动镜像，另行实测；G0 final2 已完成临时 JTAG、LED 与30秒局部DDR/定时器检查，SD独立启动及30分钟冷启动仍未验收。本轮已确认没有读卡器，板上 SD 卡保持原样、不写入。
 4. G6 认证视频/换钥及最新固件的自动连接恢复已有实机记录；统一脱敏 Benchmark 已建立，但缺少结构化来源的历史项仍需逐项补证；丢帧/认证失败计数及演示材料不能以短测替代长测。
-5. 完成 G0、M13 与剩余 G7 故障/恢复子项；接收进程退出 20/20、usbfix3 基线物理拔插严格有效 20/20（原批次17+替补3）。candidate004 USB 枚举失败；candidate005 未上板，类请求 EP0 所有权缺口正在 candidate006 修复，需先通过生成代码 host 时序测试和离线构建再安排板测。约 50 分钟长测的时长豁免记录不替代摄像头异常和真实 DMA 超时测试。
+5. 完成 G0、M13 与剩余 G7 子项：006d 的受控摄像头 reset/PWDN 与 routing-stall 各 20/20 已通过，继续同构建 PC 退出/DTR 20 次及物理 USB 拔插 20 次。旧 usbfix3 批次不替代；约 50 分钟时长例外不写成实测 2 小时。物理摄像头场景和 M02 冷启动要求另行收集，见 [执行计划](next_stage_plan.md)。
 6. 确认提交规则后决定是否需要单独论文/设计说明、答辩 PPT、演示视频、封面/声明、构建产物附件和指定命名格式。
 
 ## 重建与板测

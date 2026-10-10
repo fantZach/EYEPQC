@@ -225,7 +225,7 @@ def main():
     args = parser.parse_args()
     workspace, tools = args.workspace.resolve(), args.tool_root.resolve()
     manifest, checked = verify(workspace, 'g6_usb_manifest.json')
-    if manifest.get('variant') != 'g6-auto-camera-dma-recovery-usb-bounded-candidate-v3':
+    if manifest.get('variant') != 'g6-auto-camera-dma-recovery-usb-bounded-candidate-v4':
         raise RuntimeError('Refusing a non-auto-recovery candidate workspace')
     external_checked = verify_external_sources(manifest, tools)
     if not 1 <= args.attempts <= 20 or args.first_seconds < 10 or \
