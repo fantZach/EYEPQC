@@ -8,18 +8,49 @@ param(
     [switch]$Mock,
     [int]$MockFailAt = 0,
     [int]$MockFramesBeforeKill = 2,
-    [string]$ResumeDirectory
+    [string]$ResumeDirectory,
+    [string]$Workspace = (Join-Path $PSScriptRoot 'build/vitis/usbfix3_20261007'),
+    [string]$HostSourceRoot = $PSScriptRoot
 )
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$workspace = Join-Path $root 'build/vitis/usbfix3_20261007'
+$hostSourceRoot = [IO.Path]::GetFullPath($HostSourceRoot)
+$workspace = if ([IO.Path]::IsPathRooted($Workspace)) { [IO.Path]::GetFullPath($Workspace) } else { [IO.Path]::GetFullPath((Join-Path $root $Workspace)) }
 $python = Join-Path $root '.venv/Scripts/python.exe'
+$hostScript = Join-Path $hostSourceRoot 'src/host/g6_board.py'
 $toolRoot = if ($env:EYEPQC_TOOL_ROOT) { $env:EYEPQC_TOOL_ROOT } else { 'E:/fpg/2026.1' }
 if ($Attempts -lt 1 -or $Attempts -gt 20 -or $RecoverySeconds -lt 2 -or
     $FaultSeconds -lt 30 -or $WaitCdcSeconds -lt 10) {
     throw 'Use Attempts=1..20, RecoverySeconds>=2, FaultSeconds>=30, WaitCdcSeconds>=10.'
 }
 if (!(Test-Path -LiteralPath $python)) { throw 'Project .venv Python is missing.' }
+if (!(Test-Path -LiteralPath $hostScript)) { throw "HostSourceRoot does not contain src/host/g6_board.py: $hostSourceRoot" }
+if (!(Test-Path -LiteralPath (Join-Path $hostSourceRoot 'data/captures'))) { throw "HostSourceRoot has no data/captures directory: $hostSourceRoot" }
+if (!(Test-Path -LiteralPath (Join-Path $hostSourceRoot 'report'))) { throw "HostSourceRoot has no report directory: $hostSourceRoot" }
+
+function ConvertTo-WindowsArgument([string]$Value) {
+    if ($null -eq $Value) { return '""' }
+    $builder = [System.Text.StringBuilder]::new()
+    [void]$builder.Append('"')
+    $slashes = 0
+    foreach ($char in $Value.ToCharArray()) {
+        if ($char -eq [char]92) { $slashes++; continue }
+        if ($char -eq [char]34) {
+            [void]$builder.Append(('\' * (2 * $slashes + 1)))
+            [void]$builder.Append('"')
+            $slashes = 0
+            continue
+        }
+        if ($slashes) { [void]$builder.Append(('\' * $slashes)); $slashes = 0 }
+        [void]$builder.Append($char)
+    }
+    if ($slashes) { [void]$builder.Append(('\' * (2 * $slashes))) }
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+function Join-WindowsArguments([string[]]$Values) {
+    return (($Values | ForEach-Object { ConvertTo-WindowsArgument ([string]$_) }) -join ' ')
+}
 
 function Write-JsonAtomic($Path, $Value) {
     $temp = "$Path.tmp"
@@ -34,16 +65,20 @@ function Get-BuildIdentity {
     $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $elfHash = (Get-FileHash -LiteralPath $elfPath -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($manifest.artifacts.'g6_usb/build/g6_usb.elf' -ne $elfHash) { throw 'ELF hash differs from manifest.' }
+    if (!$manifest.xsa -or !$manifest.xsa_sha256) { throw 'Manifest has no complete XSA identity.' }
+    if (!(Test-Path -LiteralPath $manifest.xsa)) { throw "Manifest XSA is missing: $($manifest.xsa)" }
+    $xsaHash = (Get-FileHash -LiteralPath $manifest.xsa -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($xsaHash -ne $manifest.xsa_sha256) { throw 'XSA hash differs from manifest.' }
     return [pscustomobject]@{ manifest_sha256=$manifestHash; elf_sha256=$elfHash; xsa_sha256=$manifest.xsa_sha256 }
 }
 function Get-Baseline($Identity) {
-    $files = Get-ChildItem (Join-Path $root 'data/captures') -Directory -Filter 'g6_usb_*' -ErrorAction SilentlyContinue |
+    $files = Get-ChildItem (Join-Path $hostSourceRoot 'data/captures') -Directory -Filter 'g6_usb_*' -ErrorAction SilentlyContinue |
         Sort-Object CreationTimeUtc -Descending
     foreach ($dir in $files) {
         $path = Join-Path $dir.FullName 'result.json'
         if (!(Test-Path -LiteralPath $path)) { continue }
         try { $j = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json } catch { continue }
-        if ($j.status -eq 'passed' -and $j.jtag_completed -eq $true -and
+        if ($j.status -eq 'passed' -and $j.parameters.jtag_load -eq $true -and
             $j.build.manifest_sha256 -eq $Identity.manifest_sha256 -and
             $j.build.elf_sha256 -eq $Identity.elf_sha256 -and
             $j.build.xsa_sha256 -eq $Identity.xsa_sha256 -and
@@ -56,10 +91,38 @@ function Save-Summary($Directory, $Identity, $Status, $BaselinePath, $Passed, $C
     Write-JsonAtomic $summaryPath ([ordered]@{
         schema='eyepqc-g7-batch-v1'; mode=$Mode; status=$Status; attempts_required=$Attempts
         attempts_passed=$Passed; recovery_seconds=$RecoverySeconds; fault_seconds=$FaultSeconds
-        build=$Identity; baseline_result=$BaselinePath; current_trial=$CurrentTrial
+        build=$Identity; workspace=$workspace; host_source_root=$hostSourceRoot
+        baseline_result=$BaselinePath; current_trial=$CurrentTrial
         jtag_reload_during_trials=$false; generated_utc=[DateTime]::UtcNow.ToString('o')
         note='Each attempt requires >=2 authenticated and decoded JPEG frames before termination and after a new handshake. Key fingerprints are SHA-256 only; no key material is recorded.'
     })
+}
+function Assert-BuildAndNoJtag($Result, $Identity, [string]$Context) {
+    if ($Result.build.manifest_sha256 -ne $Identity.manifest_sha256 -or
+        $Result.build.elf_sha256 -ne $Identity.elf_sha256 -or
+        $Result.build.xsa_sha256 -ne $Identity.xsa_sha256 -or
+        $Result.parameters.jtag_load -ne $false) {
+        throw "$Context result has a mismatched manifest/ELF/XSA or records JTAG reload."
+    }
+}
+function Get-RunResultMarker([string]$StdoutPath, [int]$TimeoutSeconds = 5) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (Test-Path -LiteralPath $StdoutPath) {
+            $marker = Get-Content -LiteralPath $StdoutPath -ErrorAction SilentlyContinue |
+                Where-Object { $_ -match '^G6_RUN_RESULT path=(.+)$' } | Select-Object -Last 1
+            if ($marker -and $marker -match '^G6_RUN_RESULT path=(.+)$') {
+                $candidate = [IO.Path]::GetFullPath($Matches[1].Trim().Trim('"'))
+                $capturesRoot = [IO.Path]::GetFullPath((Join-Path $hostSourceRoot 'data/captures')).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+                if (!$candidate.StartsWith($capturesRoot, [StringComparison]::OrdinalIgnoreCase)) {
+                    throw "G6_RUN_RESULT is outside HostSourceRoot/data/captures: $candidate"
+                }
+                return $candidate
+            }
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Timed out waiting for G6_RUN_RESULT marker in $StdoutPath."
 }
 function Get-MockFingerprint($Text) {
     $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -89,7 +152,7 @@ function Get-ValidatedPassedTrials([string]$Directory,[object]$Identity,[int]$Re
 
 $identity = Get-BuildIdentity
 if ($DryRun) {
-    "G7_BATCH_DRY_RUN_OK mode=$Mode attempts=$Attempts recovery_seconds=$RecoverySeconds fault_seconds=$FaultSeconds jtag_reload_during_trials=false build=$($identity.elf_sha256)"
+    "G7_BATCH_DRY_RUN_OK mode=$Mode attempts=$Attempts recovery_seconds=$RecoverySeconds fault_seconds=$FaultSeconds jtag_reload_during_trials=false build=$($identity.elf_sha256) workspace=$workspace hostsource=$hostSourceRoot"
     exit 0
 }
 if ($Mock -and $ResumeDirectory) { throw 'Mock runs create a fresh directory; ResumeDirectory is for physical evidence only.' }
@@ -107,11 +170,18 @@ if ($ResumeDirectory) {
         $oldSummary.build.xsa_sha256 -ne $identity.xsa_sha256) {
         throw 'Resume summary schema/mode/build identity does not match this physical batch.'
     }
+    if ($oldSummary.host_source_root -and
+        [IO.Path]::GetFullPath([string]$oldSummary.host_source_root) -ne $hostSourceRoot) {
+        throw 'Resume summary HostSourceRoot does not match this batch.'
+    }
+    if (!$oldSummary.host_source_root -and $hostSourceRoot -ne [IO.Path]::GetFullPath($root)) {
+        throw 'Legacy resume summary has no HostSourceRoot and can only resume with the default source root.'
+    }
 } else {
     $stamp = Get-Date -Format 'yyyyMMdd_HHmmss_fff'
     $suffix = [guid]::NewGuid().ToString('N').Substring(0,8)
     $leaf = if ($Mock) { "g7_batch_mock_${stamp}_$suffix" } else { "g7_batch_receiver_exit_${stamp}_$suffix" }
-    $runDir = Join-Path $root "report/g7_runs/$leaf"
+    $runDir = Join-Path $hostSourceRoot "report/g7_runs/$leaf"
     New-Item -ItemType Directory -Path $runDir -Force | Out-Null
 }
 
@@ -156,7 +226,7 @@ $worker=$null;$recovery=$null
 try {
     $env:EYEPQC_TOOL_ROOT = $toolRoot
     if (Test-Path 'C:/msys64/ucrt64/bin') { $env:PATH = 'C:/msys64/ucrt64/bin;' + $env:PATH }
-    & $python 'src/host/g6_board.py' --workspace $workspace --tool-root $toolRoot --verify-only
+    & $python $hostScript --workspace $workspace --tool-root $toolRoot --verify-only
     if ($LASTEXITCODE -ne 0) { throw 'G6 software/build verification failed.' }
     $busy = @(Get-CimInstance Win32_Process | Where-Object {
         $_.CommandLine -match 'demo_window\.py|demo_controller\.py|g6_board\.py|run_g7_recovery\.ps1'
@@ -184,12 +254,12 @@ try {
             build=$identity; baseline_result=$baselinePath; jtag_reload=$false; started_utc=[DateTime]::UtcNow.ToString('o') }
         Write-JsonAtomic $casePath $case
         Save-Summary $runDir $identity 'running' $baselinePath $passed $trial
-        $workerArgs = @('-u','src/host/g6_board.py','--workspace',$workspace,'--tool-root',$toolRoot,
+        $workerArgs = @('-u',$hostScript,'--workspace',$workspace,'--tool-root',$toolRoot,
             '--no-jtag','--seconds',"$FaultSeconds",'--wait-cdc',"$WaitCdcSeconds",'--sessions','1','--report-key-fingerprint')
         $worker = $null
         $recovery = $null
         try {
-            $worker = Start-Process -FilePath $python -ArgumentList ($workerArgs -join ' ') -WorkingDirectory $root `
+            $worker = Start-Process -FilePath $python -ArgumentList (Join-WindowsArguments $workerArgs) -WorkingDirectory $hostSourceRoot `
                 -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr -PassThru -WindowStyle Hidden
             $deadline = [DateTime]::UtcNow.AddSeconds($WaitCdcSeconds + 60)
             $established = $null; $ready = $null; $runMarker = $null
@@ -210,7 +280,7 @@ try {
             if ($observedFrames -lt 2) { throw "Only $observedFrames verified frames before termination; minimum is 2." }
             if ($established -notmatch 'session_id=(\d+).*video_key_sha256=([0-9a-f]{64})') { throw 'Session marker lacks session ID/key fingerprint.' }
             $interruptedId = [uint32]$Matches[1]; $interruptedFp = $Matches[2]
-            $partialResult = ($runMarker -replace '^G6_RUN_RESULT path=','').Trim()
+            $partialResult = Get-RunResultMarker $workerOut
             $partial = $null; $partialSession = $null
             $persistDeadline = [DateTime]::UtcNow.AddSeconds(5)
             while ([DateTime]::UtcNow -lt $persistDeadline -and !$partialSession) {
@@ -228,10 +298,9 @@ try {
                 $seenIds = (@($partial.sessions) | ForEach-Object { $_.session_id }) -join ','
                 throw "Interrupted result marker/session does not match stdout session $interruptedId; found [$seenIds] in $partialResult."
             }
-            if ($partial.build.elf_sha256 -ne $identity.elf_sha256 -or
-                $partial.build.manifest_sha256 -ne $identity.manifest_sha256 -or
-                $partial.build.xsa_sha256 -ne $identity.xsa_sha256 -or $partial.parameters.jtag_load -ne $false) {
-                throw 'Interrupted receiver result has a mismatched build or records JTAG reload.'
+            Assert-BuildAndNoJtag $partial $identity 'Interrupted receiver'
+            if ($partialSession.video_key_sha256 -cne $interruptedFp) {
+                throw 'Interrupted result session/key does not match this process stdout.'
             }
             if ([int]$partialSession.observed_verified_frames -lt 2) { throw 'Interrupted result has fewer than two verified/decode-success frames.' }
             $oldErrors=$partialSession.observed_statistics
@@ -256,28 +325,30 @@ try {
 
             $recoverOut = Join-Path $runDir ('trial_{0:d2}_try{1:d2}_recovery.stdout.log' -f $trial,$tryNumber)
             $recoverErr = Join-Path $runDir ('trial_{0:d2}_try{1:d2}_recovery.stderr.log' -f $trial,$tryNumber)
-            $recoverArgs = @('-u','src/host/g6_board.py','--workspace',$workspace,'--tool-root',$toolRoot,
+            $recoverArgs = @('-u',$hostScript,'--workspace',$workspace,'--tool-root',$toolRoot,
                 '--no-jtag','--seconds',"$RecoverySeconds",'--wait-cdc',"$WaitCdcSeconds",'--sessions','1','--report-key-fingerprint')
-            $recoverStarted=[DateTime]::UtcNow
-            $recovery = Start-Process -FilePath $python -ArgumentList ($recoverArgs -join ' ') -WorkingDirectory $root `
+            $recovery = Start-Process -FilePath $python -ArgumentList (Join-WindowsArguments $recoverArgs) -WorkingDirectory $hostSourceRoot `
                 -RedirectStandardOutput $recoverOut -RedirectStandardError $recoverErr -PassThru -WindowStyle Hidden
             if (!$recovery.WaitForExit(($RecoverySeconds + $WaitCdcSeconds + 60) * 1000)) {
                 Stop-Process -Id $recovery.Id -Force -ErrorAction SilentlyContinue
                 throw 'Recovery receiver exceeded bounded wait.'
             }
             if ($recovery.ExitCode -ne 0) { throw "Recovery receiver failed (exit=$($recovery.ExitCode)); inspect $recoverErr." }
-            $captures = Get-ChildItem (Join-Path $root 'data/captures') -Directory -Filter 'g6_usb_*' |
-                Where-Object { $_.CreationTimeUtc -ge $recoverStarted.AddSeconds(-2) } | Sort-Object CreationTimeUtc -Descending
-            $recoveryResultPath = $null; $recoveryResult = $null
-            foreach ($capture in $captures) {
-                $candidate = Join-Path $capture.FullName 'result.json'
-                if (!(Test-Path -LiteralPath $candidate)) { continue }
-                $r=Get-Content -LiteralPath $candidate -Raw | ConvertFrom-Json
-                if ($r.build.elf_sha256 -eq $identity.elf_sha256 -and $r.parameters.jtag_load -eq $false) { $recoveryResultPath=$candidate; $recoveryResult=$r; break }
-            }
-            if (!$recoveryResult -or $recoveryResult.status -ne 'passed' -or $recoveryResult.sessions.Count -ne 1) { throw 'No passed recovery result for the expected build.' }
+            $recoveryResultPath = Get-RunResultMarker $recoverOut
+            if (!(Test-Path -LiteralPath $recoveryResultPath)) { throw "Recovery result marker target does not exist: $recoveryResultPath" }
+            $recoveryResult=Get-Content -LiteralPath $recoveryResultPath -Raw | ConvertFrom-Json
+            Assert-BuildAndNoJtag $recoveryResult $identity 'Recovery receiver'
+            if ($recoveryResult.status -ne 'passed' -or @($recoveryResult.sessions).Count -ne 1) { throw 'Marked recovery result is not a passed single-session result.' }
             $recovery=$null
             $new = $recoveryResult.sessions[0]
+            $recoveryEstablished = Get-Content -LiteralPath $recoverOut -ErrorAction SilentlyContinue |
+                Where-Object { $_ -match '^G6_SESSION_ESTABLISHED ' } | Select-Object -Last 1
+            if (!$recoveryEstablished -or $recoveryEstablished -notmatch 'session_id=(\d+).*video_key_sha256=([0-9a-f]{64})') {
+                throw 'Recovery stdout lacks a valid established session/key fingerprint marker.'
+            }
+            if ([string]$new.session_id -cne $Matches[1] -or $new.video_key_sha256 -cne $Matches[2]) {
+                throw 'Marked recovery result session/key does not match this process stdout.'
+            }
             if ($new.frames -lt 2 -or $new.session_id -eq $interruptedId) { throw 'Recovery did not produce >=2 frames with a fresh session ID.' }
             if (!$new.video_key_sha256 -or $new.video_key_sha256 -eq $interruptedFp) { throw 'Recovery video-key fingerprint was absent or reused.' }
             $bad = @('auth_failures','replay_rejects','sequence_gaps','out_of_order','fragment_errors','invalid_authenticated_jpeg','malformed_video','invalid_session_or_header','dropped_frames') |
