@@ -7,6 +7,7 @@
 #endif
 #include "session.h"
 #include "protocol.h"
+#include "g6_control_dispatch.h"
 #define MLK_CONFIG_PARAMETER_SET 512
 #define MLK_CONFIG_NAMESPACE_PREFIX eye_mlkem
 #define MLK_CONFIG_NO_RANDOMIZED_API
@@ -58,8 +59,11 @@ enum phase { WAIT_HELLO, WAIT_KEM, WAIT_FINISHED, WAIT_START, STREAM, FAULT };
 static enum phase phase;
 
 static void wipe(void *p, unsigned length) {
-    volatile uint8_t *bytes = p;
-    while (length--) *bytes++ = 0;
+    eye_g6_control_wipe(p, length);
+}
+static void clear_handshake_cache(void) {
+    wipe(hello, sizeof hello);
+    wipe(ack, sizeof ack);
 }
 static void be16(uint8_t *p, unsigned n) { p[0] = n >> 8; p[1] = n; }
 static void be64(uint8_t *p, uint64_t n) {
@@ -82,6 +86,7 @@ static int board_random(uint8_t out[32], const uint8_t host_random[32]) {
 static void fail_closed(void) {
     g3_usb_zeroize();
     eye_session_error(&session);
+    clear_handshake_cache();
     phase = FAULT;
     ++g6_fatal_errors;
     ++g6_status;
@@ -93,9 +98,11 @@ static int handle_control(const uint8_t *message, unsigned length) {
     if (eye_control_decode(&type, &body, &body_length, message, length)) return 1;
     if (phase == WAIT_HELLO && type == EYE_HELLO && length == 48) {
         memcpy(hello, message, 48);
-        if (board_random(body_ack + 4, body + 4) ||
-            eye_control_encode(ack, sizeof ack, EYE_HELLO_ACK, body_ack, 36) ||
-            send_control(ack, sizeof ack)) return 1;
+        int status = board_random(body_ack + 4, body + 4);
+        if (!status) status = eye_control_encode(ack, sizeof ack, EYE_HELLO_ACK, body_ack, 36);
+        if (!status) status = send_control(ack, sizeof ack);
+        wipe(body_ack, sizeof body_ack);
+        if (status) return 1;
         phase = WAIT_KEM;
         return 0;
     }
@@ -104,6 +111,7 @@ static int handle_control(const uint8_t *message, unsigned length) {
         int status = eye_mlkem_dec(shared, body, private_key);
         if (!status) status = eye_session_begin(&session, shared, hello, ack, message);
         wipe(shared, sizeof shared);
+        clear_handshake_cache();
         if (status || eye_session_board_finished(&session, finished) ||
             send_control(finished, sizeof finished)) {
             wipe(finished, sizeof finished);
@@ -127,10 +135,19 @@ static int handle_control(const uint8_t *message, unsigned length) {
     if (phase == STREAM && (type == EYE_STOP || type == EYE_REKEY) && length == 52) {
         if (eye_session_command(&session, message)) return 1;
         g3_usb_zeroize();
+        clear_handshake_cache();
         phase = WAIT_HELLO;
         return 0;
     }
     return 1;
+}
+static int take_control(void *context, uint8_t *out, unsigned capacity) {
+    (void)context;
+    return usb_cdc_take_control(out, capacity);
+}
+static int process_control(void *context, const uint8_t *message, unsigned length) {
+    (void)context;
+    return handle_control(message, length);
 }
 static int send_frame(const uint8_t *jpeg, unsigned size) {
     unsigned count = (size + 1399U) / 1400U;
@@ -184,12 +201,13 @@ int main(void) {
     g6_status = 1;
     int was_connected = 0, capture_errors = 0;
     uint32_t connection_epoch = usb_cdc_connection_epoch();
-    uint8_t control[1036];
+    uint8_t control[1036] = {0};
     for (;;) {
         uint32_t current_epoch = usb_cdc_connection_epoch();
         if (current_epoch != connection_epoch) {
             g3_usb_zeroize();
             eye_session_error(&session);
+            clear_handshake_cache();
             phase = WAIT_HELLO;
             was_connected = capture_errors = 0;
             connection_epoch = current_epoch;
@@ -199,6 +217,7 @@ int main(void) {
             if (was_connected) {
                 g3_usb_zeroize();
                 eye_session_error(&session);
+                clear_handshake_cache();
                 phase = WAIT_HELLO;
                 was_connected = 0;
                 ++g6_disconnects;
@@ -207,8 +226,8 @@ int main(void) {
         }
         was_connected = 1;
         if (phase == FAULT) continue;
-        int n = usb_cdc_take_control(control, sizeof control);
-        if (n < 0 || (n > 0 && handle_control(control, (unsigned)n))) {
+        if (eye_g6_control_dispatch(control, sizeof control,
+                                    take_control, process_control, NULL) < 0) {
             ++g6_control_errors;
             fail_closed();
             continue;

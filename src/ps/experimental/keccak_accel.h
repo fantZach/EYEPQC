@@ -43,6 +43,12 @@ keccak_accel_result keccak_accel_permute(const keccak_accel_io *io,
                                          uint64_t state[25],
                                          uint32_t poll_limit);
 
+/* Fast path for a hardware context that has just been configured and had its
+ * ID/version checked. Keep keccak_accel_permute() as the guarded public default. */
+keccak_accel_result keccak_accel_permute_prevalidated(const keccak_accel_io *io,
+                                                      uint64_t state[25],
+                                                      uint32_t poll_limit);
+
 /* Adapt a platform's MMIO base pointer to the callback-based testable API. */
 typedef struct {
     volatile uint32_t *base;

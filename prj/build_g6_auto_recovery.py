@@ -123,7 +123,11 @@ def generate_bounded_probe_unit(probe_source, wrapper_source, output):
 
 def pin_bsp_inputs(bsp_workspace, workspace):
     """Snapshot the exact generated BSP headers and link inputs used by this build."""
-    source_cpu = Path(bsp_workspace) / 'bsp/ps7_cortexa9_0'
+    bsp_workspace = Path(bsp_workspace)
+    source_cpu = bsp_workspace / 'bsp/ps7_cortexa9_0'
+    if not source_cpu.is_dir():
+        # Reuse the already pinned BSP copy from a completed candidate build.
+        source_cpu = bsp_workspace / 'bsp_inputs/ps7_cortexa9_0'
     target_cpu = Path(workspace) / 'bsp_inputs/ps7_cortexa9_0'
     source_include = source_cpu / 'include'
     source_lib = source_cpu / 'lib'
@@ -272,12 +276,15 @@ def build_variant(workspace, xsa, tools, base_manifest, bsp_workspace=None):
                     ROOT / 'prj/read_g6_auto_health.tcl',
                     ROOT / 'prj/run_g7_auto_recovery.py',
                     ROOT / 'sim/tb/test_g6_auto_recovery.py',
+                    ROOT / 'sim/tb/test_g6_control_dispatch.py',
+                    ROOT / 'sim/tb/test_g6_control_dispatch.c',
                     ROOT / 'sim/tb/test_usb_bounded_sdk.py',
                     ROOT / 'sim/tb/test_usb_bounded_sdk_mock.c',
                     ROOT / 'sim/tb/test_usb_bounded_ch9_mock.c',
                     ROOT / 'sim/tb/test_usb_bounded_intr_mock.c',
                     ROOT / 'src/host/g6_board.py', ROOT / 'src/host/build_manifest.py',
                     ROOT / 'src/ps/include/g6_auto_recovery.h',
+                    ROOT / 'src/ps/include/g6_control_dispatch.h',
                     ROOT / 'src/ps/include/bsp_compat.h', ROOT / 'src/ps/include/session.h',
                     ROOT / 'src/ps/include/protocol.h', ROOT / 'src/ps/include/usb_recovery.h',
                     ROOT / 'src/ps/include/mvp_gcm.h', ROOT / 'src/ps/include/dma_buffers.h',
@@ -352,9 +359,11 @@ def main():
     bsp_workspace = args.reuse_bsp.resolve() if args.reuse_bsp else workspace
     if args.reuse_bsp:
         prior_manifest = bsp_workspace / 'g6_usb_manifest.json'
-        if not (bsp_workspace / 'bsp/ps7_cortexa9_0/include/xparameters.h').is_file() or \
+        has_bsp = ((bsp_workspace / 'bsp/ps7_cortexa9_0/include/xparameters.h').is_file() or
+                   (bsp_workspace / 'bsp_inputs/ps7_cortexa9_0/include/xparameters.h').is_file())
+        if not has_bsp or \
                 not prior_manifest.is_file():
-            parser.error('--reuse-bsp must name a prior complete G6 BSP workspace')
+            parser.error('--reuse-bsp must name a prior G6 workspace with a complete pinned BSP')
         prior = json.loads(prior_manifest.read_text(encoding='utf-8'))
         if prior.get('xsa_sha256') != digest(xsa):
             parser.error('--reuse-bsp XSA hash differs from requested XSA')

@@ -54,6 +54,8 @@ PUBLIC_KAT_FILES = {
 }
 
 PUBLIC_REPORT_FILES = {
+    "report/keccak_identity_cached_20261010.md",
+    "report/keccak_identity_cached_20261010.json",
     "report/acceptance_matrix_20261009.md",
     "report/benchmark_summary_20261009.md",
     "report/benchmark_summary_20261009.json",
@@ -70,6 +72,8 @@ PUBLIC_REPORT_FILES = {
     "report/parallel_C_20261009.md",
     "report/progress.md",
     "report/security_gap_audit.md",
+    "report/security_cleanup_20261010.md",
+    "report/security_cleanup_board_summary_20261010.json",
     "report/software_ready.md",
     "report/next_stage_plan.md",
     "report/github_sync_20261010.md",
@@ -127,6 +131,12 @@ EVIDENCE_STATUS = [
         "scope": "可信板端熵源、生产 provisioning 与全域清零均未闭环。",
     },
     {
+        "id": "security_cleanup_candidate007",
+        "status": "functional_regression_passed_zeroization_unverified",
+        "evidence": "report/security_cleanup_board_summary_20261010.json",
+        "scope": "两次约3秒candidate007会话功能回归通过，错误Finished拒绝、drain-stop与bounded-control-write通过；仅新增CPU-local协议缓冲清理。无逐地址清零读回、无新G7 20轮验收；可信熵源/生产provisioning仍未通过。",
+    },
+    {
         "id": "competition_requirements",
         "status": "not_provided",
         "evidence": "report/submission_delivery_plan_20261010.md",
@@ -137,6 +147,12 @@ EVIDENCE_STATUS = [
         "status": "functional_passed_no_speedup",
         "evidence": "report/keccak_board_benchmark_20261010.json",
         "scope": "route4k 板测的 3 次 firmware_hw 启动均完成 tcId 76 KAT；96/96 hardware dispatch，timeout 为 96/96 fallback 且 STATUS 清零读回。硬件比软件慢 8.57%-8.68%（均值 8.62%）；不覆盖全部 84 个板上向量、不证明全域清零、未集成 006d 视频。",
+    },
+    {
+        "id": "keccak_identity_cached_board_benefit",
+        "status": "functional_passed_no_speedup",
+        "evidence": "report/keccak_identity_cached_20261010.json",
+        "scope": "identity-cached优化版3次独立板测均通过tcId 76；同boot配对SW/HW窗口中96/96 dispatch使用硬件，timeout 96/96 fallback且STATUS清零读回。HW仍慢8.356%-8.490%（均值8.411%），未集成006d视频；不覆盖全部84个板上向量、不证明全域清零。",
     },
 ]
 

@@ -11,7 +11,7 @@
 #define REG_STATUS_ERROR (1u << 2)
 #define REG_STATUS_TO    (1u << 3)
 
-typedef enum { MOCK_HARDWARE_RESULT, MOCK_TIMEOUT } mock_mode;
+typedef enum { MOCK_HARDWARE_RESULT, MOCK_TIMEOUT, MOCK_ERROR } mock_mode;
 typedef struct {
     uint64_t state[25];
     uint64_t result[25];
@@ -19,8 +19,13 @@ typedef struct {
     uint32_t launches;
     uint32_t clears;
     uint32_t status_reads;
+    uint32_t id_reads;
+    uint32_t version_reads;
     uint32_t read_calls;
     uint32_t write_calls;
+    uint32_t state_writes;
+    uint32_t id_value;
+    uint32_t version_value;
     mock_mode mode;
 } mock_peripheral;
 
@@ -41,10 +46,17 @@ static uint32_t mock_read32(void *opaque, uint32_t offset)
     mock_peripheral *mock = (mock_peripheral *)opaque;
     uint32_t word;
     ++mock->read_calls;
-    if (offset == KECCAK_ACCEL_ID_OFFSET) return KECCAK_ACCEL_ID_VALUE;
-    if (offset == KECCAK_ACCEL_VERSION_OFFSET) return KECCAK_ACCEL_VERSION_VALUE;
+    if (offset == KECCAK_ACCEL_ID_OFFSET) {
+        ++mock->id_reads;
+        return mock->id_value ? mock->id_value : KECCAK_ACCEL_ID_VALUE;
+    }
+    if (offset == KECCAK_ACCEL_VERSION_OFFSET) {
+        ++mock->version_reads;
+        return mock->version_value ? mock->version_value : KECCAK_ACCEL_VERSION_VALUE;
+    }
     if (offset == KECCAK_ACCEL_STATUS_OFFSET) {
         ++mock->status_reads;
+        if (mock->mode == MOCK_ERROR) return REG_STATUS_ERROR;
         return mock->status;
     }
     if (offset >= KECCAK_ACCEL_RESULT_OFFSET &&
@@ -86,6 +98,7 @@ static void mock_write32(void *opaque, uint32_t offset, uint32_t value)
                                      ((uint64_t)value << 32);
         else
             mock->state[word / 2u] = (mock->state[word / 2u] & UINT64_C(0xffffffff00000000)) | value;
+        ++mock->state_writes;
     }
 }
 
@@ -101,7 +114,7 @@ static int run_kat_case(const char *name, const uint8_t *sk, const uint8_t *ct,
                         mlkem_fips202_backend_stats *stats_out)
 {
     uint8_t ss[MLKEM_BYTES];
-    mlkem_fips202_backend_configure(io, poll_limit);
+    (void)mlkem_fips202_backend_configure(io, poll_limit);
     mlkem_fips202_backend_reset_stats();
     if (eye_mlkem_dec(ss, ct, sk) != 0 || memcmp(ss, expected, sizeof ss) != 0) {
         fprintf(stderr, "ML-KEM-512 KAT failed in %s path\n", name);
@@ -113,6 +126,46 @@ static int run_kat_case(const char *name, const uint8_t *sk, const uint8_t *ct,
            stats_out->software_fallbacks);
     memset(ss, 0, sizeof ss);
     return stats_out->dispatch_calls > 0;
+}
+
+static int test_random_state_fast_path(void)
+{
+    mock_peripheral mock;
+    keccak_accel_io io;
+    uint64_t state[25], original[25], expected[25];
+    uint64_t rng = UINT64_C(0x9e3779b97f4a7c15);
+    unsigned i;
+
+    memset(&io, 0, sizeof io);
+    io.opaque = &mock; io.read32 = mock_read32; io.write32 = mock_write32;
+    io.activation_cookie = KECCAK_ACCEL_EXPERIMENTAL_ENABLE;
+    for (i = 0; i < 25; ++i) {
+        rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17;
+        state[i] = rng;
+    }
+    memcpy(original, state, sizeof state);
+    memcpy(expected, state, sizeof state);
+    eye_mlkem_ref_keccakf1600_permute(expected);
+
+    mock_prepare(&mock, MOCK_HARDWARE_RESULT);
+    if (!mlkem_fips202_backend_configure(&io, 8) || mock.id_reads != 1 ||
+        mock.version_reads != 1) return 0;
+    if (keccak_accel_permute_prevalidated(&io, state, 8) != KECCAK_ACCEL_OK ||
+        memcmp(state, expected, sizeof state) != 0 || mock.id_reads != 1 ||
+        mock.version_reads != 1) return 0;
+
+    for (i = 0; i < 2; ++i) {
+        mock_prepare(&mock, i == 0 ? MOCK_ERROR : MOCK_TIMEOUT);
+        memcpy(state, original, sizeof state);
+        if (!mlkem_fips202_backend_configure(&io, 8) ||
+            keccak_accel_permute_prevalidated(&io, state, 8) !=
+                (i == 0 ? KECCAK_ACCEL_HW_ERROR : KECCAK_ACCEL_TIMEOUT) ||
+            memcmp(state, original, sizeof state) != 0) return 0;
+        eye_mlkem_ref_keccakf1600_permute(state); /* same fallback permutation as backend */
+        if (memcmp(state, expected, sizeof state) != 0) return 0;
+    }
+    puts("MLKEM_FAST_PATH_RANDOM_STATE_PASS hardware_match=1 error_preserves_input=1 timeout_preserves_input=1 fallback_matches_reference=1");
+    return 1;
 }
 
 int main(int argc, char **argv)
@@ -136,6 +189,7 @@ int main(int argc, char **argv)
     }
     memcpy(sk, input, sizeof sk);
     memcpy(ct, input + sizeof sk, sizeof ct);
+    if (!test_random_state_fast_path()) return 3;
 
     memset(&io, 0, sizeof io);
     mock_prepare(&mock, MOCK_HARDWARE_RESULT);
@@ -152,15 +206,36 @@ int main(int argc, char **argv)
     io.opaque = &mock; io.activation_cookie = KECCAK_ACCEL_EXPERIMENTAL_ENABLE;
     if (!run_kat_case("mmio_mock_hardware", sk, ct, expected, &io, 64, &stats) ||
         stats.hardware_successes == 0 || stats.software_fallbacks != 0 ||
-        mock.launches != stats.hardware_successes || mock.status_reads == 0) return 4;
-    printf("MLKEM_FULL_BACKEND_GATE hardware_mock_launches=%u status_reads=%u\n",
+        mock.launches != stats.hardware_successes || mock.status_reads == 0 ||
+        mock.id_reads != 1 || mock.version_reads != 1) return 4;
+    printf("MLKEM_FULL_BACKEND_GATE hardware_mock_launches=%u status_reads=%u identity_reads=%u/%u dispatch=%u\n",
+           mock.launches, mock.status_reads, mock.id_reads, mock.version_reads,
+           stats.dispatch_calls);
+
+    mock_prepare(&mock, MOCK_HARDWARE_RESULT);
+    io.opaque = &mock; mock.id_value = 0xdeadbeefu;
+    if (!run_kat_case("identity_mismatch_fallback", sk, ct, expected, &io, 64, &stats) ||
+        stats.hardware_successes != 0 || stats.software_fallbacks != stats.dispatch_calls ||
+        mock.id_reads != 1 || mock.version_reads != 1 || mock.launches != 0 ||
+        mock.state_writes != 0 || mock.write_calls != 0) return 5;
+    printf("MLKEM_FULL_BACKEND_GATE identity_mismatch=%u/%u dispatch=%u no_state_or_start=1\n",
+           mock.id_reads, mock.version_reads, stats.dispatch_calls);
+
+    mock_prepare(&mock, MOCK_ERROR);
+    io.opaque = &mock; mock.id_value = 0; mock.version_value = 0;
+    if (!run_kat_case("mmio_mock_error_fallback", sk, ct, expected, &io, 64, &stats) ||
+        stats.hardware_successes != 0 || stats.software_fallbacks != stats.dispatch_calls ||
+        mock.launches != stats.dispatch_calls || mock.id_reads != 1 ||
+        mock.version_reads != 1) return 6;
+    printf("MLKEM_FULL_BACKEND_GATE error_mock_launches=%u status_reads=%u\n",
            mock.launches, mock.status_reads);
 
     mock_prepare(&mock, MOCK_TIMEOUT);
     io.opaque = &mock;
     if (!run_kat_case("mmio_mock_timeout_fallback", sk, ct, expected, &io, 7, &stats) ||
         stats.hardware_successes != 0 || stats.software_fallbacks != stats.dispatch_calls ||
-        mock.launches == 0 || mock.status_reads != stats.dispatch_calls * 7u || mock.clears == 0) return 5;
+        mock.launches == 0 || mock.status_reads != stats.dispatch_calls * 7u || mock.clears == 0 ||
+        mock.id_reads != 1 || mock.version_reads != 1) return 7;
     printf("MLKEM_FULL_BACKEND_GATE timeout_mock_launches=%u status_reads=%u clear_writes=%u\n",
            mock.launches, mock.status_reads, mock.clears);
 

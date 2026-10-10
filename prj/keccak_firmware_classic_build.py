@@ -35,7 +35,8 @@ def write_kat(path: Path) -> dict:
     arrays = {"keccak_bench_sk": bytes.fromhex(vector["dk"]),
               "keccak_bench_ct": bytes.fromhex(vector["c"]),
               "keccak_bench_ss": bytes.fromhex(vector["k"])}
-    lines = ["#ifndef KECCAK_BENCH_KAT_H", "#define KECCAK_BENCH_KAT_H", "#include <stdint.h>"]
+    lines = ["#ifndef KECCAK_BENCH_KAT_H", "#define KECCAK_BENCH_KAT_H", "#include <stdint.h>",
+             f"#define KECCAK_BENCH_KAT_TCID {vector['tcId']}u"]
     for name, data in arrays.items():
         lines.append(f"static const uint8_t {name}[{len(data)}] = {{")
         for i in range(0, len(data), 16):

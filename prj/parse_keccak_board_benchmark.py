@@ -32,11 +32,19 @@ def _one(match_list: list[re.Match[str]], description: str) -> re.Match[str]:
     return match_list[0]
 
 
-def parse_log(text: str, expected_counter_hz: int | None = None) -> dict[str, Any]:
+def parse_log(text: str, expected_counter_hz: int | None = None,
+              require_iteration_kat: bool = False) -> dict[str, Any]:
     """Parse one complete firmware boot transcript and enforce its path checks."""
     header = _one(list(HEADER_RE.finditer(text)), "benchmark header")
     hw_enabled = header.group(1) == "1"
     frequency = int(header.group(2))
+    validation = "KECCAK_BENCH_VALIDATION per_iteration_kat=1 identity_at_configure=1"
+    validation_lines = re.findall(r"^KECCAK_BENCH_VALIDATION.*$", text, re.MULTILINE)
+    iteration_kat = validation_lines == [validation]
+    if validation_lines and not iteration_kat:
+        raise ParseError("unknown or repeated benchmark validation declaration")
+    if require_iteration_kat and not iteration_kat:
+        raise ParseError("per-iteration KAT validation declaration is required")
     if frequency < 10_000_000 or frequency > 1_000_000_000 or frequency > 0xFFFFFFFF:
         raise ParseError("counter_hz is outside the plausible 32-bit Cortex-A9 timer ABI range")
     if expected_counter_hz is not None and frequency != expected_counter_hz:
@@ -63,7 +71,10 @@ def parse_log(text: str, expected_counter_hz: int | None = None) -> dict[str, An
         if label in ticks:
             raise ParseError(f"repeated timing label: {label}")
         hi, lo = int(match.group(2), 16), int(match.group(3), 16)
-        ticks[label] = {"ticks": (hi << 32) | lo}
+        count = (hi << 32) | lo
+        if count == 0:
+            raise ParseError(f"zero-length timing window: {label}")
+        ticks[label] = {"ticks": count}
 
     stats: dict[str, dict[str, int]] = {}
     for match in STATS_RE.finditer(text):
@@ -83,9 +94,18 @@ def parse_log(text: str, expected_counter_hz: int | None = None) -> dict[str, An
         stats_pos = text.find(label + " dispatch=")
         if timing_pos < 0 or stats_pos <= timing_pos:
             raise ParseError(f"{label} stats do not follow its timed KAT run")
+        if iteration_kat:
+            markers = list(re.finditer(
+                rf"^{re.escape(label)} KAT_PASS iterations=(\d+) tcId=(\d+)\s*$",
+                text, re.MULTILINE))
+            marker = _one(markers, label + " per-iteration KAT marker")
+            if marker.groups() != ("3", "76") or marker.start() <= timing_pos:
+                raise ParseError(f"{label} did not validate all three tcId 76 iterations")
         count = stats[label]
-        if count["dispatch"] <= 0:
-            raise ParseError(f"{label} had no Keccak permutation dispatches")
+        # The frozen benchmark runs tcId 76 three times, 32 permutations each.
+        # A partial run must not become evidence for the complete window.
+        if count["dispatch"] != 96:
+            raise ParseError(f"{label} requires exactly 96 Keccak permutation dispatches")
         if path == "software" and not (
             count["hardware"] == 0 and count["fallback"] == count["dispatch"]
         ):
@@ -101,6 +121,11 @@ def parse_log(text: str, expected_counter_hz: int | None = None) -> dict[str, An
             raise ParseError(f"{label} did not fall back for every dispatch")
 
     check_decapsulation("software_mlkem512_decaps_3", "software")
+    if iteration_kat:
+        identity_pass = len(re.findall(r"^HARDWARE_CONTEXT_IDENTITY_PASS\s*$", text, re.MULTILINE))
+        identity_fail = len(re.findall(r"^HARDWARE_CONTEXT_IDENTITY_FAIL\b.*$", text, re.MULTILINE))
+        if identity_fail or identity_pass != (2 if hw_enabled else 0):
+            raise ParseError("backend configuration identity checks did not match the hardware windows")
     if hw_enabled:
         check_decapsulation("hardware_mlkem512_decaps_3", "hardware")
         check_decapsulation("timeout_fallback_mlkem512_decaps_3", "timeout")
@@ -110,8 +135,8 @@ def parse_log(text: str, expected_counter_hz: int | None = None) -> dict[str, An
             text,
             re.MULTILINE,
         )
-        if gate is None or (gate.group(1).lower(), gate.group(2).lower()) != (
-            gate.group(3).lower(), gate.group(4).lower()
+        if gate is None or tuple(part.lower() for part in gate.groups()) != (
+            "4b434831", "00010000", "4b434831", "00010000"
         ):
             raise ParseError("missing or failed hardware ID/version gate")
         required = (
@@ -171,7 +196,9 @@ def parse_log(text: str, expected_counter_hz: int | None = None) -> dict[str, An
         "dispatch_stats": stats,
         "timeout_clear_status": int(status.group(1), 16) if hw_enabled else None,
         "timeout_clear_scope": "STATUS register only; STATE/RESULT readback was not attempted" if hw_enabled else None,
-        "kat_evidence": "each decapsulation timing is followed by dispatch stats; firmware emits those stats only after the shared-secret KAT comparison succeeds",
+        "per_iteration_kat": iteration_kat,
+        "kat_evidence": ("all three tcId 76 outputs checked within each timed window" if iteration_kat else
+                         "historical firmware checks only the final output in each three-decapsulation window"),
         "comparison": comparison,
         "complete": True,
     }

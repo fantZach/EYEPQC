@@ -10,7 +10,7 @@ def require(condition, message):
 ROOT=Path(__file__).resolve().parents[1]
 p=argparse.ArgumentParser();p.add_argument('--firmware',type=Path,required=True);p.add_argument('--variant',choices=['firmware_sw','firmware_hw'],required=True);p.add_argument('--label',required=True);a=p.parse_args()
 require(a.label and Path(a.label).name==a.label and a.label not in ('.','..'), 'single run label required')
-w=a.firmware.resolve();m=json.loads((w/'build_manifest.json').read_text());v=m['app_variants'][a.variant]
+w=a.firmware.resolve();m=json.loads((w/'build_manifest.json').read_text(encoding='utf-8'));v=m['app_variants'][a.variant]
 for obj in [*m['artifacts'].values(),*v['artifacts'].values()]:
  require(hashlib.sha256((w/obj['path']).read_bytes()).hexdigest()==obj['sha256'], 'manifest or run identity verification failed')
 count=0
@@ -53,7 +53,7 @@ record={'manifest_hash_checks':count,'status':'captured_complete' if code==0 and
 from parse_keccak_board_benchmark import parse_log
 if record['status']=='captured_complete':
  try:
-  record['parsed']=parse_log(text.replace('\r',''),expected_counter_hz=m['cpu_clock_hz_from_new_xsa_bsp']//2)
+  record['parsed']=parse_log(text.replace('\r',''),expected_counter_hz=m['cpu_clock_hz_from_new_xsa_bsp']//2,require_iteration_kat=True)
   require(record['parsed']['hardware_path_compiled']==v['hardware_path_compiled'], 'manifest or run identity verification failed')
   record['status']='passed'
  except (ValueError,AssertionError) as exc:

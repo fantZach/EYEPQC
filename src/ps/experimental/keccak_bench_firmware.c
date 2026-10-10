@@ -76,7 +76,13 @@ static int run_decaps(const char *label, const keccak_accel_io *io,
 {
     XTime start, stop;
     uint32_t i;
-    mlkem_fips202_backend_configure(io, poll_limit);
+    int identity_validated = mlkem_fips202_backend_configure(io, poll_limit);
+    if (io != 0 && io->activation_cookie == KECCAK_ACCEL_EXPERIMENTAL_ENABLE) {
+        if (identity_validated)
+            xil_printf("HARDWARE_CONTEXT_IDENTITY_PASS\r\n");
+        else
+            xil_printf("HARDWARE_CONTEXT_IDENTITY_FAIL\r\n");
+    }
     mlkem_fips202_backend_reset_stats();
     XTime_GetTime(&start);
     for (i = 0; i < repeat; ++i) {
@@ -85,14 +91,17 @@ static int run_decaps(const char *label, const keccak_accel_io *io,
             memset(s_shared_secret, 0, sizeof s_shared_secret);
             return 0;
         }
+        if (memcmp(s_shared_secret, s_expected, sizeof s_expected) != 0) {
+            xil_printf("%s KAT_FAIL iteration=%u tcId=%u\r\n", label,
+                       (unsigned int)i, (unsigned int)KECCAK_BENCH_KAT_TCID);
+            memset(s_shared_secret, 0, sizeof s_shared_secret);
+            return 0;
+        }
     }
     XTime_GetTime(&stop);
     output_hex(label, stop - start);
-    if (memcmp(s_shared_secret, s_expected, sizeof s_expected) != 0) {
-        xil_printf("%s KAT_FAIL\r\n", label);
-        memset(s_shared_secret, 0, sizeof s_shared_secret);
-        return 0;
-    }
+    xil_printf("%s KAT_PASS iterations=%u tcId=%u\r\n", label,
+               (unsigned int)repeat, (unsigned int)KECCAK_BENCH_KAT_TCID);
     {
         mlkem_fips202_backend_stats st = mlkem_fips202_backend_get_stats();
         xil_printf("%s dispatch=%u hw=%u fallback=%u\r\n", label,
@@ -123,6 +132,7 @@ int main(void)
     xil_printf("KECCAK_BENCH board=not_asserted hw_compiled=%u counter_hz=%u\r\n",
                (unsigned)KECCAK_BENCH_ENABLE_HW,
                (unsigned int)COUNTS_PER_SECOND);
+    xil_printf("KECCAK_BENCH_VALIDATION per_iteration_kat=1 identity_at_configure=1\r\n");
 
     /* Same-board software Keccak baseline. These counts are PS measurements
      * only when this image is later run on the target board. */

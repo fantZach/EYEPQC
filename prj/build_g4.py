@@ -42,7 +42,7 @@ try:
         definitions.append("G6_USB")
         app.import_files(from_loc=str(repo / "src/third_party/tinycrypt/lib/source"),
                          files=["sha256.c", "utils.c"], dest_dir_in_cmp="src")
-        for name in ("session.h", "protocol.h"):
+        for name in ("session.h", "protocol.h", "g6_control_dispatch.h"):
             shutil.copy2(repo / "src/ps/include" / name, workspace / app_name / "src" / name)
         shutil.copytree(repo / "src/third_party/mlkem", workspace / app_name / "src/mlkem")
         shutil.copytree(repo / "src/third_party/tinycrypt", workspace / app_name / "src/tinycrypt")

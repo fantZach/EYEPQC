@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-10",
+  "candidate": "g6_security_cleanup_20261010_candidate007",
+  "board_result": "passed_limited_functional_regression",
+  "build": {
+    "elf_sha256": "4eac755e256796fd0b2ed69ba73ced43bcbc4068f4d3554772916297b5d2f9d6",
+    "xsa_sha256": "46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024"
+  },
+  "test": {
+    "session_count": 2,
+    "nominal_session_seconds": 3,
+    "sessions": [
+      { "frames": 143, "fps": 47.611 },
+      { "frames": 141, "fps": 47.267 }
+    ],
+    "bad_finished_rejected": true,
+    "drain_stop_check_passed": true,
+    "bounded_control_write_check_passed": true,
+    "session_2_key_changed_vs_session_1": true,
+    "dtr_reconnect_tested": false,
+    "board_counters_available": false
+  },
+  "source_result": {
+    "path": "data/captures/g6_usb_20261010_131350_312179/result.json",
+    "sha256": "aa663d29c5749d5f6d75401c8b01304cddb453c5cfaa4dff347f6ec6bbdd767b"
+  },
+  "omitted": [
+    "session identifiers",
+    "transcript fingerprints",
+    "media paths and media",
+    "secret values"
+  ],
+  "limitations": {
+    "zeroization_readback": false,
+    "full_g7_20_round_acceptance": false,
+    "production_security_pass": false
+  }
+}

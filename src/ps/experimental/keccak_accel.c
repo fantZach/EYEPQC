@@ -33,9 +33,10 @@ static void secure_zero_state(uint64_t state[25])
     for (i = 0; i < 25; ++i) p[i] = 0;
 }
 
-keccak_accel_result keccak_accel_permute(const keccak_accel_io *io,
-                                         uint64_t state[25],
-                                         uint32_t poll_limit)
+static keccak_accel_result keccak_accel_permute_impl(const keccak_accel_io *io,
+                                                     uint64_t state[25],
+                                                     uint32_t poll_limit,
+                                                     int check_identity)
 {
     uint32_t word, poll, status;
     uint64_t result[25] = {0};
@@ -45,8 +46,9 @@ keccak_accel_result keccak_accel_permute(const keccak_accel_io *io,
     if (io == 0 || io->activation_cookie != KECCAK_ACCEL_EXPERIMENTAL_ENABLE ||
         io->read32 == 0 || io->write32 == 0 || state == 0 || poll_limit == 0)
         return KECCAK_ACCEL_INVALID;
-    if (io->read32(io->opaque, KECCAK_ACCEL_ID_OFFSET) != KECCAK_ACCEL_ID_VALUE ||
-        io->read32(io->opaque, KECCAK_ACCEL_VERSION_OFFSET) != KECCAK_ACCEL_VERSION_VALUE)
+    if (check_identity &&
+        (io->read32(io->opaque, KECCAK_ACCEL_ID_OFFSET) != KECCAK_ACCEL_ID_VALUE ||
+         io->read32(io->opaque, KECCAK_ACCEL_VERSION_OFFSET) != KECCAK_ACCEL_VERSION_VALUE))
         return KECCAK_ACCEL_INVALID;
 
     clear_device(io);
@@ -76,6 +78,20 @@ keccak_accel_result keccak_accel_permute(const keccak_accel_io *io,
     }
     clear_device(io);
     return KECCAK_ACCEL_TIMEOUT;
+}
+
+keccak_accel_result keccak_accel_permute(const keccak_accel_io *io,
+                                         uint64_t state[25],
+                                         uint32_t poll_limit)
+{
+    return keccak_accel_permute_impl(io, state, poll_limit, 1);
+}
+
+keccak_accel_result keccak_accel_permute_prevalidated(const keccak_accel_io *io,
+                                                      uint64_t state[25],
+                                                      uint32_t poll_limit)
+{
+    return keccak_accel_permute_impl(io, state, poll_limit, 0);
 }
 
 uint32_t keccak_accel_mmio_read(void *opaque, uint32_t offset)

@@ -17,4 +17,10 @@ mlkem_keccak_backend mlkem_keccakf1600_accel_or_fallback(
     const keccak_accel_io *io, uint64_t state[25], uint32_t poll_limit,
     mlkem_keccak_fallback_fn software_fallback);
 
+/* Internal fast path. Caller must bind this call to a context whose ID and
+ * version were checked during backend configuration. */
+mlkem_keccak_backend mlkem_keccakf1600_accel_or_fallback_prevalidated(
+    const keccak_accel_io *io, uint64_t state[25], uint32_t poll_limit,
+    mlkem_keccak_fallback_fn software_fallback);
+
 #endif

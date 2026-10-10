@@ -9,7 +9,7 @@
 | 会话密钥与状态 | `src/ps/src/session.c` 用 volatile 写清会话 transcript hash、视频/控制 key、nonce prefix、session ID、序号和 replay 状态；派生与 HMAC 的若干临时状态也会清理。 | 只覆盖显式列出的对象。PS cache、栈/堆副本、寄存器、异常转储、调试访问和复位/掉电过程没有全域读回证据。`last_transcript` 是保留状态，不能按全结构清零描述。 |
 | ML-KEM 长期私钥与随机种子 | `src/ps/src/g6_usb.c` 从 `g6_sk_load`/`g6_seed_load` 复制到静态 `private_key`/`random_seed`，随后清 mailbox；输入校验失败时清静态副本。 | `prj/provision_g6_jtag.tcl` 明确是开发态，通过 JTAG 写入 1632 字节私钥与 32 字节主机生成的 seed。成功后的正常断连、STOP、REKEY 和 fail-closed 路径保留静态长期私钥/seed；源码没有生产 provisioning 或受保护持久化实现。 |
 | 板端随机服务 | `board_random()` 计算 `HMAC-SHA-256(random_seed, host_random || counter)`，并清理其 40 字节输入缓冲。 | 该实现以注入的 seed 为根，没有从源码证据中发现被调用的板端噪声源、熵估算、启动/连续健康测试或 DRBG。不能据此确认此板不存在硬件噪声源，也不能把主机 seed 说成板端可信熵。重启后的 seed 唯一性和反回滚也未建立。 |
-| ML-KEM 和会话临时值 | 解封装共享秘密、Finished、nonce 等部分局部缓冲在显式路径中清理。 | `g6_usb.c` 中 `hello`、`ack`、`tx`、control buffer、random counter、以及 `eye_mlkem_dec` 内部秘密副本未被本次审阅证明全路径清理；优化器、库实现、栈复用等边界需纳入后续清零清单。 |
+| ML-KEM 和会话临时值 | 解封装共享秘密、Finished、nonce、HMAC/HKDF状态以及 session key 有显式清理。2026-10-10 的独立安全候选新增 CPU-local control 缓冲统一擦除，并在不再使用后擦除 HELLO/ACK/body_ack。ML-KEM 源码有中间对象 zeroize hook，见[实施报告](security_cleanup_20261010.md)。 | 这批实现只覆盖明确对象与路径。`tx` 的 USB 异步所有权、编译器 spill/寄存器、优化后的全调用图和硬复位过程未获全域清零证明；HELLO/ACK 是公开协议数据，不代表真实秘密域已全覆盖。 |
 | PL AES-GCM | `src/ps/src/g3_camera.c` 暴露 `g3_usb_zeroize()` 写 GCM 控制寄存器；每帧加密前、帧发送后以及 G6 STOP/REKEY、断连和 fail-closed 路径会调用。 | 控制寄存器命令与已有离线/局部证据不能证明全部寄存器/内部流水、异常中途复位和总线副本已清。当前没有 PL 全密钥状态读回验收，也没有侧信道/故障注入评估。 |
 | 摄像头明文与 DDR | G3/G6 用 `g3_frame` 保存 JPEG，`g3_sealed` 保存加密输出；DMA 重置、缓冲所有权和边界保护已实现。 | 正常 STOP、断连或清除 GCM key 不会对完整 `g3_frame`/`g3_sealed` 作全区写零。DMA/cache 停止与维护后的逐地址清零读回没有实现/证明。DDR 还有栈、堆、BSS 和共享 mailbox 等副本域。 |
 | USB 软件和 DMA 元数据 | `src/ps/include/usb_recovery.h` 对停止后的 dTD/QH 做 invalidate、清零和 flush，再重建端点；恢复路径管理环与所有权。 | 该操作是恢复正确性措施，不等于所有接收/发送数据、控制缓冲、主机控制器、USB PHY 或线缆副本均安全擦除。硬件卸载、缓存一致性和描述符逐项读回未形成安全验收。 |
@@ -49,4 +49,4 @@ NIST SP 800-90B 规定熵源设计原则、熵评估与健康测试，并用于�
 4. **清零读回**：每个列明内存段按实际 ELF linker map 定址；停止 DMA/cache 所有权后写零并读回，覆盖 normal/error/STOP/REKEY/reset/USB/DMA 失败分支。PL key/nonce 状态提供可审计的测试见证；不能观测的内部状态明确列为残余风险，不能用模拟结果代替。
 5. **产品评估**：明确 secure boot、JTAG 锁定、软件升级、访问控制和物理攻击/侧信道范围；独立审阅威胁模型、故障注入结果和残余风险。只有以上条件及目标部署环境的专项评估完成后，才可更改“生产安全未通过”的状态。
 
-本轮只完成了源码审阅和电脑端计划。未修改固件、provisioning 输入、manifest 或 README；未接触板卡、串口、JTAG，也未操作启动存储或 eFuse。实施需要的产品目标、真实硬件熵源/密钥存储方案以及物理安全要求集中待确认；在此之前可独立完成的软件工作是开发/生产构建隔离、秘密清单和测试 harness 的设计，但不能把它们标作生产安全完成。
+截至 2026-10-10 本计划初稿形成时，仅完成源码审阅和电脑端计划。随后独立实施的 CPU-local 临时协议数据清理、候选构建和边界见[安全清理实施报告](security_cleanup_20261010.md)。这不改变“生产安全未通过”：可信板端熵源、生产 provisioning、长期密钥保护、DMA共享明文缓冲/USB描述符有序清理，以及PS/PL全域清零读回仍未闭环；未操作启动存储或 eFuse。

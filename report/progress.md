@@ -4,6 +4,14 @@
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
 当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。
 
+## 2026-10-10 续推进：身份核验优化、逐次 KAT 与 CPU 临时协议数据清理
+
+独立 Keccak 后端把重复 ID/version MMIO 检查移至每次 configure，核验失败只 fallback；通用逐次检查 API 保留。新固件每个窗口的三次 tcId 76 解封装均检查预期输出，并将校验计入 SW/HW 对称计时。三次独立硬件启动、每次 715 项 hash 预检及 96/96 hardware dispatch 通过；强制 timeout 的 96/96 fallback 和 STATUS0 通过。新窗口 HW 仍慢约 8.4%，不宣称加速，不与旧窗口做精确因果比较；主要 MMIO 搬运开销仍约 17.1 us。见 [新板测](keccak_identity_cached_20261010.md)。
+
+G6 新增 CPU 本地控制分发 helper，在非零输入（含部分失败/越界）处理后清整个 1036 字节缓冲；空输入不重复擦写。握手缓存消费/退出后清理，长期设备 key/seed 与防重放状态保持既有语义，不碰消费者仍可能拥有的 USB TX/DMA 明文缓冲。真实 C helper harness 通过，candidate007 独立 ARM 构建/183 项预检及有限反汇编审阅完成；实板两会话各 3 秒共 284 帧、坏 Finished 拒绝、STOP/drain 回归通过。仅支持所列对象及功能范围，不证明实板全域清零；见 [安全实施](security_cleanup_20261010.md)。
+
+最终恢复旧 006d：在冻结源码副本逐项恢复原 manifest 精确字节（含历史混合换行），180 项预检通过后临时 JTAG 加载，3 秒复测 140 帧/47.551 fps。COM16/COM14 正常，receiver已退出；不写 SD/Flash/eFuse。旧 006d 的现场验收不迁移为新 candidate007 的完整 G7 证据。技术报告草稿也已更新事实和证据链接。G0、G7 剩余门禁和生产熵/密钥/全域清零仍未闭环。
+
 ## 2026-10-10：Keccak 实板功能、负收益 Benchmark 与交付准备
 
 用户明确本轮先做加速器和安全/交付工作；无需等待本轮 G0/G7 物理动作。独立 Keccak route4k 在 xc7z020 板上完成 SW 1 轮、HW 3 轮：ID/version、tc76 ML-KEM KAT、每轮 96 次真实硬件置换（无 fallback）及 watchdog timeout 后 96 次软件 fallback 均通过。实测 timer 333333343 Hz；完整解封装 HW 约 1.172 ms、SW 约 1.079 ms，HW 慢约 8.6%。MMIO 搬运开销约 17.2 us/置换，因此本版没有加速收益，不接入正式视频工程。
