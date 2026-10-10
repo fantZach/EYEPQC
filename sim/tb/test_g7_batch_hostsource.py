@@ -76,6 +76,19 @@ class G7BatchHostSourceTests(unittest.TestCase):
         self.assertEqual(self.mock_runs(), [])
         self.assertEqual(set((ROOT / "report/g7_runs").glob("g7_batch_mock_*")), previous_root_runs)
 
+    def test_receiver_exit_captures_board_hello_ack_diagnostics_around_recovery(self) -> None:
+        source = RUNNER.read_text(encoding="utf-8")
+        pre = source.index("$preRekeyDiag=Read-RekeyDiagnostic")
+        start = source.index("$recovery = Start-Process", pre)
+        wait = source.index("$recovery.WaitForExit", start)
+        post = source.index("$postRekeyDiag=Read-RekeyDiagnostic", wait)
+        self.assertLess(pre, start)
+        self.assertLess(wait, post)
+        self.assertIn("$case.rekey_hello_attempt_delta", source)
+        self.assertIn("$case.rekey_ack_attempt_delta", source)
+        self.assertIn("$postRekeyDiag.hello_ack_send_status -ne 0", source)
+        self.assertTrue((ROOT / "prj/capture_g6_rekey_diag.py").is_file())
+
     def test_dry_run_keeps_legacy_default_workspace(self) -> None:
         result = subprocess.run(
             [self.powershell, "-NoProfile", "-File", str(RUNNER), "-DryRun"],

@@ -58,7 +58,8 @@ struct g6_auto_recovery_diag {
     volatile uint32_t malformed_drop_count;
 };
 
-/* Snapshot of the first transport failure; separate from the live counters. */
+/* Latest transport/disconnect-retirement snapshot; UINT32_MAX send status means
+ * no frame send was attempted. The error count is cumulative at this snapshot. */
 struct g6_transport_failure_diag {
     volatile uint32_t send_status;
     volatile uint32_t resume_status;

@@ -17,6 +17,7 @@ $root = $PSScriptRoot
 $hostSourceRoot = [IO.Path]::GetFullPath($HostSourceRoot)
 $workspace = if ([IO.Path]::IsPathRooted($Workspace)) { [IO.Path]::GetFullPath($Workspace) } else { [IO.Path]::GetFullPath((Join-Path $root $Workspace)) }
 $python = Join-Path $root '.venv/Scripts/python.exe'
+$diagScript = Join-Path $root 'prj/capture_g6_rekey_diag.py'
 $hostScript = Join-Path $hostSourceRoot 'src/host/g6_board.py'
 $toolRoot = if ($env:EYEPQC_TOOL_ROOT) { $env:EYEPQC_TOOL_ROOT } else { 'E:/fpg/2026.1' }
 if ($Attempts -lt 1 -or $Attempts -gt 20 -or $RecoverySeconds -lt 2 -or
@@ -69,7 +70,38 @@ function Get-BuildIdentity {
     if (!(Test-Path -LiteralPath $manifest.xsa)) { throw "Manifest XSA is missing: $($manifest.xsa)" }
     $xsaHash = (Get-FileHash -LiteralPath $manifest.xsa -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($xsaHash -ne $manifest.xsa_sha256) { throw 'XSA hash differs from manifest.' }
-    return [pscustomobject]@{ manifest_sha256=$manifestHash; elf_sha256=$elfHash; xsa_sha256=$manifest.xsa_sha256 }
+    $diagAddress=[uint64]0; $diagSize=[uint32]0
+    $diagProperty=$manifest.owned.PSObject.Properties['g6_rekey_diagnostic']
+    if ($diagProperty) {
+        $diagOwned=$diagProperty.Value
+        $diagAddress=[uint64]$diagOwned.address; $diagSize=[uint32]$diagOwned.size
+        if ($diagAddress -lt 0x00100000 -or $diagAddress -ge 0x40000000 -or
+            ($diagAddress % 64) -ne 0 -or $diagSize -ne 116) {
+            throw 'Manifest has an invalid G6 rekey diagnostic DDR range.'
+        }
+    }
+    return [pscustomobject]@{ manifest_sha256=$manifestHash; elf_sha256=$elfHash; xsa_sha256=$manifest.xsa_sha256;
+        rekey_diag_address=$diagAddress; rekey_diag_size=$diagSize }
+}
+function Read-RekeyDiagnostic($Identity, [string]$OutputPrefix) {
+    if (!$Identity.rekey_diag_address -or $Identity.rekey_diag_size -ne 116) {
+        throw 'This build has no owned G6 rekey diagnostic symbol; use the receiver-exit diagnostic candidate.'
+    }
+    if (!(Test-Path -LiteralPath $diagScript)) { throw "G6 diagnostic reader is missing: $diagScript" }
+    $arguments=@('-u',$diagScript,'--workspace',$workspace,'--tool-root',$toolRoot,'--output-prefix',$OutputPrefix)
+    $output = & $python @arguments 2>&1
+    $exitCode=$LASTEXITCODE
+    $output | Set-Content -LiteralPath ($OutputPrefix + '_launcher.log') -Encoding utf8
+    if ($exitCode -ne 0) { throw "Read-only G6 rekey diagnostic capture failed (exit=$exitCode)." }
+    $jsonPath=$OutputPrefix + '.json'
+    if (!(Test-Path -LiteralPath $jsonPath)) { throw 'G6 rekey diagnostic capture did not write its JSON snapshot.' }
+    $record=Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json
+    if ($record.build.manifest_sha256 -ne $Identity.manifest_sha256 -or
+        $record.build.elf_sha256 -ne $Identity.elf_sha256 -or
+        $record.build.xsa_sha256 -ne $Identity.xsa_sha256) {
+        throw 'G6 rekey diagnostic snapshot build identity differs from the active batch.'
+    }
+    return $record.diagnostic
 }
 function Get-Baseline($Identity) {
     $files = Get-ChildItem (Join-Path $hostSourceRoot 'data/captures') -Directory -Filter 'g6_usb_*' -ErrorAction SilentlyContinue |
@@ -323,17 +355,35 @@ try {
             $worker.WaitForExit()
             $case.stage='receiver_terminated'; $case.receiver_exit_code=$worker.ExitCode; Write-JsonAtomic $casePath $case
 
+            $case.stage='read_pre_recovery_rekey_diag'; Write-JsonAtomic $casePath $case
+            $preRekeyDiag=Read-RekeyDiagnostic $identity (Join-Path $runDir ('trial_{0:d2}_try{1:d2}_rekey_before' -f $trial,$tryNumber))
+            $case.pre_recovery_rekey_diag=$preRekeyDiag
+
             $recoverOut = Join-Path $runDir ('trial_{0:d2}_try{1:d2}_recovery.stdout.log' -f $trial,$tryNumber)
             $recoverErr = Join-Path $runDir ('trial_{0:d2}_try{1:d2}_recovery.stderr.log' -f $trial,$tryNumber)
             $recoverArgs = @('-u',$hostScript,'--workspace',$workspace,'--tool-root',$toolRoot,
                 '--no-jtag','--seconds',"$RecoverySeconds",'--wait-cdc',"$WaitCdcSeconds",'--sessions','1','--report-key-fingerprint')
             $recovery = Start-Process -FilePath $python -ArgumentList (Join-WindowsArguments $recoverArgs) -WorkingDirectory $hostSourceRoot `
                 -RedirectStandardOutput $recoverOut -RedirectStandardError $recoverErr -PassThru -WindowStyle Hidden
+            $recoveryTimedOut=$false
             if (!$recovery.WaitForExit(($RecoverySeconds + $WaitCdcSeconds + 60) * 1000)) {
                 Stop-Process -Id $recovery.Id -Force -ErrorAction SilentlyContinue
-                throw 'Recovery receiver exceeded bounded wait.'
+                $recovery.WaitForExit()
+                $recoveryTimedOut=$true
             }
+            $case.stage='read_post_recovery_rekey_diag'; Write-JsonAtomic $casePath $case
+            $postRekeyDiag=Read-RekeyDiagnostic $identity (Join-Path $runDir ('trial_{0:d2}_try{1:d2}_rekey_after' -f $trial,$tryNumber))
+            $helloAttemptDelta = ([long]$postRekeyDiag.hello_attempts - [long]$preRekeyDiag.hello_attempts + 4294967296) % 4294967296
+            $ackAttemptDelta = ([long]$postRekeyDiag.hello_ack_send_attempts - [long]$preRekeyDiag.hello_ack_send_attempts + 4294967296) % 4294967296
+            $case.post_recovery_rekey_diag=$postRekeyDiag
+            $case.rekey_hello_attempt_delta=$helloAttemptDelta
+            $case.rekey_ack_attempt_delta=$ackAttemptDelta
+            Write-JsonAtomic $casePath $case
+            if ($recoveryTimedOut) { throw 'Recovery receiver exceeded bounded wait; AP0 rekey snapshot was captured afterward.' }
             if ($recovery.ExitCode -ne 0) { throw "Recovery receiver failed (exit=$($recovery.ExitCode)); inspect $recoverErr." }
+            if ($helloAttemptDelta -lt 1 -or $ackAttemptDelta -lt 1 -or $postRekeyDiag.hello_ack_send_status -ne 0) {
+                throw 'Recovery succeeded on the host but board AP0 evidence lacks a fresh HELLO and successful ACK-send attempt.'
+            }
             $recoveryResultPath = Get-RunResultMarker $recoverOut
             if (!(Test-Path -LiteralPath $recoveryResultPath)) { throw "Recovery result marker target does not exist: $recoveryResultPath" }
             $recoveryResult=Get-Content -LiteralPath $recoveryResultPath -Raw | ConvertFrom-Json

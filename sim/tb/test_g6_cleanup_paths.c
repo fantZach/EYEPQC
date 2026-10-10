@@ -83,6 +83,11 @@ static void setup_case(enum phase initial_phase, enum eye_session_state state)
     g6_fatal_errors = 20U;
     g6_control_errors = 30U;
     g6_disconnects = 40U;
+    g6_transport_errors = 0U;
+#ifdef G6_SECURE_CLEANUP
+    memset((void *)&g6_transport_failure_diag, 0,
+           sizeof g6_transport_failure_diag);
+#endif
 }
 
 static int long_term_material_preserved(void)
@@ -304,26 +309,46 @@ static int test_disconnect(void)
 {
     setup_case(STREAM, EYE_STATE_STREAMING);
 #ifdef G6_SECURE_CLEANUP
-    retire_disconnected_session();
+    if (retire_disconnected_session(4U, 0U, 0U, 14U) != 0) return 1;
     if (phase != WAIT_HELLO || g6_disconnects != 41U ||
+        g6_transport_errors != 0U ||
+        g6_transport_failure_diag.send_status != 4U ||
+        g6_transport_failure_diag.resume_status != 0U ||
+        g6_transport_failure_diag.usb_ready != 0U ||
+        g6_transport_failure_diag.connection_epoch != 14U ||
+        g6_transport_failure_diag.transport_error_count != 0U ||
         !callbacks_stopped_at(3U) || g6_secure_cleanup_diag.stage != G6_CLEANUP_COMPLETE ||
         g6_secure_cleanup_diag.result != 0U || gcm_clear_calls != 1U ||
         cleanup_diag_flush_calls != 1U ||
         !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
-        return 1;
+        return 2;
     for (unsigned fail = 1U; fail <= 3U; ++fail) {
         setup_case(STREAM, EYE_STATE_STREAMING);
         cleanup_fail_at = fail;
-        retire_disconnected_session();
-        if (phase != FAULT || g6_disconnects != 41U ||
+        if (retire_disconnected_session(4U, 0U, 0U, 14U) != 1 ||
+            phase != FAULT || g6_disconnects != 40U ||
             g6_fatal_errors != 21U || g6_status != 11U ||
+            g6_transport_errors != 1U ||
+            g6_transport_failure_diag.send_status != 4U ||
+            g6_transport_failure_diag.resume_status != 0U ||
+            g6_transport_failure_diag.usb_ready != 0U ||
+            g6_transport_failure_diag.connection_epoch != 14U ||
+            g6_transport_failure_diag.transport_error_count != 1U ||
             !callbacks_stopped_at(fail) || !cleanup_failed_diag(fail) ||
             cleanup_diag_flush_calls != 1U ||
             !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
             return (int)(10U + fail);
     }
+    setup_case(STREAM, EYE_STATE_STREAMING);
+    if (retire_disconnected_session(UINT32_MAX, 0U, 0U, 15U) != 0 ||
+        g6_transport_failure_diag.send_status != UINT32_MAX ||
+        g6_transport_failure_diag.usb_ready != 0U ||
+        g6_transport_failure_diag.connection_epoch != 15U ||
+        g6_transport_failure_diag.transport_error_count != 0U ||
+        g6_transport_errors != 0U || g6_disconnects != 41U)
+        return 20;
 #else
-    retire_disconnected_session();
+    if (retire_disconnected_session(UINT32_MAX, 0U, 0U, 7U) != 0) return 1;
     if (phase != WAIT_HELLO || g6_disconnects != 41U || g6_fatal_errors != 20U ||
         gcm_clear_calls != 1U || cleanup_order_count != 0U ||
         cleanup_diag_flush_calls != 0U ||
@@ -388,7 +413,8 @@ static int exercise_auth_failure(unsigned fail_stage)
     if (handle_control(message, sizeof message) == 0) return 2;
     /* Mirrors the connected/non-disconnect error branch around handle_control. */
     if (!usb_cdc_ready() || usb_cdc_connection_epoch() != fake_connection_epoch) {
-        retire_disconnected_session();
+        (void)retire_disconnected_session(UINT32_MAX, 0U,
+            (unsigned)usb_cdc_ready(), usb_cdc_connection_epoch());
     } else {
         ++g6_control_errors;
         fail_closed();

@@ -12,6 +12,10 @@ run_spec = importlib.util.spec_from_file_location(
     'run_g7_auto_recovery', ROOT / 'prj/run_g7_auto_recovery.py')
 runner = importlib.util.module_from_spec(run_spec)
 run_spec.loader.exec_module(runner)
+build_spec = importlib.util.spec_from_file_location(
+    'build_g6_auto_recovery', ROOT / 'prj/build_g6_auto_recovery.py')
+builder = importlib.util.module_from_spec(build_spec)
+build_spec.loader.exec_module(builder)
 
 
 def action(status, consecutive_malformed=0):
@@ -99,15 +103,31 @@ class G6AutoRecovery(unittest.TestCase):
         self.assertIn('secure_cleanup() || g6_candidate_recover_camera()', malformed)
         transport = source.split('g6_secure_expected_usb_disconnect(', 1)[1].split('continue;', 1)[0]
         self.assertIn('send_epoch', transport)
-        self.assertIn('usb_cdc_ready()', transport)
+        self.assertIn('ready_at_failure', transport)
+        self.assertIn('epoch_at_failure', transport)
         self.assertIn('g6_transport_failure_diag.transport_error_count', source)
         # This candidate-only source path must leave ordinary G6 links free of
         # the candidate wrapper symbol and new G3 cleanup APIs.
         self.assertIn('#ifdef G6_SECURE_CLEANUP\nint usb_cdc_secure_cleanup_tx', source)
         fail_closed = source.split('static void fail_closed(void)', 1)[1].split(
-            'static void retire_disconnected_session(void)', 1)[0]
-        disconnect = source.split('static void retire_disconnected_session(void)', 1)[1].split(
+            'static int retire_disconnected_session(', 1)[0]
+        disconnect = source.split('static int retire_disconnected_session(', 1)[1].split(
             'static int handle_control', 1)[0]
+        self.assertIn('return 1;', disconnect)
+        self.assertIn('return 0;', disconnect)
+        failure = disconnect.split('if (secure_cleanup())', 1)[1].split('} else {', 1)[0]
+        self.assertNotIn('++g6_disconnects;', failure)
+        self.assertLess(failure.index('++g6_transport_errors;'), failure.index('mark_fault();'))
+        success = disconnect.split('} else {', 1)[1]
+        self.assertLess(success.index('phase = WAIT_HELLO;'),
+                        success.index('++g6_disconnects;'))
+        self.assertIn('UINT32_MAX, 0U, 0U, current_epoch', source)
+        builder.verify_receiver_exit_cleanup_source(source)
+        rejected = source.replace(
+            'g6_transport_failure_diag.transport_error_count = g6_transport_errors + 1U;',
+            'g6_transport_failure_diag.transport_error_count = g6_transport_errors;')
+        with self.assertRaisesRegex(RuntimeError, 'counted as transport error'):
+            builder.verify_receiver_exit_cleanup_source(rejected)
         stop = source.split('if (phase == STREAM && (type == EYE_STOP', 1)[1].split(
             '\n    return 1;', 1)[0]
         for canonical_path in (fail_closed, disconnect, stop):

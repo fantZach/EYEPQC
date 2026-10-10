@@ -224,16 +224,31 @@ static void fail_closed(void) {
 #endif
     mark_fault();
 }
-static void retire_disconnected_session(void) {
+static int retire_disconnected_session(unsigned send_status,
+                                       unsigned resume_status,
+                                       unsigned ready_at_failure,
+                                       uint32_t epoch_at_failure) {
 #ifdef G6_SECURE_CLEANUP
+    g6_transport_failure_diag.send_status = send_status;
+    g6_transport_failure_diag.resume_status = resume_status;
+    g6_transport_failure_diag.phase = (uint32_t)phase;
+    g6_transport_failure_diag.usb_ready = ready_at_failure;
+    g6_transport_failure_diag.connection_epoch = epoch_at_failure;
     if (secure_cleanup()) {
+        g6_transport_failure_diag.transport_error_count = g6_transport_errors + 1U;
+        ++g6_transport_errors;
         mark_fault();
+        return 1;
     } else {
         eye_session_error(&session);
         clear_handshake_cache();
         phase = WAIT_HELLO;
     }
 #else
+    (void)send_status;
+    (void)resume_status;
+    (void)ready_at_failure;
+    (void)epoch_at_failure;
     g3_usb_zeroize();
     eye_session_error(&session);
     clear_handshake_cache();
@@ -241,8 +256,10 @@ static void retire_disconnected_session(void) {
 #endif
     ++g6_disconnects;
 #ifdef G6_SECURE_CLEANUP
+    g6_transport_failure_diag.transport_error_count = g6_transport_errors;
     publish_rekey_diag();
 #endif
+    return 0;
 }
 static int handle_control(const uint8_t *message, unsigned length) {
     uint8_t type, body_ack[36] = {1, 1, 0, 1};
@@ -398,14 +415,15 @@ int main(void) {
     for (;;) {
         uint32_t current_epoch = usb_cdc_connection_epoch();
         if (current_epoch != connection_epoch) {
-            retire_disconnected_session();
+            retire_disconnected_session(UINT32_MAX, 0U,
+                                        (unsigned)usb_cdc_ready(), current_epoch);
             was_connected = capture_errors = 0;
             connection_epoch = current_epoch;
             continue;
         }
         if (!usb_cdc_ready()) {
             if (was_connected) {
-                retire_disconnected_session();
+                retire_disconnected_session(UINT32_MAX, 0U, 0U, current_epoch);
                 was_connected = 0;
             }
             continue;
@@ -415,7 +433,8 @@ int main(void) {
         if (eye_g6_control_dispatch(control, sizeof control,
                                     take_control, process_control, NULL) < 0) {
             if (!usb_cdc_ready() || usb_cdc_connection_epoch() != connection_epoch) {
-                retire_disconnected_session();
+                retire_disconnected_session(UINT32_MAX, 0U,
+                    (unsigned)usb_cdc_ready(), usb_cdc_connection_epoch());
                 was_connected = 0;
                 connection_epoch = usb_cdc_connection_epoch();
             } else {
@@ -491,20 +510,22 @@ int main(void) {
         if (!status && !resume_status)
             g6_transport_failure_diag.last_successful_frame_id = frame_id - 1U;
         if (resume_status || status) {
+            unsigned ready_at_failure = (unsigned)usb_cdc_ready();
+            uint32_t epoch_at_failure = usb_cdc_connection_epoch();
+            if (g6_secure_expected_usb_disconnect(
+                    (unsigned)status, (unsigned)resume_status,
+                    ready_at_failure, send_epoch, epoch_at_failure)) {
+                (void)retire_disconnected_session((unsigned)status,
+                    (unsigned)resume_status, ready_at_failure, epoch_at_failure);
+                was_connected = 0;
+                connection_epoch = epoch_at_failure;
+                continue;
+            }
             g6_transport_failure_diag.send_status = (uint32_t)status;
             g6_transport_failure_diag.resume_status = (uint32_t)resume_status;
             g6_transport_failure_diag.phase = (uint32_t)phase;
-            g6_transport_failure_diag.usb_ready = (uint32_t)usb_cdc_ready();
-            g6_transport_failure_diag.connection_epoch = usb_cdc_connection_epoch();
-            if (g6_secure_expected_usb_disconnect(
-                    (unsigned)status, (unsigned)resume_status,
-                    (unsigned)usb_cdc_ready(), send_epoch,
-                    usb_cdc_connection_epoch())) {
-                retire_disconnected_session();
-                was_connected = 0;
-                connection_epoch = usb_cdc_connection_epoch();
-                continue;
-            }
+            g6_transport_failure_diag.usb_ready = ready_at_failure;
+            g6_transport_failure_diag.connection_epoch = epoch_at_failure;
             g6_transport_failure_diag.transport_error_count = g6_transport_errors + 1U;
             ++g6_transport_errors;
             fail_closed();

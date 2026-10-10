@@ -1,0 +1,34 @@
+{
+  "schema": "eyepqc-g7-candidate011-receiver-exit-offline-v1",
+  "date": "2026-10-10",
+  "candidate": "candidate011-receiver-exit-diag-v1",
+  "status": "offline_build_and_tests_passed_board_not_validated",
+  "board_accessed": false,
+  "board_validated": false,
+  "build": {
+    "workspace": "build/vitis/g6_secure_cleanup_20261010_candidate011_receiver_exit_diag_final",
+    "manifest_sha256": "e9953dcb3cd8e6a7383d1d5fa8ba8ab91d493146b76f0f9136e9429d1a987268",
+    "elf_sha256": "1f8ec0709104e54b74a8ade4844f0cae5e760ae711799ea16cdb0534bcff51e6",
+    "map_sha256": "8572dd017d173cb23e86f3524df2023215c5639e32818f1d649d27605cb98a16",
+    "xsa_sha256": "46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024"
+  },
+  "verification": {
+    "unit_tests": "24/24 passed",
+    "g6_preflight_hashes": 197,
+    "manifest_hashes": 197,
+    "external_tool_hashes": 5,
+    "batch_dry_run": "passed"
+  },
+  "changes": [
+    "Only successful secure cleanup counts as a clean disconnect.",
+    "Cleanup failure increments fatal and transport error counters and does not increment disconnect count.",
+    "Receiver-exit runner records read-only AP0 rekey snapshots before and after recovery, including HELLO and ACK attempt deltas."
+  ],
+  "remaining_gates": [
+    "Restore Windows enumeration of the target USB CDC and JTAG endpoints.",
+    "Run one candidate011 receiver-exit diagnostic board trial.",
+    "Complete an independent 20-trial receiver-exit gate.",
+    "Then complete the same-build physical USB unplug/replug 20-trial gate."
+  ],
+  "limitation": "Candidate010 HELLO_ACK timeout remains unresolved; this offline change does not prove candidate011 recovers on hardware."
+}

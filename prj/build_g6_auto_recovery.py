@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / 'prj'))
 import build_software as base
 
 CPU_FLAGS = ['-mcpu=cortex-a9', '-mfpu=vfpv3', '-mfloat-abi=hard']
-VARIANT = 'g6-secure-buffer-cleanup-usb-bounded-candidate010-idle-fastpath-v1'
+VARIANT = 'g6-secure-buffer-cleanup-usb-bounded-candidate011-receiver-exit-diag-v1'
 LOOP_OLD = '''        if (status) {
             ++g6_capture_errors;
             ++g6_dropped;
@@ -83,6 +83,34 @@ TRANSPORT_NEW = '''        capture_errors = 0;
 
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def verify_receiver_exit_cleanup_source(source):
+    """Refuse candidate builds that count failed cleanup as a clean disconnect."""
+    start = source.find('static int retire_disconnected_session(')
+    end = source.find('\nstatic int handle_control', start)
+    if start < 0 or end < 0:
+        raise RuntimeError('Receiver-exit cleanup gate is missing from G6 source')
+    body = source[start:end]
+    try:
+        failed_cleanup = body.split('if (secure_cleanup())', 1)[1].split('} else {', 1)[0]
+    except IndexError as exc:
+        raise RuntimeError('Receiver-exit cleanup result is not checked') from exc
+    required_failure_order = (
+        'g6_transport_failure_diag.transport_error_count = g6_transport_errors + 1U;',
+        '++g6_transport_errors;',
+        'mark_fault();',
+        'return 1;')
+    positions = [failed_cleanup.find(token) for token in required_failure_order]
+    if any(position < 0 for position in positions) or positions != sorted(positions):
+        raise RuntimeError('Cleanup failure must be fatal and counted as transport error')
+    if '++g6_disconnects;' in failed_cleanup:
+        raise RuntimeError('Cleanup failure must not increment clean disconnect count')
+    success = body.split('} else {', 1)[1]
+    if 'phase = WAIT_HELLO;' not in success or '++g6_disconnects;' not in success:
+        raise RuntimeError('Clean disconnect must retire the session and count only after cleanup')
+    if 'g6_transport_failure_diag.send_status = send_status;' not in body:
+        raise RuntimeError('Raw send failure status must be retained before cleanup')
 
 
 def nm_symbols(nm, elf):
@@ -191,6 +219,8 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
     if base_data.get('xsa_sha256') != xsa_hash:
         raise RuntimeError('XSA does not match accepted usbfix3 G6 manifest')
     baseline_usb = ROOT / 'src/ps/src/g6_usb.c'
+    source_text = baseline_usb.read_text(encoding='utf-8')
+    verify_receiver_exit_cleanup_source(source_text)
     current_usb_sha256 = digest(baseline_usb)
     if current_usb_sha256 != expected_g6_source_sha256:
         raise RuntimeError('G6 security source differs from explicit expected SHA-256')
@@ -209,7 +239,7 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
     build = app / 'build'
     build.mkdir(parents=True, exist_ok=True)
     pinned_cpu, bsp_inputs = pin_bsp_inputs(bsp_workspace, workspace)
-    # Candidate008 compiles the reviewed cleanup source directly. Its new hash
+    # Candidate011 compiles the reviewed cleanup source directly. Its new hash
     # is explicit above and captured in source_baseline_manifest.json; it is not
     # passed off as the accepted pre-cleanup G6 source.
     candidate_usb = baseline_usb
@@ -310,7 +340,9 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
                     ROOT / 'prj/trigger_g6_auto_recovery.tcl',
                     ROOT / 'prj/read_g6_auto_health.tcl',
                     ROOT / 'prj/read_g6_rekey_diag.tcl',
+                    ROOT / 'prj/capture_g6_rekey_diag.py',
                     ROOT / 'prj/run_g7_auto_recovery.py',
+                    ROOT / 'run_g7_batch.ps1',
                     ROOT / 'sim/tb/test_g6_auto_recovery.py',
                     ROOT / 'sim/tb/test_g6_control_dispatch.py',
                     ROOT / 'sim/tb/test_g6_control_dispatch.c',
@@ -321,6 +353,8 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
                     ROOT / 'sim/tb/test_g6_usb_idle_fastpath.py',
                     ROOT / 'sim/tb/test_g6_usb_idle_fastpath.c',
                     ROOT / 'sim/tb/test_read_g6_rekey_diag_tcl.py',
+                    ROOT / 'sim/tb/test_capture_g6_rekey_diag.py',
+                    ROOT / 'sim/tb/test_g7_batch_hostsource.py',
                     ROOT / 'sim/tb/test_usb_bounded_sdk.py',
                     ROOT / 'sim/tb/test_usb_bounded_sdk_mock.c',
                     ROOT / 'sim/tb/test_usb_bounded_ch9_mock.c',
@@ -396,7 +430,7 @@ def main():
     parser.add_argument('--base-manifest', type=Path,
                         default=ROOT / 'build/vitis/usbfix3_20261007/g6_usb_manifest.json')
     parser.add_argument('--output', type=Path,
-                        default=ROOT / 'build/vitis/g6_secure_cleanup_20261010_candidate010_idle_fastpath')
+                        default=ROOT / 'build/vitis/g6_secure_cleanup_20261010_candidate011_receiver_exit_diag')
     parser.add_argument('--reuse-bsp', type=Path, default=None,
                         help='reuse an existing same-XSA BSP workspace without regenerating it')
     parser.add_argument('--expected-g6-source-sha256', required=True,
