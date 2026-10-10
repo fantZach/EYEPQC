@@ -8,6 +8,8 @@
 
 root 实测包含两次 3 秒双 session PASS：第一次 `--load`，第二次不重新加载固件。两次会话均约 47 fps，视频包通过认证和分组校验，第二 session 使用新会话密钥。此后一次 `run_g7_batch.ps1 -Attempts 1` 在接收进程退出恢复时失败：恢复进程等候首个 HELLO_ACK 超时，候选 ELF仍加载在板上，没有重新 JTAG 加载。失败试次先取得 6 个已验证帧后终止原 receiver，不能算 G7 通过；该 20 轮验收仍未完成。
 
+失败事件快照是 send status 4、resume status 0、当时 phase 4（STREAM）、USB ready 0、epoch 14、最后成功帧 7、transport error count 0。按 candidate010 的控制流推断，发送失败被归类为预期断开：意外传输错误分支才会递增并记录该计数，而诊断仍为零。该 phase 是断开发生时的快照，不是之后主循环的当前 phase。恢复主机未收到 HELLO_ACK；失败窗口没有同步读取重键诊断，因此仍不知道板端是否收到 HELLO、是否调用并完成 ACK 发送，或 ACK 是否未到达主机。
+
 首轮 `--load` 后，在不停止 CPU 的只读 AP0 检查中，cleanup 诊断为 stage 6/result 0、route 3、DMA halted 状态无错误、GCM status 0、USB EPRDY 0/采样 1 次、cleanup path 2（quiesce/rebuild）。TX/frame/sealed 共 135,168 字节逐字读回为零，诊断在整个读回期间保持不变。范围仅限 PS DDR 中列出的三个对象；它不是全域或 PL 内状态清除证明。之后失败试次的健康快照为 status 1、fatal/control/transport 计数均 0、send status 4、resume status 0、USB ready 0、epoch 14，最后成功帧号 7；这属于退出失败后的快照，不能代替失败瞬间的收发器状态。
 
 本轮 18 项针对性离线检查通过，覆盖 G6 实际分支清理 harness、cleanup Tcl reader、真实 probe idle fastpath harness、SDK bounded USB mock 和 recovery 测试。native fastpath harness 编译真实 probe 清理路径，并使用 pinned XUsbPs descriptor 布局；它检查 idle 清零时保留 QH、dTD 环及游标、TX enable 和 completion，并检查活动/非空队列无法证明所有权时不擦除 TX 缓冲。畸形 ring 元数据、completion 未清、QH ACTIVE/错误状态、dTD 错误和 sticky endpoint fault 均拒绝 idle fastpath。root 再独立运行其中 17 项，结果通过。

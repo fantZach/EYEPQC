@@ -134,6 +134,20 @@
       "after_failure_health": "build/continuation_20261010/health010_after_exit_failure.stdout.log",
       "after_failure_health_sha256": "a8d2c2a55583bffc17d1dc5bd2afdcbea08f8df9900cbe845a3e226995ddc664"
     },
+    "failure_interpretation": {
+      "send_status": 4,
+      "resume_status": 0,
+      "phase_at_send_failure": 4,
+      "usb_ready_at_send_failure": 0,
+      "connection_epoch": 14,
+      "last_successful_frame_id": 7,
+      "transport_error_count": 0,
+      "supports_expected_disconnect_branch": true,
+      "basis": "candidate010 g6_usb.c records the transport snapshot before calling g6_secure_expected_usb_disconnect; only the non-disconnect branch increments and records the transport error count. The error count stayed zero.",
+      "recovery_hello_ack_received": false,
+      "ack_timeout_window_diagnostic_captured": false,
+      "unknown": "Whether the board received recovery HELLO, invoked HELLO_ACK, or the host failed to receive it."
+    },
     "trial_count": 1,
     "required_independent_trials": 20,
     "acceptance_gate_complete": false,
