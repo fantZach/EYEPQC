@@ -1,0 +1,102 @@
+{
+  "schema": "eyepqc.g6_rekey_ack_diagnostic.v1",
+  "date": "2026-10-10",
+  "scope": "diagnostic_only_not_acceptance",
+  "candidate": "g6-secure-buffer-cleanup-usb-bounded-candidate009-diagnostic-v1",
+  "build": {
+    "manifest_sha256": "5eabc5c88432b6f682327849ba0bae3ef81ad44ac4e54cdd07592aa8d2f47d55",
+    "elf_sha256": "d310b495e27bb1651da4dfd4c3842ca1cfcb628c342ef62ee04d37d1ac053e9c",
+    "xsa_sha256": "46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024",
+    "g6_usb_source_sha256": "e7f0613455c59e6df9e3838a553acfe4d3cecfab267dd07c7a89b19951917680",
+    "usb_probe_auto_recovery_source_sha256": "ab3bf17217a9274abf3583c7cf2ce311c5bca214c3ade074d844a5338aac5efe",
+    "usb_recovery_header_sha256": "3ce067177d182d964f330bea127b38a6a86f80a502a1c35ebe4a10da2ac69c4d",
+    "xusbps_endpoint_sdk_sha256": "8c58c5f60591f1c971339cfeb01d62442954f66113cec1d3b521320bbde16382",
+    "xusbps_intr_sdk_sha256": "4a205f91b32acee141922aa5e477ce81f47278ec5acb2ce52f1e89456c52b125"
+  },
+  "observations": {
+    "probe_009_02": {
+      "capture_result_sha256": "acdd54e35e1f21c9a992c32cca77eba496fd617f9e3882a9158df6f5fed3c1e3",
+      "window_log_sha256": "e8b85fe0291271c27771e0ffd2fb7be0f8b3ae4b920b9d83f4007939f28d8124",
+      "host_result": "first_hello_ack_timeout",
+      "phase": "WAIT_KEM",
+      "last_control_type": "HELLO",
+      "hello_attempts_cumulative": 3,
+      "ack_send_attempts_cumulative": 3,
+      "ack_send_status": 0,
+      "usb_configured": true,
+      "dtr": true,
+      "connection_epoch": 9,
+      "tx_ready": true,
+      "rx_buffered_bytes": 0,
+      "ep1_in_prime": 0,
+      "ep1_in_ready": 0,
+      "ep1_in_completion": 0,
+      "ep1_in_flush": 0,
+      "control_errors": 0,
+      "fatal_errors": 0,
+      "transport_errors": 0,
+      "jtag_load": false,
+      "seconds_per_session": 3
+    },
+    "probe_009_03_observer": {
+      "capture_result_sha256": "4df7fa1b780f14d195e40403866581ee72bc0fa0df26c547c90126852b81a759",
+      "window_log_sha256": "56e952f4c3e08d0414e964ff86f7eeba8ffcd1219092e7726f0324df5c5cad7f",
+      "host_stdout_sha256": "ec661a445011f4ca83b46f90d9a44304b524ab11d77d3423d2e50913c3f586ba",
+      "host_stderr_sha256": "4d59d5c5487d00df5458f8b5aada039eb87745507846128a077b6eee9f768708",
+      "host_result": "second_hello_ack_timeout",
+      "prior_hello_ack_read_calls": 1,
+      "prior_hello_ack_bytes": 51,
+      "board_finished_read_calls": 1,
+      "board_finished_bytes": 47,
+      "failed_hello_ack_read_calls": 39,
+      "failed_hello_ack_bytes": 0,
+      "failed_decoder_buffered_bytes": 0,
+      "failed_pending_records": 0,
+      "phase": "WAIT_KEM",
+      "last_control_type": "HELLO",
+      "hello_attempts_cumulative": 5,
+      "ack_send_attempts_cumulative": 5,
+      "ack_send_status": 0,
+      "usb_configured": true,
+      "dtr": true,
+      "connection_epoch": 13,
+      "tx_ready": true,
+      "rx_buffered_bytes": 0,
+      "ep1_in_prime": 0,
+      "ep1_in_ready": 0,
+      "ep1_in_completion": 0,
+      "ep1_in_flush": 0,
+      "control_errors": 0,
+      "fatal_errors": 0,
+      "transport_errors": 0,
+      "jtag_load": false,
+      "seconds_per_session": 3
+    },
+    "probe_009_01": {
+      "capture_result_sha256": "995f34a5744dd8d3697d30b73bef8480363bd414444ef146d143e53a1dfcfd3b",
+      "host_result": "short_two_session_diagnostic_pass",
+      "jtag_load": true,
+      "seconds_per_session": 1,
+      "frames": [
+        45,
+        46
+      ],
+      "acceptance_gate": false
+    }
+  },
+  "sdk_review": {
+    "ack_return_implies_tx_callback_observed": true,
+    "host_application_received_ack_proven": false,
+    "head_tail_cursor_and_all_dtd_states_captured": false,
+    "qh_overlay_captured": false,
+    "data_toggle_root_cause_proven": false,
+    "idle_cleanup_fastpath": "candidate_hypothesis_requires_native_sdk_tests_and_fresh_board_runs"
+  },
+  "acceptance": {
+    "end_to_end_rekey_pass": false,
+    "two_session_acceptance": false,
+    "20_run_gate": false,
+    "raw_payload_or_keys_read": false,
+    "session_ids_or_key_fingerprints_in_artifact": false
+  }
+}
