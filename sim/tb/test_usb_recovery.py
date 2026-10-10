@@ -55,6 +55,7 @@ typedef struct { XUsbPs_DeviceConfig DeviceConfig; XUsbPs_Config Config; } XUsbP
 #define XUSBPS_EPCOMPL_OFFSET   0x104U
 #define XUSBPS_EPCR1_OFFSET     0x108U
 #define XUSBPS_EPCR2_OFFSET     0x10cU
+#define XUSBPS_EPPRIME_OFFSET   0x110U
 #define XUSBPS_EPCR_TXT_BULK_MASK 0x1U
 #define XUSBPS_EPCR_RXT_BULK_MASK 0x2U
 #define XUSBPS_EPCR_TXR_MASK      0x4U
@@ -108,8 +109,9 @@ HARNESS_C = r"""
 static XUsbPs device;
 static XUsbPs_dQH qh[3][2];
 static XUsbPs_dTD td[3][2][4];
-static int flush_stuck, reconfigure_fail_at, reconfigure_calls;
+static int flush_stuck, prime_stuck, reconfigure_fail_at, reconfigure_calls;
 static unsigned disable_calls, enable_calls, prime_calls, zeroed_on_reconfigure;
+static unsigned completion_clear_calls;
 static uint32_t flush_value;
 static uint32_t ep1_bits, ep2_bits;
 
@@ -143,10 +145,12 @@ void XUsbPs_SetBits(XUsbPs *u, unsigned offset, uint32_t bits) {
 void XUsbPs_WriteReg(uintptr_t base, unsigned offset, uint32_t value) {
     (void)base;
     if (offset == XUSBPS_EPFLUSH_OFFSET) flush_value = value;
+    else if (offset == XUSBPS_EPCOMPL_OFFSET) ++completion_clear_calls;
 }
 uint32_t XUsbPs_ReadReg(uintptr_t base, unsigned offset) {
     (void)base;
     if (offset == XUSBPS_EPFLUSH_OFFSET) return flush_stuck ? flush_value : 0;
+    if (offset == XUSBPS_EPPRIME_OFFSET) return prime_stuck ? (1U << 17) : 0;
     return 0;
 }
 int XUsbPs_EpPrime(XUsbPs *u, unsigned ep, unsigned dir) {
@@ -206,8 +210,9 @@ static void setup_case(void) {
         device.DeviceConfig.EpCfg[ep].In.NumBufs = 3;
     }
     device.Config.BaseAddress = 0x1000;
-    flush_stuck = reconfigure_fail_at = reconfigure_calls = 0;
+    flush_stuck = prime_stuck = reconfigure_fail_at = reconfigure_calls = 0;
     disable_calls = enable_calls = prime_calls = zeroed_on_reconfigure = 0;
+    completion_clear_calls = 0;
     flush_value = 0;
     ep1_bits = ep2_bits = 0;
 }
@@ -279,6 +284,20 @@ static void test_stuck_flush_never_reenables(void) {
     assert(enable_calls == 0 && prime_calls == 0);
 }
 
+static void test_stuck_prime_aborts_before_descriptor_mutation(void) {
+    setup_case(); seed_stale_queues(); prime_stuck = 1;
+    XUsbPs_dQH qh_before[3][2];
+    XUsbPs_dTD td_before[3][2][4];
+    memcpy(qh_before, qh, sizeof(qh));
+    memcpy(td_before, td, sizeof(td));
+    assert(eye_usb_rearm_data(&device, 1) == 1);
+    assert(disable_calls == 3 && reconfigure_calls == 0);
+    assert(enable_calls == 0 && prime_calls == 0);
+    assert(completion_clear_calls == 0);
+    assert(memcmp(qh_before, qh, sizeof(qh)) == 0);
+    assert(memcmp(td_before, td, sizeof(td)) == 0);
+}
+
 static void test_reconfigure_failure_never_reenables(void) {
     setup_case(); seed_stale_queues(); reconfigure_fail_at = 2;
     assert(eye_usb_rearm_data(&device, 1) == 1);
@@ -290,8 +309,9 @@ int main(void) {
     test_success_rebuilds_all_data_queues();
     test_dtr_preserves_data_toggle();
     test_stuck_flush_never_reenables();
+    test_stuck_prime_aborts_before_descriptor_mutation();
     test_reconfigure_failure_never_reenables();
-    puts("usb recovery helper fake-API tests: 4/4 PASS");
+    puts("usb recovery helper fake-API tests: 5/5 PASS");
     return 0;
 }
 """
@@ -325,7 +345,7 @@ class UsbRecoveryNativeTest(unittest.TestCase):
             )
             self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
             result = subprocess.run([str(exe)], check=True, text=True, capture_output=True, cwd=ROOT)
-            self.assertIn("4/4 PASS", result.stdout)
+            self.assertIn("5/5 PASS", result.stdout)
 
 
 if __name__ == "__main__":
