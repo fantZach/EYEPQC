@@ -35,6 +35,10 @@ class SubmissionBundlePolicyTests(unittest.TestCase):
             statuses["g7_candidate012_receiver_exit"]["status"],
             "failed_batch_13_of_20",
         )
+        self.assertEqual(
+            statuses["competition_requirements"]["status"],
+            "generic_schedule_verified_track_rules_pending",
+        )
         selected, _, _ = selected_paths(ROOT, [])
         selected_set = set(selected)
         for entry in EVIDENCE_STATUS:
@@ -44,6 +48,7 @@ class SubmissionBundlePolicyTests(unittest.TestCase):
             "report/g7_candidate014_safe_hello_ack_retry_offline_20261011.md",
             selected_set,
         )
+        self.assertIn("report/contest_rules_review_20261011.md", selected_set)
 
     def test_review_bundle_names_are_current_and_not_formal_submission_names(self):
         self.assertEqual(BUNDLE_NAME, "EYEPQC_submission_review_candidate014_20261011.zip")

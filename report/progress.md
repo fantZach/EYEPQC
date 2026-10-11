@@ -8,6 +8,10 @@
 
 针对 candidate012 receiver-exit 中两次 HELLO_ACK 超时，candidate014 让固件对相同 HELLO 重放缓存 ACK，主机最多重发两次原样 HELLO；超时后若 decoder 留有半帧则停止重试，避免新旧记录拼接。构建、197 项文件哈希预检、G6 离线测试 25/25、G7 runner 测试 9/9、项目级 M04/M05 补测及 20 轮软件 Mock 均通过。candidate014 尚未下载到板卡，`board_validated=false`；candidate012 的 13 个通过轮不折算。代码和报告已推送 GitHub；下一步需要同候选板上基线、ETW/AP0 单轮和从零 20/20 receiver-exit，之后才进行物理 USB 拔插门禁。该轮没有访问板卡、SD、Flash 或 eFuse。详见 [candidate012 实板诊断](g7_candidate012_tx_ownership_board_20261011.md)、[candidate014 离线报告](g7_candidate014_safe_hello_ack_retry_offline_20261011.md) 和 [下一阶段计划](next_stage_plan.md)。
 
+## 2026-10-11：提交材料与官方规则核验
+
+candidate014 文档、验收材料和脱敏源码审阅包生成器已推送到 GitHub `main`；本轮规则核验记录及索引更新也已同步。审阅 ZIP 已按最新源码重新生成并校验，但仍是团队审阅稿，不是正式比赛上传包。本机 `.gitattributes` 保留未暂存修改。官方公开页面确认 2026-11-04 18:00 作品截止时间；AMD FPGA 赛道的正式格式/评分文件与队伍资格仍待官网或队长后台确认。竞赛官网检索到的 MP4/PDF/RAR 容量规定属于芯片应用赛道，不移用到 FPGA 赛道。细节见[官方规则核验记录](contest_rules_review_20261011.md)和[交付计划](submission_delivery_plan_20261010.md)。
+
 ## 2026-10-11：candidate011 receiver-exit 实板单轮失败
 
 用户重新插拔后 CDC COM16 与只读 JTAG 枚举恢复。candidate011 两个构建各自通过 JTAG 加载后的 2 帧认证视频基线。首个 receiver-exit 单轮在旧进程解出 7 帧后，新 receiver 等待 HELLO_ACK 超时；板端 HELLO/ACK 计数各增加 1、ACK send status=0、错误计数为 0。新增无载荷 RX/framing 诊断后重新构建，启动阶段再次超时：39 次串口读取共 0 字节，decoder 缓冲为 0；板端只读快照仍显示 HELLO/ACK send status=0。该结果排除主机收到半帧后卡在 decoder 的解释，但未确认 EP1 IN 实际数据交付。两批均 fail-stop，未跑 20 轮或物理拔插批次。详见 [candidate011 实板报告](g7_candidate011_receiver_exit_board_20261011.md) 和[机器摘要](g7_candidate011_receiver_exit_board_20261011.json)。
@@ -46,7 +50,7 @@ G6 新增 CPU 本地控制分发 helper，在非零输入（含部分失败/越�
 
 2026-10-09 实板短测 471 帧、47.3579 fps；同一 manifest/ELF/XSA 的 camera-reset 与 routing-stall 各 20/20，通过本轮逐轮只读审核。每批首次加载、恢复无 JTAG 重载；新 HELLO、session/key novelty、认证帧及故障计数器差值均核实。这里是受控 PL 故障与真实 S2MM Busy 达到约 3 秒软件 deadline；不是硬件 timeout IRQ 或物理传感器拔除。
 
-G7 整体尚未通过：最终 006d 的 PC 退出/DTR 20 次与物理 USB 拔插 20 次待测，旧 usbfix3 批次不能代替。G0 仍缺 SD 独立启动、物理复位及 30 分钟冷启动；原 SD 卡保持原样。Keccak 实板功能/性能和生产安全仍未验收。GitHub 本轮仅准备代码、测试与脱敏摘要，不访问板卡；写入因连接器审批策略被拒绝，上传尚未完成，本地提交与 bundle 已保存；见 [同步范围](github_sync_20261010.md)、[006d 报告](g7_candidate006d_acceptance_20261010.md) 和 [执行计划](next_stage_plan.md)。以下按日期保留历史过程，旧的“修复中/板测暂停”描述不代表最新状态。
+G7 整体尚未通过：最终 006d 的 PC 退出/DTR 20 次与物理 USB 拔插 20 次待测，旧 usbfix3 批次不能代替。G0 仍缺 SD 独立启动、物理复位及 30 分钟冷启动；原 SD 卡保持原样。此处的 Keccak 与生产安全状态是 2026-10-10 当时记录；其后 KX41 60/60 独立候选 KAT 已通过，但生产安全仍未闭环。2026-10-10 当时 GitHub 上传尚未完成；随后恢复授权并完成推送，当前 GitHub 状态见本页 2026-10-11 更新和[规则核验/交付计划](submission_delivery_plan_20261010.md)。以下按日期保留历史过程，旧的“修复中/板测暂停”描述不代表最新状态。
 
 ## 2026-10-09：离线交付整合与验收边界
 

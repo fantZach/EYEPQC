@@ -1,6 +1,6 @@
 # 下一阶段执行计划
 
-更新：2026-10-11。M02 Explore 候选静态时序门禁、RTL 仿真 4/4、同会话传感器复位/配置 20/20、20 次用户确认的整板断电/上电后 JTAG 配置 20/20，以及无模组 fail-closed 均通过；探针不代表 SD/Flash 独立启动或 DVP/JPEG 采集。KX41 新候选 software/hardware/timeout fallback 三窗口全 60 组实板 KAT 通过，硬件窗口耗时为软件的 88.6%。candidate012 r3 的 receiver-exit 批次累计 13/20 个唯一轮次通过后，在 trial14 再次出现 HELLO_ACK 10 秒超时（COM16 已打开，39 次读取、0 字节）；此前 trial7 try01 也超时，try04 重试通过。ETW 无丢事件，但不含 USB 载荷/字节长度，根因仍未确认。candidate014 已完成同 HELLO 重试与缓存 ACK 重放修正，并在残留半帧时抑制重试；ARM GCC 构建、197 项哈希预检、dry-run、25 项 G6 测试和 9 项 batch runner 测试通过；`board_validated=false`，尚未下载到板卡，candidate012 旧轮次不能折算。candidate014 仍需新板上基线、ETW/AP0 单轮、20 轮 receiver-exit，之后另行完成物理 USB 拔插 20 轮。G0/G7 门禁彼此独立。证据见 [M02 实板报告](m02_sensor_reset_board_20261011.md)、[candidate012 实板报告](g7_candidate012_tx_ownership_board_20261011.md) 和 [candidate014 离线候选报告](g7_candidate014_hello_ack_retry_offline_20261011.md)。
+更新：2026-10-11。M02 Explore 候选静态时序门禁、RTL 仿真 4/4、同会话传感器复位/配置 20/20、20 次用户确认的整板断电/上电后 JTAG 配置 20/20，以及无模组 fail-closed 均通过；探针不代表 SD/Flash 独立启动或 DVP/JPEG 采集。KX41 新候选 software/hardware/timeout fallback 三窗口全 60 组实板 KAT 通过，硬件窗口耗时为软件的 88.6%。candidate012 r3 的 receiver-exit 批次累计 13/20 个唯一轮次通过后，在 trial14 再次出现 HELLO_ACK 10 秒超时（COM16 已打开，39 次读取、0 字节）；此前 trial7 try01 也超时，try04 重试通过。ETW 无丢事件，但不含 USB 载荷/字节长度，根因仍未确认。candidate014 已完成同 HELLO 重试与缓存 ACK 重放修正，并在残留半帧时抑制重试；ARM GCC 构建、197 项哈希预检、dry-run、25 项 G6 测试和 9 项 batch runner 测试通过；`board_validated=false`，尚未下载到板卡，candidate012 旧轮次不能折算。candidate014 仍需新板上基线、ETW/AP0 单轮、20 轮 receiver-exit，之后另行完成物理 USB 拔插 20 轮。G0/G7 门禁彼此独立。官方 AMD 2026 赛道细则和格式尚未从公开官方渠道确认；已确认的其他赛道上传限制不套用。证据见 [M02 实板报告](m02_sensor_reset_board_20261011.md)、[candidate012 实板报告](g7_candidate012_tx_ownership_board_20261011.md)、[candidate014 离线候选报告](g7_candidate014_safe_hello_ack_retry_offline_20261011.md) 和[规则核验记录](contest_rules_review_20261011.md)。
 
 ## 本轮续推进（2026-10-11）
 
@@ -19,15 +19,15 @@ USB EP0 所有权修复已完成。最终 candidate006d/v4 的短时认证视频
 | 4 | M02 摄像头物理启动补证 | 已完成：Explore 候选通过静态时序（WNS `+0.017 ns`/WHS `+0.041 ns`/DRC 0）、仿真 4/4、同会话 reset/config 20/20、20 次用户确认的整板断电/上电并逐轮 JTAG 配置 20/20、无模组 fail-closed。日志索引见 `build/m02_coldboot_cycles_20261011.jsonl`；JTAG 临时下载不代表 SD/Flash 独立启动，也未验证 DVP/JPEG 实际采集 | M02 现场门禁已完成；独立启动和采集按 G0/M03 单独安排 |
 | 5 | Keccak KX41 全 60 组实板 KAT 与性能判定 | 已完成：新候选 `--verify-only` 715 项哈希复核通过；software、KX41 hardware、forced-timeout 三窗口各 60/60 KAT 通过。硬件 absorb 60 次、squeeze 182 blocks、正常硬件零回退，timeout 窗口 60/60 清 STATUS；硬件窗口耗时为 software 的 88.6%。只针对独立 KX41 候选，不代表视频工程性能；Keccak 内部 STATE/OUTPUT 未读回 | 无 |
 | 6 | CPU 临时协议缓冲清理已实现，生产硬件/产品门禁待闭环 | candidate007 控制 helper harness、183 项预检与实板双会话/坏 Finished 回归通过；完整清零仍未证明。确定可信熵、密钥 provisioning/存储和 PS/cache/DDR/PL/USB 的清零边界，实现并取得读回/失败场景证据；JTAG 开发注入不等于生产安全 | 需要安全目标/部署条件信息时再集中询问 |
-| 7 | 脱敏源码/证据审阅包已准备，正式比赛定稿待官方细则 | 截止时间已核实为 2026-11-04 18:00；仍需确认队长后台报名/资格、AMD 具体组别规则和作品报告/视频格式，再据此定稿。现有 15 秒 722 帧录像不外推长录可靠性；Skill 与协作记录初版已补，项目级许可证/公开授权未决定 | 需要队长后台的报名/资格结果和对应 AMD 赛道最新官方文件 |
+| 7 | 脱敏源码/证据审阅包与公开规则核验已准备，正式比赛定稿待赛道细则 | 截止时间已由协办方页面列为 2026-11-04 18:00；AMD 具体组别、格式/评分和队长后台报名资格仍待确认。其他赛道公开上传限制不移用。现有 15 秒 722 帧录像不外推长录可靠性；Skill 与协作记录初版已补，项目级许可证/公开授权未决定 | 队长需在后台确认报名/资格并取得 AMD 赛道最新官方文件 |
 
-本轮实际产物见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md)、[M02 实板探针](m02_sensor_reset_board_20261011.md)、[生产安全计划](production_security_plan_20261010.md)、[提交包计划](submission_delivery_plan_20261010.md)、[协作记录](collaboration_log.md)、[Skill README](../skill/eyepqc-fpga/README.md)、[许可证盘点](reuse_license_audit_20261011.md)、[candidate012 实板诊断报告](g7_candidate012_tx_ownership_board_20261011.md) 和 [candidate014 离线候选报告](g7_candidate014_hello_ack_retry_offline_20261011.md)。candidate012 的 dTD 完成记录不能证明 CDC 应用层交付；candidate014 增加有界重试作为待实板验证的容错方案。G7 整体未通过。
+本轮实际产物见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md)、[M02 实板探针](m02_sensor_reset_board_20261011.md)、[生产安全计划](production_security_plan_20261010.md)、[提交包计划](submission_delivery_plan_20261010.md)、[官方规则核验](contest_rules_review_20261011.md)、[协作记录](collaboration_log.md)、[Skill README](../skill/eyepqc-fpga/README.md)、[许可证盘点](reuse_license_audit_20261011.md)、[candidate012 实板诊断报告](g7_candidate012_tx_ownership_board_20261011.md) 和 [candidate014 离线候选报告](g7_candidate014_safe_hello_ack_retry_offline_20261011.md)。candidate012 的 dTD 完成记录不能证明 CDC 应用层交付；candidate014 增加有界重试作为待实板验证的容错方案。G7 整体未通过。
 
 第 1 项仍是恢复验收的下一项板测任务；目前已完成可离线推进的修正、构建、预检、测试与记录，本轮未访问板卡。candidate014 上板前仍须核验设备与固件身份；candidate012 的旧轮次不得移记到 candidate014。
 
 约 50 分钟长测沿用用户既有时长例外，始终标明未实测满 2 小时。camera-reset 与 routing-stall 证明受控 PL 故障下 S2MM Busy 到约 3 秒软件 deadline 的恢复，不宣称硬件 DMA timeout IRQ 或物理传感器拔除。下一次上板前仍须重新核验设备状态，不能将本次短时回归外推至持续在线或剩余 G7 场景。
 
-续推进证据见 [身份核验优化板测](keccak_identity_cached_20261010.md)、[CPU 清理实施记录](security_cleanup_20261010.md) 和已更新的 [技术报告稿](technical_report.md)。新候选不覆盖旧006d验收；此前恢复冻结006d并复测140帧的记录仍有效，最新 3 秒认证视频回归也已通过。candidate012 receiver-exit 批次累计 13 个唯一轮次通过，但两个 HELLO_ACK 超时使该批次失败；candidate014 增加缓存 ACK 重放和有限主机重试，需从新板上基线、单轮开始，再做 20/20 receiver-exit 和后续物理 USB 拔插 20/20。
+续推进证据见 [身份核验优化板测](keccak_identity_cached_20261010.md)、[CPU 清理实施记录](security_cleanup_20261010.md) 和已更新的 [技术报告稿](technical_report.md)。新候选不覆盖旧006d验收；此前恢复冻结006d并复测140帧的记录仍有效，最新 3 秒认证视频回归也已通过。candidate012 receiver-exit 批次累计 13 个唯一轮次通过，但两个 HELLO_ACK 超时使该批次失败；candidate014 增加缓存 ACK 重放和有限主机重试，需从新板上基线、单轮开始，再做 20/20 receiver-exit 和后续物理 USB 拔插 20/20。相应报告文件为 `g7_candidate014_safe_hello_ack_retry_offline_20261011.md`。
 
 ## 本轮续推进（2026-10-10）
 

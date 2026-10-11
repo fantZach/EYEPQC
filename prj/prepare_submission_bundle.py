@@ -60,6 +60,7 @@ PUBLIC_REPORT_FILES = {
     "report/benchmark_summary_20261009.md",
     "report/benchmark_summary_20261009.json",
     "report/collaboration_log.md",
+    "report/contest_rules_review_20261011.md",
     "report/competition_submission.md",
     "report/demo_software_ready.md",
     "report/g0_acceptance.md",
@@ -193,9 +194,9 @@ EVIDENCE_STATUS = [
     },
     {
         "id": "competition_requirements",
-        "status": "not_provided",
-        "evidence": "report/submission_delivery_plan_20261010.md",
-        "scope": "已从协办方赛程页和高校通知查到作品截止时间；AMD 赛道正式规则、提交模板/命名/容量及队伍资格仍待官网或报名后台核实。",
+        "status": "generic_schedule_verified_track_rules_pending",
+        "evidence": "report/contest_rules_review_20261011.md",
+        "scope": "协办方页面确认 2026 赛事日程；AMD FPGA 赛道的正式细则、提交格式和队伍资格仍待官网或报名后台确认。其他赛道上传限制不移用。",
     },
 ]
 
