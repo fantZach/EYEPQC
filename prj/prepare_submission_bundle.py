@@ -96,6 +96,7 @@ PUBLIC_REPORT_FILES = {
 # allowlist is narrowed for a particular review bundle.
 DEFAULT_SUPPLEMENTAL_FILES = {
     "report/production_security_plan_20261010.md",
+    "report/production_security_profile_20261011.md",
     "report/submission_delivery_plan_20261010.md",
     "report/keccak_board_benchmark_20261010.md",
     "report/keccak_board_benchmark_20261010.json",
@@ -185,8 +186,8 @@ EVIDENCE_STATUS = [
     {
         "id": "production_security",
         "status": "not_passed",
-        "evidence": "report/production_security_plan_20261010.md",
-        "scope": "可信板端熵源、生产 provisioning 与全域清零均未闭环。",
+        "evidence": "report/production_security_profile_20261011.md",
+        "scope": "源码隔离开发 mailbox/host-seed 并要求外部 provider；真实 provider、可信板端熵源、密钥存储与全域清零均未闭环。",
     },
     {
         "id": "security_cleanup_candidate007",

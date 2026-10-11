@@ -1,4 +1,5 @@
-/* Development G6: JTAG-provisioned secret/seed, real USB ML-KEM session. */
+/* G6 development profile uses JTAG provisioning; G6_PRODUCTION requires an
+ * explicitly linked platform security provider and excludes that mailbox. */
 #include "xil_printf.h"
 #ifdef SDT
 #include "xiltimer.h"
@@ -11,9 +12,9 @@
 #include "session.h"
 #include "protocol.h"
 #include "g6_control_dispatch.h"
+#include "g6_secure_cleanup.h"
 #ifdef G6_SECURE_CLEANUP
 #include "g6_auto_recovery.h"
-#include "g6_secure_cleanup.h"
 #include "g6_rekey_diag.h"
 #endif
 #define MLK_CONFIG_PARAMETER_SET 512
@@ -25,6 +26,9 @@
 #include "mlkem/mlkem_native.h"
 #include <stdint.h>
 #include <string.h>
+#ifdef G6_PRODUCTION
+#include "g6_production_provider.h"
+#endif
 
 #define PROVISION_MAGIC 0x36475345U
 #define CAMERA_CFG ((1U << 25) | (1000U << 9) | (12U << 3) | 4U | 2U)
@@ -51,9 +55,11 @@ int usb_cdc_secure_cleanup_tx(uint8_t *buffer, unsigned capacity);
 #endif
 int usb_cdc_take_control(uint8_t *out, uint32_t capacity);
 
+#ifndef G6_PRODUCTION
 volatile uint8_t g6_sk_load[1632] __attribute__((aligned(64)));
 volatile uint8_t g6_seed_load[32] __attribute__((aligned(64)));
 volatile uint32_t g6_ready __attribute__((aligned(64)));
+#endif
 volatile uint32_t g6_status __attribute__((aligned(64)));
 volatile uint32_t g6_frames __attribute__((aligned(64)));
 volatile uint32_t g6_dropped __attribute__((aligned(64)));
@@ -70,13 +76,17 @@ volatile struct g6_transport_failure_diag g6_transport_failure_diag
     __attribute__((aligned(64)));
 #endif
 
+#ifndef G6_PRODUCTION
 static uint8_t private_key[1632], random_seed[32];
+#endif
 static uint8_t hello[48], ack[48], tx[G6_SECURE_TX_CAPACITY] __attribute__((aligned(64)));
 _Static_assert(sizeof tx == 1472U && (sizeof tx & 63U) == 0U &&
                sizeof tx >= 43U + 1400U + 16U,
                "G6 TX buffer cleanup capacity");
 static struct eye_session session;
+#ifndef G6_PRODUCTION
 static uint64_t random_counter;
+#endif
 static uint32_t frame_id;
 
 enum phase { WAIT_HELLO, WAIT_KEM, WAIT_FINISHED, WAIT_START, STREAM, FAULT };
@@ -189,9 +199,11 @@ static int secure_cleanup(void) {
 }
 #endif
 static void be16(uint8_t *p, unsigned n) { p[0] = n >> 8; p[1] = n; }
+#ifndef G6_PRODUCTION
 static void be64(uint8_t *p, uint64_t n) {
     for (unsigned i = 0; i < 8; ++i) p[i] = n >> (56 - 8*i);
 }
+#endif
 static int send_control(const uint8_t *message, unsigned length) {
     if (length < 12 || length > 1036) return 1;
     tx[0] = 1; be16(tx + 1, length);
@@ -199,16 +211,62 @@ static int send_control(const uint8_t *message, unsigned length) {
     return usb_cdc_send(tx, length + 3);
 }
 static int board_random(uint8_t out[32], const uint8_t host_random[32]) {
+#ifdef G6_PRODUCTION
+    (void)host_random;
+    wipe(out, 32U);
+    int status = g6_production_random_bytes(out);
+    if (status) wipe(out, 32U);
+    return status;
+#else
     uint8_t input[40];
     memcpy(input, host_random, 32);
     be64(input + 32, random_counter++);
     int status = eye_hmac_sha256(out, random_seed, sizeof random_seed, input, sizeof input);
     wipe(input, sizeof input);
     return status;
+#endif
 }
+#ifdef G6_PRODUCTION
+static int production_load_key(uint8_t out[1632]) {
+    wipe(out, 1632U);
+    int status = g6_production_read_mlkem512_private_key(out);
+    if (!status) status = eye_mlkem_check_sk(out);
+    if (status) wipe(out, 1632U);
+    return status;
+}
+
+static int initialize_production_security(void) {
+    uint8_t key[1632] = {0};
+    int status = g6_production_security_init();
+    if (!status) status = production_load_key(key);
+    if (!status) status = eye_session_init(&session, key + 768U);
+    wipe(key, sizeof key);
+    if (status) g6_production_security_shutdown();
+    return status;
+}
+
+static int production_decapsulate(uint8_t shared[32], const uint8_t ciphertext[768]) {
+    uint8_t key[1632] = {0}, public_key_hash[32] = {0};
+    uint8_t mismatch = 0U;
+    int status = production_load_key(key);
+    if (!status) status = eye_sha256(public_key_hash, key + 768U, 800U);
+    if (!status) {
+        for (unsigned i = 0; i < sizeof public_key_hash; ++i)
+            mismatch |= (uint8_t)(public_key_hash[i] ^ session.pinned_pk_hash[i]);
+        if (mismatch) status = 1;
+    }
+    if (!status) status = eye_mlkem_dec(shared, ciphertext, key);
+    wipe(public_key_hash, sizeof public_key_hash);
+    wipe(key, sizeof key);
+    return status;
+}
+#endif
 static void mark_fault(void) {
     eye_session_error(&session);
     clear_handshake_cache();
+#ifdef G6_PRODUCTION
+    g6_production_security_shutdown();
+#endif
     phase = FAULT;
     ++g6_fatal_errors;
     ++g6_status;
@@ -313,7 +371,11 @@ static int handle_control(const uint8_t *message, unsigned length) {
     }
     if (phase == WAIT_KEM && type == EYE_KEM_CIPHERTEXT && length == 780) {
         uint8_t shared[32], finished[44];
+#ifdef G6_PRODUCTION
+        int status = production_decapsulate(shared, body);
+#else
         int status = eye_mlkem_dec(shared, body, private_key);
+#endif
         if (!status) status = eye_session_begin(&session, shared, hello, ack, message);
         wipe(shared, sizeof shared);
         clear_handshake_cache();
@@ -408,9 +470,23 @@ static int send_frame(const uint8_t *jpeg, unsigned size) {
 }
 
 int main(void) {
+#ifdef G6_PRODUCTION
+    int status = initialize_production_security();
+    if (status) {
+        g6_status = 0xffffffffU;
+        xil_printf("G6_SECURITY_PROVIDER_FAIL %d\r\n", status);
+        for (;;) {}
+    }
+    status = g3_usb_init(CAMERA_CFG);
+#else
     int status = g3_usb_init(CAMERA_CFG);
+#endif
     if (!status) status = usb_cdc_init();
+#ifdef G6_PRODUCTION
+    if (status) g6_production_security_shutdown();
+#endif
     if (status) { xil_printf("G6_INIT_FAIL %d\r\n", status); for (;;) {} }
+#ifndef G6_PRODUCTION
     while (g6_ready != PROVISION_MAGIC) {}
     for (unsigned i = 0; i < sizeof private_key; ++i) private_key[i] = g6_sk_load[i];
     for (unsigned i = 0; i < sizeof random_seed; ++i) random_seed[i] = g6_seed_load[i];
@@ -423,6 +499,7 @@ int main(void) {
         g6_status = 0xffffffffU;
         for (;;) {}
     }
+#endif
     g6_status = 1;
     int was_connected = 0, capture_errors = 0;
     uint32_t connection_epoch = usb_cdc_connection_epoch();

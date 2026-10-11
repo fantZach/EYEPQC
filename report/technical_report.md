@@ -49,7 +49,7 @@ USB CDC 使用 `channel:u8 || record_length:u16_be || record` 外层记录，将
 
 握手顺序为 HELLO、HELLO_ACK、ML-KEM 密文、板端 Finished、主机 Finished、认证 START。M10 从共享秘密和完整握手 transcript 经 HKDF-SHA256 派生视频密钥、控制密钥、Nonce 前缀和会话标识；控制命令由 HMAC-SHA256 认证并带有单调序号。具体线格式、长度限制、错误处理与已知边界见[协议定义](../doc/protocol.md)。
 
-板端 ML-KEM 采用固定版本的 PQCA `mlkem-native` v1.3.0。PC/PS 共享同一 C 实现；开发态测试私钥与主机生成的 seed 通过 JTAG 装载。当前板端 `board_random()` 以注入 seed 和 host_random/counter 计算 HMAC 输出；这不证明存在可信板端熵源，也不等于安全密钥注入或断电持久化。生产密钥、熵源与清零缺口及验收路线见[生产安全计划](production_security_plan_20261010.md)。
+板端 ML-KEM 采用固定版本的 PQCA `mlkem-native` v1.3.0。PC/PS 共享同一 C 实现；开发态测试私钥与主机生成的 seed 通过 JTAG 装载。当前开发 profile 的 `board_random()` 以注入 seed 和 host_random/counter 计算 HMAC 输出；显式生产 profile 已从源码路径排除此 mailbox 和 seed，改为要求外部熵/密钥 provider，并对错误 fail closed。实际 provider 尚未实现或上板验证；这不证明存在可信板端熵源、安全密钥存储或断电持久化。缺口及验收路线见[生产安全计划](production_security_plan_20261010.md)和[profile 隔离实施记录](production_security_profile_20261011.md)。
 
 ## 4. 实验结果
 
@@ -84,5 +84,5 @@ G3 implementation report 中 Vivado 2026.1 设计 WNS 为 +0.013 ns、WHS 为 +0
 1. G0 的 JTAG 临时启动/局部 DDR/timer/LED 有限定证据；SD 独立启动、物理复位与 30 分钟断电冷启动仍未验收。用户目前没有读卡器，板上 SD 保持原样；需要专用介质及现场步骤才能补测。不能将 JTAG 结果写成 SD 或全 DDR 验收。
 2. G7 的 camera-reset/routing-stall 20/20 是历史 `candidate006d` 的受控场景结果。`candidate012` receiver-exit 批次在 13/20 后失败；`candidate014` 的缓存 ACK 重放/有界重试仅通过离线验证，仍需新候选同构建短基线、ETW/AP0 单轮、receiver-exit 20/20，再完成 USB 物理拔插 20/20。旧候选轮次不折算，根因仍未确认。约 50 分钟运行属于时长例外，未实测满两小时。
 3. 较早的 Keccak 路径 tcId 76 三轮通过但硬件慢约 8.62%；KX41 更新候选现有 60/60 三窗口 KAT，硬件窗口 ticks 为软件的 88.6%。二者均为独立工程，KX41 未集成正式视频，且内部 STATE/OUTPUT 清零未读回；不得把单候选 KAT 窗口称作系统级 ML-KEM 加速。
-4. 生产安全未通过：可信板端熵源、生产私钥存储/注入、全域清零读回及侧信道/故障防护均未完成；目前证据不能形成熵源、生产安全或全清零主张。
+4. 生产安全未通过：源码已提供开发/生产 profile 隔离，但可信板端熵源、真实生产私钥存储/注入、全域清零读回及侧信道/故障防护均未完成；目前证据不能形成熵源、生产安全或全清零主张。
 5. 赛事协办方赛程页列出 2026-11-04 18:00 截止，但需从官网/报名后台复核是否更新并确认队伍资格。AMD FPGA 赛道报告、视频及代码附件细则尚待官方文件；已检索到的芯片应用赛道上传格式不移用至本赛道。本文暂按技术证据编写，不臆造模板或验收标准，见[官方规则核验记录](contest_rules_review_20261011.md)。

@@ -4,6 +4,10 @@
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
 当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。
 
+## 2026-10-11：G6 生产 profile 软件隔离
+
+G6 已增加显式生产编译 profile：隔离开发 JTAG mailbox 和 host-seed 随机路径；要求外部 provider，启动/随机服务失败 fail closed；每次 KEM 临时装载密钥、校验并钉住公钥身份后擦除。ARM 交叉编译联调通过；完整 `sim/tb` 126/126 通过。真实 provider、板端可信熵、持久密钥保护和实板读回仍缺失，**生产安全未通过**。电脑端 harness 覆盖失败注入与开发 mailbox 符号排除；细节见[实施记录](production_security_profile_20261011.md)。
+
 ## 2026-10-11：完整电脑端回归 19/19
 
 最新 `run_demo.ps1 -Mode Check` 19 个门禁全部通过，M04/M05 使用原生 XSim；运行器记录 `board_accessed=false`。该次代码基线为 `bb212bc5a134228e6fed7223331bc9e2c2c2063a`，不是 candidate014 上板证据。逐项耗时和原始结果 hash 见[脱敏回归报告](software_regression_20261011.md)与[JSON 摘要](software_regression_20261011.json)。本轮没有访问硬件。

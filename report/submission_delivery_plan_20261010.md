@@ -21,7 +21,7 @@
 | 开源与许可证准备 | [初步盘点](reuse_license_audit_20261011.md)；当前根目录没有项目级 `LICENSE`；第三方目录分别保留 `src/third_party/tinycrypt/LICENSE`、`src/third_party/mlkem/LICENSE`、`src/rtl/crypto/secworks_aes/LICENSE` | 已做初步文件盘点，不能据此判断整个工程授权兼容或选择项目许可证。仍需完整版权/依赖审查、团队权利人确认与发布授权；仓库可见性未在本轮变更。 |
 | Keccak 独立验证 | `report/keccak_accel.md`、`report/keccak_board_benchmark_20261010.md/.json`、`doc/keccak_accel.md`、实验源 `src/ps/experimental/` 与 `src/rtl/crypto/keccak*` | 可以作为“隔离原型/离线验证及有限板级功能测试”附件。板级 tcId 76 功能路径通过，但本次硬件路径平均慢约 8.6%；不得宣称加速收益，也不得外推到其他向量、视频工程或全域设备零化。 |
 | KX41 ML-KEM-512 60 组板测 | `report/keccak_sponge_x4_capture_fix_20261011.md/.json` | 独立 KX41 候选在软件、硬件、超时回退三窗口各覆盖 60/60 KAT；硬件窗口 0 回退、计时为软件的 88.6%。这是独立候选的 KAT/性能结果，不代表视频固件集成或内部 STATE/OUTPUT 清零已证明。 |
-| 生产安全 | `report/security_gap_audit.md` 与本计划 [安全闭环计划](production_security_plan_20261010.md) | 明确标记未完成；开发态 JTAG 注入、熵源和全域清零缺口必须作为限制披露，不能写成生产安全能力。 |
+| 生产安全 | `report/security_gap_audit.md`、[安全闭环计划](production_security_plan_20261010.md) 与 [G6 profile 隔离实施记录](production_security_profile_20261011.md) | 源码已隔离开发 mailbox/host-seed 路径并要求外部 provider；provider 真实熵源、密钥存储及板级全域清零仍未完成，必须继续标记未通过。 |
 | Git 同步状态 | `report/github_sync_20261010.md` | 该报告是历史记录。每次交付前后都应重新核对当前分支、HEAD 与远端；不得以历史同步记录代替本次状态。`.gitattributes` 的既有本地修改不属于本交付范围，不得顺手暂存。 |
 
 原始硬件捕获、`report/g7_runs/`、`build/` 均被 `.gitignore` 排除。部分记录路径是本机证据，普通 Git 克隆不包含。仓库内机器可读脱敏摘要和报告可供审阅，但不得从这些摘要倒推出未附带的原始数据仍可在另一台机器复算。

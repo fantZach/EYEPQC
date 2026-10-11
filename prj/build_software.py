@@ -130,7 +130,7 @@ def symbols(nm, elf):
             if len(f := line.split()) == 4}
 
 
-def build_app(name, workspace, cpu, gcc, xsa):
+def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
     app = workspace / name
     build = app / 'build'
     build.mkdir(parents=True)
@@ -139,6 +139,8 @@ def build_app(name, workspace, cpu, gcc, xsa):
         defines.append('G5_USB')
     if name == 'g6_usb':
         defines.append('G6_USB')
+        if production_provider is not None:
+            defines.append('G6_PRODUCTION')
     sources = [ROOT / 'src/ps/src/g3_camera.c']
     include = [cpu / 'include', ROOT / 'src/ps/include']
     if name != 'g3_camera':
@@ -150,6 +152,8 @@ def build_app(name, workspace, cpu, gcc, xsa):
     if name == 'g6_usb':
         sources += [ROOT / 'src/ps/src' / f for f in ('session.c', 'protocol.c', 'm09_mlkem.c')]
         sources += [ROOT / 'src/third_party/tinycrypt/lib/source' / f for f in ('sha256.c', 'utils.c')]
+        if production_provider is not None:
+            sources.append(production_provider)
         include += [ROOT / 'src/third_party', ROOT / 'src/third_party/mlkem',
                     ROOT / 'src/third_party/tinycrypt/lib/include']
     linker = ROOT / 'prj/a9_ddr.ld'
@@ -161,6 +165,7 @@ def build_app(name, workspace, cpu, gcc, xsa):
         inputs += list((ROOT / 'src/third_party/mlkem').rglob('*'))
         inputs += list((ROOT / 'src/third_party/tinycrypt/lib/include').rglob('*.h'))
     hashes = {p.relative_to(ROOT).as_posix(): digest(p) for p in inputs if p.is_file()}
+    provider_hash = digest(production_provider) if production_provider is not None else None
     flags = [*CPU_FLAGS, '-std=c11', '-O3', '-g', '-Wall', '-Wextra', '-Werror',
              *['-D' + d for d in defines]]
     include_flags = [a for path in include for a in ('-I', str(path))]
@@ -184,7 +189,9 @@ def build_app(name, workspace, cpu, gcc, xsa):
     abi = symbols(gcc.with_name('arm-none-eabi-nm.exe'), elf)
     expected = {'g3_job': 128, 'g3_frame': 65600, 'g3_sealed': 68096}
     if name == 'g6_usb':
-        expected.update(g6_sk_load=1632, g6_seed_load=32, g6_ready=4, g6_status=4)
+        if production_provider is None:
+            expected.update(g6_sk_load=1632, g6_seed_load=32, g6_ready=4)
+        expected.update(g6_status=4)
         expected.update(g6_frames=4, g6_dropped=4, g6_control_errors=4,
                         g6_capture_errors=4, g6_transport_errors=4,
                         g6_fatal_errors=4, g6_disconnects=4,
@@ -204,12 +211,22 @@ def build_app(name, workspace, cpu, gcc, xsa):
     for relative, expected in hashes.items():
         if digest(ROOT / relative) != expected:
             raise RuntimeError('Source changed during compilation: ' + relative)
+    if production_provider is not None and digest(production_provider) != provider_hash:
+        raise RuntimeError('Production provider changed during compilation')
     manifest = dict(xsa=str(xsa), xsa_sha256=digest(xsa), application=name,
                     bsp_sha256=digest(cpu / 'lib/libxil.a'),
                     sources=hashes,
                     owned=owned, board_validated=False,
                     artifacts={p.relative_to(workspace).as_posix(): digest(p) for p in
                                (elf, build / (name + '.map'), app / '_ide/bitstream/m01.bit', app / '_ide/psinit/ps7_init.tcl')})
+    if name == 'g6_usb':
+        manifest['security_profile'] = ('external_provider_unvalidated' if production_provider is not None
+                                        else 'development_jtag_mailbox')
+        manifest['development_provisioning_required'] = production_provider is None
+        if production_provider is not None:
+            manifest['production_provider'] = dict(
+                path=production_provider.relative_to(workspace).as_posix(),
+                sha256=provider_hash)
     return manifest
 
 
@@ -220,8 +237,15 @@ def main():
     parser.add_argument('--tool-root', type=Path, default=os.environ.get('EYEPQC_TOOL_ROOT', 'E:/fpg/2026.1'))
     parser.add_argument('--apps', nargs='+', choices=APP_NAMES, default=list(APP_NAMES))
     parser.add_argument('--boot-images', action='store_true', help='Build matching FSBL/BOOT.BIN files; never write media')
+    parser.add_argument('--g6-production-provider', type=Path,
+                        help='Compile an explicit G6_PRODUCTION provider source; its quality is not security-certified')
     args = parser.parse_args()
     xsa, workspace, tools = args.xsa.resolve(), args.output.resolve(), args.tool_root.resolve()
+    provider_source = args.g6_production_provider.resolve() if args.g6_production_provider else None
+    if provider_source is not None and 'g6_usb' not in args.apps:
+        parser.error('--g6-production-provider requires --apps to include g6_usb')
+    if provider_source is not None and not provider_source.is_file():
+        parser.error('G6 production provider source does not exist')
     if not xsa.is_file() or workspace.exists():
         parser.error('Completed XSA and fresh output directory required')
     with zipfile.ZipFile(xsa) as archive:
@@ -231,11 +255,20 @@ def main():
         if not {'m01.bit', 'ps7_init.tcl'} <= set(archive.namelist()):
             parser.error('XSA must contain bitstream and PS initialization')
     workspace.mkdir(parents=True)
+    provider_for_build = None
+    if provider_source is not None:
+        provider_dir = workspace / '_production_provider'
+        provider_dir.mkdir()
+        provider_for_build = provider_dir / 'g6_production_provider.c'
+        shutil.copy2(provider_source, provider_for_build)
+        if digest(provider_for_build) != digest(provider_source):
+            raise RuntimeError('Copied G6 production provider does not match the requested source')
     xsa_hash = digest(xsa)
     cpu, gcc = build_bsp(workspace, xsa, tools, args.boot_images)
     manifests = {}
     for name in args.apps:
-        manifests[name] = build_app(name, workspace, cpu, gcc, xsa)
+        manifests[name] = build_app(name, workspace, cpu, gcc, xsa,
+                                    provider_for_build if name == 'g6_usb' else None)
         (workspace / (name + '_manifest.json')).write_text(json.dumps(manifests[name], indent=2) + '\n', encoding='utf-8')
         print('ARM_ELF_OK', name, flush=True)
     if args.boot_images:
@@ -243,7 +276,8 @@ def main():
         for name, manifest in manifests.items():
             for path in (fsbl, fsbl.with_suffix('.map'), workspace / name / 'boot/BOOT.BIN'):
                 manifest['artifacts'][path.relative_to(workspace).as_posix()] = digest(path)
-            manifest['development_provisioning_required'] = name == 'g6_usb'
+            manifest['development_provisioning_required'] = (
+                manifest.get('security_profile') == 'development_jtag_mailbox')
             (workspace / (name + '_manifest.json')).write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     if 'g3_camera' in manifests:
         (workspace / 'build_manifest.json').write_text(json.dumps(manifests['g3_camera'], indent=2) + '\n', encoding='utf-8')
@@ -259,6 +293,8 @@ def main():
                          for p in workspace.glob('*/compile_commands.json')})
     build_inputs.update({p.relative_to(workspace).as_posix(): digest(p)
                          for p in workspace.glob('*/build/link_command.json')})
+    if provider_for_build is not None:
+        build_inputs[provider_for_build.relative_to(workspace).as_posix()] = digest(provider_for_build)
     (workspace / 'software_build.json').write_text(json.dumps(dict(
         xsa_sha256=xsa_hash, tool_root=str(tools), applications=list(manifests),
         generated_inputs=build_inputs,
