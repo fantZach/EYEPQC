@@ -1,0 +1,58 @@
+{
+  "schema": "eyepqc.keccak_sponge_x4_capture_fix.v1",
+  "date": "2026-10-11",
+  "status": "offline_capture_fix_and_firmware_verification_pass_board_validation_pending",
+  "runner_fix": {
+    "issue": "successful XSDB process exit previously stopped UART capture after one second even though firmware could still be emitting KAT output",
+    "behavior": "continue UART capture until KECCAK_SX4_BENCH_DONE and XSDB exit, or the overall timeout; stop early on nonzero XSDB exit",
+    "regression_tests": 2,
+    "result": "PASS"
+  },
+  "candidate": {
+    "workspace_relative_output": "build/kx41_capturefix_20261011",
+    "manifest_sha256": "23f1e5fdcffc626be6e2231a5e6b89552964f4bd1d42e5d2fa5f03571acef8c1",
+    "elf_sha256": "c978de597bbc9eaea63a686171d706d5adabed97e50ab9f66eff7bc9d1c472f9",
+    "elf_bytes": 564520,
+    "xsa_sha256": "ed634c6d480de36c16af64962093069cc120e04af5b38498978e210bf404318d",
+    "xsa_timing": {
+      "clock_period": 10.0,
+      "wns": 0.029,
+      "tns": 0.0,
+      "max_failing_endpoints": 0,
+      "whs": 0.082,
+      "ths": 0.0,
+      "min_failing_endpoints": 0,
+      "fully_routed": true
+    },
+    "verify_only_hash_checks_passed": 715
+  },
+  "offline_checks": {
+    "arm_firmware_build": "PASS (-Wall -Wextra -Werror)",
+    "candidate_manifest_and_timing_audit": "PASS; 715 input hash checks; no hardware access",
+    "capture_runner_tests": "PASS; 2 tests",
+    "strict_uart_parser_tests": "PASS; 11 tests"
+  },
+  "kat_scope": {
+    "unique_vectors": 60,
+    "operations": {
+      "keygen": 25,
+      "encapsulation": 25,
+      "decapsulation": 10
+    },
+    "windows": [
+      "software",
+      "KX41 hardware",
+      "forced timeout fallback"
+    ]
+  },
+  "board_validation": {
+    "performed_for_this_firmware": false,
+    "latest_enumeration": "COM14 USB-SERIAL CH340 present; target USB CDC 03FD:7020 and Xilinx/Digilent JTAG not found",
+    "status": "pending"
+  },
+  "limits": [
+    "No UART, XSDB, JTAG, FPGA programming, or boot-media write occurred during this verification.",
+    "Offline build, hash audit, and mocked runner tests do not establish on-board KAT or performance results.",
+    "The generated firmware directory is an ignored local artifact; this JSON records identity without committing the ELF."
+  ]
+}

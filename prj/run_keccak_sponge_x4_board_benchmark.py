@@ -11,7 +11,10 @@ from pathlib import Path
 
 import serial
 
-from parse_keccak_sponge_x4_board_benchmark import parse_log
+try:
+    from .parse_keccak_sponge_x4_board_benchmark import parse_log
+except ImportError:  # Allow direct execution by the board runner.
+    from parse_keccak_sponge_x4_board_benchmark import parse_log
 
 ROOT = Path(__file__).resolve().parents[1]
 XSDB = Path(r"E:\fpg\2026.1\Vivado\bin\xsdb.bat")
@@ -74,6 +77,32 @@ def audit_build(work: Path) -> dict:
             "timing": timing}
 
 
+def capture_uart(ser, proc, timeout: float, *, started_at: float | None = None,
+                 clock=time.monotonic) -> tuple[bytes, int | None, float]:
+    """Keep collecting after a successful XSDB loader exit until firmware completion."""
+    start = clock() if started_at is None else started_at
+    raw = bytearray()
+    try:
+        while clock() - start < timeout:
+            chunk = ser.read(4096)
+            if chunk:
+                raw.extend(chunk)
+            code = proc.poll()
+            if b"KECCAK_SX4_BENCH_DONE" in raw and code is not None:
+                break
+            if code is not None and code != 0:
+                break
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+    return bytes(raw), proc.returncode, clock() - start
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--firmware", type=Path, required=True)
@@ -109,31 +138,12 @@ def main() -> int:
                 (evidence / "jtag_stderr.log").open("wb") as err:
             proc = subprocess.Popen([str(xsdb), str(ROOT / "prj/run_keccak_sponge_x4_jtag.tcl"),
                                      str(work)], stdout=out, stderr=err)
-            jtag_exited_at = None
-            while time.monotonic() - start < args.serial_timeout:
-                chunk = ser.read(4096)
-                if chunk:
-                    raw.extend(chunk)
-                if b"KECCAK_SX4_BENCH_DONE" in raw and proc.poll() is not None:
-                    break
-                rc = proc.poll()
-                if rc is not None:
-                    if jtag_exited_at is None:
-                        jtag_exited_at = time.monotonic()
-                    if rc != 0 or time.monotonic() - jtag_exited_at >= 1.0:
-                        break
-            if proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait()
-            code = proc.returncode
+            captured, code, elapsed = capture_uart(ser, proc, args.serial_timeout, started_at=start)
+            raw.extend(captured)
     (evidence / "uart.log").write_bytes(raw)
     text = raw.decode("utf-8", errors="replace").replace("\r", "")
     record = {"status": "captured", "label": args.label, "firmware_audit": audit,
-              "jtag_returncode": code, "elapsed_wall_seconds": time.monotonic() - start,
+              "jtag_returncode": code, "elapsed_wall_seconds": elapsed,
               "captured_utc": datetime.now(timezone.utc).isoformat(),
               "uart_sha256": hashlib.sha256(raw).hexdigest(), "uart_bytes": len(raw),
               "persistent_storage_written": False, "board_claim": "not asserted until parser passes"}
