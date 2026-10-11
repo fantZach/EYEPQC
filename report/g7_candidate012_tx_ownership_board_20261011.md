@@ -43,9 +43,11 @@
 
 ## Windows USB ETW 采集准备（2026-10-11）
 
-当前 Windows PnP 查询看到实验用 CDC `USB\VID_03FD&PID_7020`（COM16）状态正常。已新增 `prj/collect_g7_usb_etw.ps1` 和 [单轮采集说明](g7_usb_etw_capture_guide.md)：Windows 自带 logman 的 USBXHCI/UCX/USBHUB3 trace 启用 `Default`、`HeadersBusTrace`、`StateMachine`、`Rundown`，并启用 Kernel-IoTrace 元数据；不启用 `PartialDataBusTrace` 或 `FullDataBusTrace`，最长 5 分钟、ETL 上限 128 MB，输出在 Git 忽略的 `build/g7_usb_etw/`。
+在 KX41/M02 测试之后，已重新 JTAG 临时下载 candidate012 r3 并重建短时认证视频基线：`g6_usb_20261011_105938_354220`，141 帧、47.748 fps，`jtag_load=true`、`jtag_completed=true`，manifest/ELF/XSA 哈希均与 r3 匹配。这只是已知固件的短时基线，不是 receiver-exit 恢复验收。原始结果仍在 Git 忽略目录 `data/captures/`。
 
-脚本 AST 解析、无副作用 `-Action Plan` 和 provider 注册检查通过。当前 PowerShell 令牌非管理员，因此没有启动 ETW、没有生成 ETL，也没有运行新一轮板测。准备工作不是 G7 新验收证据；待管理员会话启动采集后，只运行一次 candidate012 receiver-exit，再停止采集并按时间关联 ETL、runner 和 AP0 记录。
+当前 Windows PnP 查询看到实验用 CDC `USB\VID_03FD&PID_7020`（COM16）状态正常。已新增 `prj/collect_g7_usb_etw.ps1` 和 [单轮采集说明](g7_usb_etw_capture_guide.md)：Windows 自带 logman 的 USBXHCI/UCX/USBHUB3 trace 启用 `Default`、`HeadersBusTrace`、`StateMachine`、`Rundown`，并启用 Kernel-IoTrace 元数据；不启用 `PartialDataBusTrace` 或 `FullDataBusTrace`，最长 5 分钟、ETL 上限 128 MB，输出在 Git 忽略的 `build/g7_usb_etw/`。另加 `prj/run_g7_single_etw.ps1` 将候选哈希检查、易失性 JTAG 加载、短基线、ETW 单轮和自动停止串成一个管理员命令。
+
+脚本 AST 解析、无副作用 `-Action Plan` 和 provider 注册检查通过。当前 PowerShell 令牌非管理员，自动提权没有启动采集进程；没有活动 ETW session、manifest 或 ETL，也没有运行新一轮 receiver-exit。通用 `run_g7_recovery.ps1 -CheckOnly` 因 candidate012 没有其要求的 `software_build.json` 而在离线预检停止，未访问板卡；正确的 candidate 门禁为 `g6_board.py --verify-only`，197 项哈希通过。准备工作不是 G7 新验收证据。
 
 ## candidate012 普通 CDC 重连基线（10:29）
 

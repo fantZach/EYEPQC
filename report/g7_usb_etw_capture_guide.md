@@ -11,6 +11,24 @@
 
 ## 一轮操作
 
+推荐用一个管理员 PowerShell 命令完成候选重载、基线、ETW 单轮采集与停止：
+
+```powershell
+.\prj\run_g7_single_etw.ps1
+```
+
+脚本先验证 candidate012 r3 的文件哈希，再通过易失性 JTAG 下载并建立 3 秒认证视频基线；确认基线同构建、JTAG 完成且至少有 2 帧后，启动 ETW 并只执行一次 receiver-exit runner，最后自动停止采集。试验期间不重新下载固件。基线、runner stdout/stderr、ETL 和 launcher 清单均留在 Git 忽略的本地目录。运行前不要同时打开其他摄像头接收进程，也不要在脚本完成前断电或拔线。
+
+可先无副作用查看计划：
+
+```powershell
+.\prj\run_g7_single_etw.ps1 -Plan
+```
+
+管理员权限、设备检查和采集边界均由脚本执行；若基线、设备或候选身份门禁失败，runner 不会启动。
+
+也可以手动分步控制采集器：
+
 1. 在**管理员 PowerShell**中进入 `work/EYEPQC`，启动采集：
 
    ```powershell
