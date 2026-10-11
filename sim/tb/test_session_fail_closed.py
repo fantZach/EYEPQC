@@ -69,6 +69,16 @@ class SessionFailClosedTests(unittest.TestCase):
         cls.lib.eye_session_begin.restype = ct.c_int
         cls.lib.eye_session_verify_host_finished.argtypes = [ct.c_void_p, ct.c_void_p]
         cls.lib.eye_session_verify_host_finished.restype = ct.c_int
+        cls.lib.eye_session_board_finished.argtypes = [ct.c_void_p, ct.c_void_p]
+        cls.lib.eye_session_board_finished.restype = ct.c_int
+        cls.lib.eye_session_command.argtypes = [ct.c_void_p, ct.c_void_p]
+        cls.lib.eye_session_command.restype = ct.c_int
+        cls.lib.eye_session_next_nonce.argtypes = [ct.c_void_p, ct.c_void_p]
+        cls.lib.eye_session_next_nonce.restype = ct.c_int
+        cls.lib.eye_control_encode.argtypes = [
+            ct.c_void_p, ct.c_size_t, ct.c_uint8, ct.c_void_p, ct.c_size_t,
+        ]
+        cls.lib.eye_control_encode.restype = ct.c_int
 
     @classmethod
     def tearDownClass(cls):
@@ -152,6 +162,31 @@ class SessionFailClosedTests(unittest.TestCase):
         malformed = as_buffer(bytes(44))
         self.assertEqual(
             self.lib.eye_session_verify_host_finished(ct.byref(session), malformed), -1)
+        self.assert_session_retired(session)
+
+    def test_malformed_commands_and_sequence_mismatch_retire_active_keys(self):
+        session = self.make_active_session()
+        malformed = as_buffer(bytes(52))
+        self.assertEqual(self.lib.eye_session_command(ct.byref(session), malformed), -1)
+        self.assert_session_retired(session)
+
+        session = self.make_active_session()
+        body_bytes = bytearray(40)
+        body_bytes[7] = 1  # STOP with a sequence different from command_sequence.
+        body = as_buffer(body_bytes)
+        command = (ct.c_ubyte * 52)()
+        self.assertEqual(self.lib.eye_control_encode(command, 52, 7, body, 40), 0)
+        self.assertEqual(self.lib.eye_session_command(ct.byref(session), command), -3)
+        self.assert_session_retired(session)
+
+    def test_null_finished_or_nonce_output_retires_active_keys(self):
+        session = self.make_active_session()
+        session.state = 2  # EYE_STATE_CONFIRM
+        self.assertEqual(self.lib.eye_session_board_finished(ct.byref(session), None), -1)
+        self.assert_session_retired(session)
+
+        session = self.make_active_session()
+        self.assertEqual(self.lib.eye_session_next_nonce(ct.byref(session), None), -1)
         self.assert_session_retired(session)
 
 

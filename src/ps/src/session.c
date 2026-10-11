@@ -198,13 +198,18 @@ int eye_session_board_finished(struct eye_session *s, uint8_t out[44])
     static const uint8_t label[] = "board finished";
     uint8_t tag[32];
     int status;
-    if (!s || !out) return EYE_SESSION_INPUT;
+    if (!s) return EYE_SESSION_INPUT;
+    if (!out) {
+        eye_session_error(s);
+        return EYE_SESSION_INPUT;
+    }
     if (s->state != EYE_STATE_CONFIRM || s->board_finished_sent) return EYE_SESSION_STATE;
     status = finished(tag, s, label, sizeof label - 1);
     if (!status && eye_control_encode(out, 44, EYE_FINISHED_BOARD, tag, 32))
         status = EYE_SESSION_INPUT;
     wipe(tag, sizeof tag);
     if (!status) s->board_finished_sent = 1;
+    else eye_session_error(s);
     return status;
 }
 
@@ -243,14 +248,23 @@ int eye_session_command(struct eye_session *s, const uint8_t message[52])
     const uint8_t *body;
     uint64_t sequence;
     int status;
-    if (!s || !message) return EYE_SESSION_INPUT;
-    if (eye_control_decode(&type, &body, &length, message, 52) ||
-        (type != EYE_START && type != EYE_STOP && type != EYE_REKEY))
+    if (!s) return EYE_SESSION_INPUT;
+    if (!message) {
+        eye_session_error(s);
         return EYE_SESSION_INPUT;
+    }
+    if (eye_control_decode(&type, &body, &length, message, 52) ||
+        (type != EYE_START && type != EYE_STOP && type != EYE_REKEY)) {
+        eye_session_error(s);
+        return EYE_SESSION_INPUT;
+    }
     if ((type == EYE_START && (s->state != EYE_STATE_CONFIRM || !s->host_finished_verified)) ||
         (type != EYE_START && s->state != EYE_STATE_STREAMING)) return EYE_SESSION_STATE;
     sequence = be64(body);
-    if (sequence != s->command_sequence || sequence == UINT64_MAX) return EYE_SESSION_AUTH;
+    if (sequence != s->command_sequence || sequence == UINT64_MAX) {
+        eye_session_error(s);
+        return EYE_SESSION_AUTH;
+    }
     memcpy(context, label, sizeof label - 1);
     memcpy(context + sizeof label - 1, s->transcript_hash, 32);
     status = hmac2(tag, s->control_key, 32, context, sizeof context, message, 20);
@@ -266,14 +280,20 @@ int eye_session_command(struct eye_session *s, const uint8_t message[52])
 
 int eye_session_next_nonce(struct eye_session *s, uint8_t out[12])
 {
-    if (!s || !out) return EYE_SESSION_INPUT;
+    if (!s) return EYE_SESSION_INPUT;
+    if (!out) {
+        eye_session_error(s);
+        return EYE_SESSION_INPUT;
+    }
     if (s->state != EYE_STATE_STREAMING) return EYE_SESSION_STATE;
     if (s->packet_sequence >= ROTATE_AT) {
         eye_session_rekey(s);
         return EYE_SESSION_ROTATE;
     }
-    if (eye_nonce_encode(out, 12, s->nonce_prefix, s->packet_sequence))
+    if (eye_nonce_encode(out, 12, s->nonce_prefix, s->packet_sequence)) {
+        eye_session_error(s);
         return EYE_SESSION_INPUT;
+    }
     ++s->packet_sequence;
     return EYE_SESSION_OK;
 }
