@@ -75,6 +75,10 @@ class SessionFailClosedTests(unittest.TestCase):
         cls.lib.eye_session_command.restype = ct.c_int
         cls.lib.eye_session_next_nonce.argtypes = [ct.c_void_p, ct.c_void_p]
         cls.lib.eye_session_next_nonce.restype = ct.c_int
+        cls.lib.eye_session_accept_authenticated_packet.argtypes = [
+            ct.c_void_p, ct.c_uint32, ct.c_uint64,
+        ]
+        cls.lib.eye_session_accept_authenticated_packet.restype = ct.c_int
         cls.lib.eye_control_encode.argtypes = [
             ct.c_void_p, ct.c_size_t, ct.c_uint8, ct.c_void_p, ct.c_size_t,
         ]
@@ -208,6 +212,35 @@ class SessionFailClosedTests(unittest.TestCase):
         self.assertEqual(self.lib.eye_session_next_nonce(ct.byref(session), nonce), -4)
         self.assertEqual(bytes(nonce), bytes(12))
         self.assertEqual(session.state, 4)  # EYE_STATE_REKEY
+
+    def test_authenticated_packet_replay_rejection_preserves_active_session(self):
+        session = self.make_active_session()
+        session.receive_started = 0
+        session.receive_high = 0
+        session.receive_mask = 0
+        session_id = session.session_id
+        video_key = bytes(session.video_key)
+        control_key = bytes(session.control_key)
+
+        accept = self.lib.eye_session_accept_authenticated_packet
+        self.assertEqual(accept(ct.byref(session), session_id, 10), 0)
+        self.assertEqual(accept(ct.byref(session), session_id, 8), 0)
+        self.assertEqual(accept(ct.byref(session), session_id, 9), 0)
+        accepted_window = (session.receive_high, session.receive_mask)
+
+        self.assertEqual(accept(ct.byref(session), session_id, 10), -3)
+        self.assertEqual((session.receive_high, session.receive_mask), accepted_window)
+        self.assertEqual(accept(ct.byref(session), session_id ^ 1, 11), -2)
+        self.assertEqual((session.receive_high, session.receive_mask), accepted_window)
+        self.assertEqual(session.state, 3)  # EYE_STATE_STREAMING
+        self.assertEqual(bytes(session.video_key), video_key)
+        self.assertEqual(bytes(session.control_key), control_key)
+
+        self.assertEqual(accept(ct.byref(session), session_id, 75), 0)
+        advanced_window = (session.receive_high, session.receive_mask)
+        self.assertEqual(accept(ct.byref(session), session_id, 11), -3)
+        self.assertEqual((session.receive_high, session.receive_mask), advanced_window)
+        self.assertEqual(session.state, 3)  # EYE_STATE_STREAMING
 
 
 if __name__ == "__main__":
