@@ -19,6 +19,60 @@ from transient_file import staged_file
 
 
 class TransientJtagFileTests(unittest.TestCase):
+    def test_test_keyset_publishes_private_file_last_and_refuses_overwrite(self):
+        with tempfile.TemporaryDirectory(prefix="eyepqc-test-keyset-") as temp:
+            folder = Path(temp)
+            public_key = bytes((index % 251 for index in range(m09.PK)))
+            private_key = bytearray((index % 239 for index in range(m09.SK)))
+            original_replace = m09.os.replace
+            published = []
+
+            def trace_replace(source, destination):
+                published.append(Path(destination).name)
+                return original_replace(source, destination)
+
+            with patch.object(m09.os, "replace", trace_replace):
+                m09.write_test_key_material(folder, public_key, private_key)
+            self.assertEqual(published, ["public.bin", "public.sha256", "private.bin"])
+            self.assertEqual((folder / "public.bin").read_bytes(), public_key)
+            self.assertEqual((folder / "private.bin").read_bytes(), private_key)
+            self.assertEqual((folder / "public.sha256").read_text().strip(),
+                             hashlib.sha256(public_key).hexdigest())
+            self.assertEqual(m09.load_test_public_key(folder), public_key)
+            with self.assertRaisesRegex(FileExistsError, "refusing to overwrite"):
+                m09.write_test_key_material(folder, bytes(m09.PK), bytes(m09.SK))
+            self.assertEqual((folder / "private.bin").read_bytes(), private_key)
+            self.assertFalse((folder / ".m09-keygen.lock").exists())
+            private_key[:] = bytes(len(private_key))
+
+    def test_failed_keyset_write_leaves_no_private_commit_marker_and_can_retry(self):
+        with tempfile.TemporaryDirectory(prefix="eyepqc-test-keyset-fail-") as temp:
+            folder = Path(temp)
+            public_key = bytes((index % 251 for index in range(m09.PK)))
+            private_key = bytearray((index % 239 for index in range(m09.SK)))
+            original_replace = m09.os.replace
+
+            def fail_private_commit(source, destination):
+                if Path(destination).name == "private.bin":
+                    raise OSError("simulated private commit failure")
+                return original_replace(source, destination)
+
+            with patch.object(m09.os, "replace", fail_private_commit):
+                with self.assertRaisesRegex(OSError, "simulated private commit failure"):
+                    m09.write_test_key_material(folder, public_key, private_key)
+            self.assertFalse((folder / "private.bin").exists())
+            self.assertEqual((folder / "public.bin").read_bytes(), public_key)
+            self.assertEqual((folder / "public.sha256").read_text().strip(),
+                             hashlib.sha256(public_key).hexdigest())
+            with self.assertRaisesRegex(FileNotFoundError, "keyset is incomplete"):
+                m09.load_test_public_key(folder)
+            self.assertFalse((folder / ".m09-keygen.lock").exists())
+            self.assertFalse(any(path.name.startswith(".m09-") for path in folder.iterdir()))
+            m09.write_test_key_material(folder, public_key, private_key)
+            self.assertEqual((folder / "private.bin").read_bytes(), private_key)
+            self.assertEqual(m09.load_test_public_key(folder), public_key)
+            private_key[:] = bytes(len(private_key))
+
     def test_staged_input_is_removed_after_success(self):
         with tempfile.TemporaryDirectory(prefix="eyepqc-transient-") as temp:
             secret = bytearray(b"test-only private key bytes")

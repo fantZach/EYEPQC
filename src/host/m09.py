@@ -30,6 +30,53 @@ def build(path=LIB):
     return path
 
 
+def write_test_key_material(directory, public_key, private_key):
+    """Persist a development test keypair, committing private.bin last.
+
+    The presence of private.bin is the completion marker used by board tests.
+    If a write fails before the final rename, no usable keypair is published.
+    This is local test-key handling, not secure provisioning or storage.
+    """
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    if len(public_key) != PK or len(private_key) != SK:
+        raise ValueError("invalid ML-KEM-512 test key lengths")
+    lock_path = directory / ".m09-keygen.lock"
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        private_path = directory / "private.bin"
+        if private_path.exists():
+            raise FileExistsError("refusing to overwrite existing static board key")
+        public_path = directory / "public.bin"
+        pin_path = directory / "public.sha256"
+        pin_data = (hashlib.sha256(public_key).hexdigest() + "\n").encode("ascii")
+        with staged_file(directory, ".m09-public-", public_key) as staged_public:
+            os.replace(staged_public, public_path)
+        with staged_file(directory, ".m09-pin-", pin_data) as staged_pin:
+            os.replace(staged_pin, pin_path)
+        # Publish the private key last. Readers treat it as the keyset commit marker.
+        with staged_file(directory, ".m09-private-", private_key) as staged_private:
+            os.replace(staged_private, private_path)
+    finally:
+        os.close(lock_fd)
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def load_test_public_key(directory):
+    """Load the public key only when the private-last keyset commit marker exists."""
+    directory = Path(directory)
+    if not (directory / "private.bin").is_file():
+        raise FileNotFoundError("M09 test keyset is incomplete; run keygen")
+    public_key = (directory / "public.bin").read_bytes()
+    expected_pin = (directory / "public.sha256").read_text().strip()
+    if len(public_key) != PK or hashlib.sha256(public_key).hexdigest() != expected_pin:
+        raise ValueError("pinned public key hash mismatch")
+    return public_key
+
+
 class Kem:
     def __init__(self, path=LIB):
         self.lib = ct.CDLL(str(path))
@@ -104,19 +151,14 @@ def main():
         sk = None
         try:
             pk, sk = kem.keygen(seed)
-            (OUT / "private.bin").write_bytes(sk)
-            (OUT / "public.bin").write_bytes(pk)
-            (OUT / "public.sha256").write_text(hashlib.sha256(pk).hexdigest() + "\n")
+            write_test_key_material(OUT, pk, sk)
         finally:
             seed[:] = bytes(len(seed))
             if sk is not None:
                 sk[:] = bytes(len(sk))
         print("PK_SHA256", hashlib.sha256(pk).hexdigest())
     elif args.operation == "encaps":
-        pk = (OUT / "public.bin").read_bytes()
-        expected = (OUT / "public.sha256").read_text().strip()
-        if hashlib.sha256(pk).hexdigest() != expected:
-            raise ValueError("pinned public key hash mismatch")
+        pk = load_test_public_key(OUT)
         coins = bytearray(os.urandom(32))
         shared = None
         try:
