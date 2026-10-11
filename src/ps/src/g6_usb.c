@@ -291,6 +291,24 @@ static int production_decapsulate(uint8_t shared[32], const uint8_t ciphertext[7
     wipe(key, sizeof key);
     return status;
 }
+
+/* No application control/TX transfer has been submitted before both startup
+ * calls return successfully, so tx is still CPU-owned on this error path. */
+static void production_startup_teardown(void) {
+    eye_session_reset(&session);
+    clear_handshake_cache();
+    wipe(tx, sizeof tx);
+    phase = FAULT;
+    eye_hmac_drbg_uninstantiate(&production_drbg);
+    g6_production_security_shutdown();
+}
+
+static int initialize_production_transports(void) {
+    int status = g3_usb_init(CAMERA_CFG);
+    if (!status) status = usb_cdc_init();
+    if (status) production_startup_teardown();
+    return status;
+}
 #endif
 static void mark_fault(void) {
     eye_session_error(&session);
@@ -519,7 +537,7 @@ int main(void) {
         xil_printf("G6_SECURITY_PROVIDER_FAIL %d\r\n", status);
         for (;;) {}
     }
-    status = g3_usb_init(CAMERA_CFG);
+    status = initialize_production_transports();
 #else
     int status = g3_usb_init(CAMERA_CFG);
 #endif

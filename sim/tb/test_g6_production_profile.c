@@ -33,6 +33,10 @@ static unsigned cleanup_order;
 static int cleanup_stop_status;
 static int cleanup_wipe_status;
 static int cleanup_usb_status;
+static int camera_init_status;
+static int cdc_init_status;
+static unsigned camera_init_calls;
+static unsigned cdc_init_calls;
 
 int g6_production_security_init(void)
 {
@@ -93,12 +97,17 @@ int usb_cdc_take_control(uint8_t *out, uint32_t capacity)
     return 0;
 }
 
-int usb_cdc_init(void) { return 0; }
+int usb_cdc_init(void) { ++cdc_init_calls; return cdc_init_status; }
 int usb_cdc_ready(void) { return 0; }
 uint32_t usb_cdc_connection_epoch(void) { return 0U; }
 int g3_usb_flush(void) { return 0; }
 void g3_usb_zeroize(void) { }
-int g3_usb_init(unsigned camera_cfg) { (void)camera_cfg; return 0; }
+int g3_usb_init(unsigned camera_cfg)
+{
+    (void)camera_cfg;
+    ++camera_init_calls;
+    return camera_init_status;
+}
 int g3_usb_capture(const uint8_t **data, unsigned *size)
 {
     (void)data;
@@ -156,6 +165,8 @@ static void reset_provider(void)
     cleanup_stop_calls = cleanup_wipe_calls = cleanup_usb_calls = 0U;
     cleanup_order = 0U;
     cleanup_stop_status = cleanup_wipe_status = cleanup_usb_status = 0;
+    camera_init_status = cdc_init_status = 0;
+    camera_init_calls = cdc_init_calls = 0U;
     memset((void *)&g6_secure_cleanup_diag, 0, sizeof g6_secure_cleanup_diag);
     g6_secure_cleanup_diag.magic = G6_SECURE_CLEANUP_MAGIC;
     last_send_length = 0U;
@@ -302,6 +313,50 @@ static int test_pinned_key_and_provider_random(void)
     return 0;
 }
 
+static int test_startup_failure_wipes_cpu_owned_secrets(void)
+{
+    reset_provider();
+    if (initialize_production_security()) return 1;
+    memset(session.video_key, 0xa1, sizeof session.video_key);
+    memset(session.control_key, 0xb2, sizeof session.control_key);
+    memset(session.transcript_hash, 0xc3, sizeof session.transcript_hash);
+    memset(hello, 0xd4, sizeof hello);
+    memset(ack, 0xe5, sizeof ack);
+    memset(tx, 0xf6, sizeof tx);
+    phase = STREAM;
+    camera_init_status = 41;
+    if (initialize_production_transports() != 41 || camera_init_calls != 1U ||
+        cdc_init_calls != 0U || provider_shutdown_calls != 1U ||
+        production_drbg.instantiated || phase != FAULT || cleanup_usb_calls != 0U)
+        return 2;
+    for (unsigned i = 0; i < sizeof session; ++i)
+        if (((const uint8_t *)&session)[i]) return 3;
+    for (unsigned i = 0; i < sizeof hello; ++i)
+        if (hello[i] || ack[i]) return 4;
+    for (unsigned i = 0; i < sizeof tx; ++i)
+        if (tx[i]) return 5;
+
+    reset_provider();
+    if (initialize_production_security()) return 6;
+    memset(session.video_key, 0xa1, sizeof session.video_key);
+    memset(session.control_key, 0xb2, sizeof session.control_key);
+    memset(hello, 0xd4, sizeof hello);
+    memset(ack, 0xe5, sizeof ack);
+    memset(tx, 0xf6, sizeof tx);
+    cdc_init_status = 42;
+    if (initialize_production_transports() != 42 || camera_init_calls != 1U ||
+        cdc_init_calls != 1U || provider_shutdown_calls != 1U ||
+        production_drbg.instantiated || cleanup_usb_calls != 0U)
+        return 7;
+    for (unsigned i = 0; i < sizeof session; ++i)
+        if (((const uint8_t *)&session)[i]) return 8;
+    for (unsigned i = 0; i < sizeof hello; ++i)
+        if (hello[i] || ack[i]) return 9;
+    for (unsigned i = 0; i < sizeof tx; ++i)
+        if (tx[i]) return 10;
+    return 0;
+}
+
 int main(void)
 {
     int status = test_missing_provider_fails_closed();
@@ -309,10 +364,11 @@ int main(void)
     if (!status) status = test_cleanup_failure_stays_fail_closed();
     if (!status) status = test_disconnect_uses_secure_cleanup_without_auto_recovery();
     if (!status) status = test_pinned_key_and_provider_random();
+    if (!status) status = test_startup_failure_wipes_cpu_owned_secrets();
     if (status) {
         fprintf(stderr, "g6_production_profile_failed=%d\n", status);
         return 1;
     }
-    puts("G6_PRODUCTION_PROFILE_PASS entropy_fail_closed=1 reseed_failure_no_ack=1 cleanup_order=1 cleanup_failure_fail_closed=1 disconnect_cleanup_without_recovery=1 key_identity_pinned=1");
+    puts("G6_PRODUCTION_PROFILE_PASS entropy_fail_closed=1 reseed_failure_no_ack=1 cleanup_order=1 cleanup_failure_fail_closed=1 disconnect_cleanup_without_recovery=1 key_identity_pinned=1 startup_failure_wipe=1");
     return 0;
 }

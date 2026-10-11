@@ -193,7 +193,7 @@ EVIDENCE_STATUS = [
         "id": "full_sim_regression_20261011",
         "status": "passed_128_of_128_offline",
         "evidence": "report/production_security_profile_20261011.md",
-        "scope": "完整 sim/tb 回归 128/128 通过，268.005 秒；这是电脑端软件/仿真证据，不是板端生产安全或 G0/G7 验收。",
+        "scope": "完整 sim/tb 回归 128/128 通过，270.750 秒；这是电脑端软件/仿真证据，不是板端生产安全或 G0/G7 验收。",
     },
     {
         "id": "security_cleanup_candidate007",

@@ -28,7 +28,11 @@ NIST [HMAC_DRBG-SHA-256 示例向量](https://csrc.nist.gov/CSRC/media/Projects/
 
 2026-10-11 首版 production profile 用临时 fail-closed provider 完成 XC7Z020 ARM 交叉编译与链接：`build/vitis/g6_prod_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `fe3511229c4725abfb214784ea013b03c71dec512fe37eefa598742748e22a7b`；输入 XSA SHA-256 `46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024`。manifest 标为 `external_provider_unvalidated`、`board_validated=false`，DRBG 和 G6 源码哈希匹配该次构建源码。ELF 含 DRBG instantiate/generate/reseed 入口；开发 mailbox、host seed、计数器和静态私钥数据符号为零。临时 provider 的初始化、密钥、熵接口全部返回失败；该产物不含可用熵源或密钥服务。
 
-最新安全清理候选使用同一 XSA 和 fail-closed provider：`build/vitis/g6_prod_secure_cleanup_candidate6_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `50baa8ba43fdb1a40d5cb3bf0f138e39a480893d1b6ce5958433c1aae7a7ce52`。输入 XSA SHA-256 为 `46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024`，DRBG 源 SHA-256 `838f0dff03ad87e1fc77b21a9b6af79904e538aed552bf7cdbc453a4c5e71717`、provider 契约头文件 SHA-256 `e6df75b0a2f5f46c65dab90585bb8c763feebe65d6946ff06cad4b9355266f62` 与 manifest 匹配。manifest 的 `production_secure_cleanup=bounded_usbps_overlay_and_dma_gcm_frame_tx_callbacks`、`security_profile=external_provider_unvalidated`、`board_validated=false`；编译参数有 `G6_PRODUCTION` 和 `G6_SECURE_CLEANUP`，没有 `G6_AUTO_RECOVERY`。使用 Vitis 配套 `arm-none-eabi-nm` 检查，ELF 含 DRBG instantiate/generate/reseed 与 secure-cleanup 符号，未见开发 mailbox/host-seed 符号；link command 使用候选目录内的有界 USBPS endpoint/interrupt 对象。provider 的初始化、熵和私钥读取均故意返回失败，因此它不可用于启动视频，也不是生产 provider。
+此前安全清理候选使用同一 XSA 和 fail-closed provider：`build/vitis/g6_prod_secure_cleanup_candidate6_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `50baa8ba43fdb1a40d5cb3bf0f138e39a480893d1b6ce5958433c1aae7a7ce52`。输入 XSA SHA-256 为 `46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024`，DRBG 源 SHA-256 `838f0dff03ad87e1fc77b21a9b6af79904e538aed552bf7cdbc453a4c5e71717`、provider 契约头文件 SHA-256 `e6df75b0a2f5f46c65dab90585bb8c763feebe65d6946ff06cad4b9355266f62` 与 manifest 匹配。manifest 的 `production_secure_cleanup=bounded_usbps_overlay_and_dma_gcm_frame_tx_callbacks`、`security_profile=external_provider_unvalidated`、`board_validated=false`；编译参数有 `G6_PRODUCTION` 和 `G6_SECURE_CLEANUP`，没有 `G6_AUTO_RECOVERY`。使用 Vitis 配套 `arm-none-eabi-nm` 检查，ELF 含 DRBG instantiate/generate/reseed 与 secure-cleanup 符号，未见开发 mailbox/host-seed 符号；link command 使用候选目录内的有界 USBPS endpoint/interrupt 对象。provider 的初始化、熵和私钥读取均故意返回失败，因此它不可用于启动视频，也不是生产 provider。
+
+最新生产 G6 源码另收紧了硬件启动失败路径：相机或 CDC 初始化未成功时，在任何应用控制/TX 发送之前覆写 CPU-owned session、HELLO/ACK、TX 和 DRBG 状态，关闭 provider 并转入 `FAULT`。离线 C harness 分别注入相机初始化失败与 CDC 初始化失败，并验证这些对象归零、provider 只关闭一次、没有误调用依赖已初始化 USB 驱动的异步 TX 清理。该路径不擦写 frame/sealed 或 DMA 对象，因为它不宣称已经取得对应硬件所有权证明；硬件残留仍属于板端验收。
+
+最新启动失败清理候选使用同一 XSA 和 fail-closed provider：`build/vitis/g6_prod_secure_cleanup_candidate7_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `22e157cf2854f175ac2dc5b278a7c8e53d816a96d79952d48d04645f6648b0a8`。manifest 的 `src/ps/src/g6_usb.c` SHA-256 为 `252ab9be0e27cb4079d18e419ef676576ce2134bbb5759158210c8e0da2c723e` 并匹配工作树；编译参数仍只有 `G6_PRODUCTION`、`G6_SECURE_CLEANUP` 与 `G6_USB`，不含 `G6_AUTO_RECOVERY`；配套 Vitis `nm` 未发现开发 mailbox/host-seed 符号，link command 仍使用有界 USBPS 对象。manifest 继续标为 `external_provider_unvalidated` 且 `board_validated=false`，ELF 不是可用生产固件。
 
 ## 主机握手临时秘密生命周期（电脑端）
 
@@ -38,7 +42,7 @@ NIST [HMAC_DRBG-SHA-256 示例向量](https://csrc.nist.gov/CSRC/media/Projects/
 
 另以同一 XSA 和当前构建脚本编译开发 profile：`build/vitis/g6_dev_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `f80f9fd014d0ee6d329b8149c7a12cb62e881801eb10858e722d807f236dff1c`。开发 ELF 保留 mailbox 和旧开发随机状态，未编译/链接 DRBG 源；生产 ELF 则相反。两个 manifest 分别标记 `development_jtag_mailbox` 与 `external_provider_unvalidated`。两个构建的 `g6_usb.c`/DRBG 源码哈希均匹配；该对照验证 DRBG 仅进入显式生产配置。
 
-本节最新全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **128 tests / OK**，耗时 **268.005 秒**。覆盖 host 临时秘密清理、DRBG 输入失败状态覆写、有效重播种和全部既有 RTL/协议用例；最新生产 ARM ELF 重建、宏/符号与 link map 检查通过。电脑端回归不代表熵源、密钥服务、host 全进程清零或板端安全验收。
+本节最新全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **128 tests / OK**，耗时 **270.750 秒**。覆盖 host 临时秘密清理、DRBG 输入失败状态覆写、生产启动失败清理与全部既有 RTL/协议用例；最新生产 ARM ELF 重建、宏/符号与 link map 检查通过。电脑端回归不代表熵源、密钥服务、host 全进程清零或板端安全验收。
 
 ## 仍未完成
 
