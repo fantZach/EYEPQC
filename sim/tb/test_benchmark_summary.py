@@ -166,7 +166,7 @@ class BenchmarkSummaryTests(unittest.TestCase):
         summary = self.summary()
         serialized = str(summary)
         self.assertNotIn(str(self.root), serialized)
-        self.assertNotRegex(serialized, re.compile(r"[A-Za-z]:\\Users\\", re.IGNORECASE))
+        self.assertNotRegex(serialized, re.compile(r"\b[A-Za-z]:\\[^\s\"']+", re.IGNORECASE))
         self.assertNotRegex(serialized, re.compile(r"\b(private_key|secret_key|seed|cookie|token)\b", re.IGNORECASE))
         for row in summary["records"]:
             for source in row["sources"]:
@@ -175,18 +175,18 @@ class BenchmarkSummaryTests(unittest.TestCase):
 
     def test_untrusted_build_labels_and_result_strings_are_not_copied(self):
         g0 = self._read(G0_MANIFEST)
-        g0["application"] = r"C:\Users\private\secret_key_build"
-        g0["build_id"] = r"C:\Users\private\seed.bin"
+        g0["application"] = r"Z:\fixture_root\secret_key_build"
+        g0["build_id"] = r"Z:\fixture_root\seed.bin"
         self._write(G0_MANIFEST, g0)
         g7 = self._read(G7_RESULTS[0][2])
-        g7["variant"] = r"C:\Users\private\secret_key_build"
+        g7["variant"] = r"Z:\fixture_root\secret_key_build"
         self._write(G7_RESULTS[0][2], g7)
         snapshot = self._read(VALIDATION_SNAPSHOT)
-        snapshot["offline_candidate_validation"]["variant"] = r"C:\Users\private\token_build"
-        snapshot["offline_candidate_validation"]["result"] = r"C:\Users\private\seed.txt"
+        snapshot["offline_candidate_validation"]["variant"] = r"Z:\fixture_root\token_build"
+        snapshot["offline_candidate_validation"]["result"] = r"Z:\fixture_root\seed.txt"
         self._write(VALIDATION_SNAPSHOT, snapshot)
         serialized = json.dumps(self.summary(), ensure_ascii=False)
-        for private in ("C:\\Users\\private", "secret_key_build", "seed.bin", "token_build"):
+        for private in ("Z:\\fixture_root", "secret_key_build", "seed.bin", "token_build"):
             self.assertNotIn(private, serialized)
 
     def test_missing_allowlisted_evidence_fails_closed(self):
