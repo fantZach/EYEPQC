@@ -1,6 +1,6 @@
 # G7 candidate012 TX ownership 实板诊断
 
-日期：2026-10-11。结论：candidate012 r3 的一次 receiver-exit 恢复仍失败，G7 未通过，20 轮 receiver-exit 和物理 USB 拔插批次均未启动。新增的发送所有权诊断确认本次 51 字节 HELLO_ACK 对应的 EP1 IN dTD 已报告完成；Windows 主机进程仍记录 39 次读取、0 字节。该结果把问题范围从“旧 dTD 完成被误认成新 ACK”缩小到实际 USB/CDC 主机接收边界，但不能证明 ACK 已进入 Windows CDC 应用层，也没有确认根因。
+日期：2026-10-11。结论：candidate012 r3 的一次 receiver-exit 恢复仍失败，G7 未通过，20 轮 receiver-exit 和物理 USB 拔插批次均未启动。新增的发送所有权诊断确认本次 51 字节 HELLO_ACK 对应的 EP1 IN dTD 已报告完成；Windows 主机进程仍记录 39 次读取、0 字节。随后同一构建、无 JTAG 重载的普通 CDC 重连基线通过，认证 141 帧和 1,130 包，且接收进程退出后板端再次回到 `WAIT_HELLO`。因此一般 CDC 重连与视频传输可用，但 receiver-exit 场景仍失败；该对照不能证明 ACK 已进入 Windows CDC 应用层，也没有确认根因。
 
 ## 构建与基线
 
@@ -38,5 +38,16 @@
 ## 状态与下一步
 
 - 单轮失败；G7 不通过，receiver-exit 20 轮和物理 USB 拔插 20 轮均未开始。
-- 当前没有需要用户执行的现场步骤。先离线确认 Windows USB CDC/PnP 和串口句柄生命周期诊断是否能与主机侧 USB 事务记录关联；如缺少总线级可观测性，再评估有界的主机 USB ETW/USBPcap 采集。任何新候选都先跑基线和单轮，禁止盲目重复长批次。
+- 普通无 JTAG CDC 重连与视频基线已通过，但不能替代 receiver-exit 门禁。当前没有需要用户执行的现场步骤。下一步应取得受限主机 USB 控制器/串口层事务完成记录，把设备 dTD completion、主机 USB 请求状态和应用层读取关联起来；当前 Windows USB ETW 采集需要管理员会话，尚未执行。任何新候选都先跑基线和单轮，禁止盲目重复长批次。
 - SD/Flash/eFuse 未写入；candidate012 仅临时 JTAG 下载。不得把短时基线或单次 dTD 完成上升为 G7 验收。
+
+## candidate012 普通 CDC 重连基线（10:29）
+
+receiver-exit 失败后，在不重载 JTAG 的情况下，用同一 candidate012 执行普通的单会话 CDC 打开、握手与认证视频接收：
+
+- `g6_board.py --no-jtag --seconds 3 --sessions 1` 状态 `passed`；Windows 设备为 `03FD:7020` / COM16。
+- 认证视频 141 帧、1,404,737 字节、2.9367 秒、47.672 fps；1,130 个认证/分组包均通过，transcript SHA-256 为 `4681bbcac6d1d04ee67f012bf73084a9d2bb480a3ee1dc4ea5f53452f19b1c58`。
+- 运行前后只读 AP0 元数据表明 HELLO 与 ACK 计数各增加 1，最后 phase 为 `WAIT_HELLO`，`control_errors`、`fatal_errors`、`transport_errors` 均为 0；最后一次 EP1 IN 描述符长度 254、残余 0、token `0x8000`、完成状态 0、匹配标志 `0x1f`。AP0 读取不含视频 payload 或密钥。
+- 主机捕获位于忽略目录 `data/captures/g6_usb_20261011_102939_978167/result.json`；前后只读 AP0 快照位于忽略目录 `report/g7_runs/g7_live_diag_20261011_102854.json` 和 `report/g7_runs/g7_post_baseline_diag_20261011_102950.json`。这些原始文件尚未进入 GitHub。
+
+这条对照排除了“当前设备完全无法重开 CDC 或传送认证视频”的宽泛解释，支持把下一步观测集中在旧 receiver 退出后的主机句柄/USB 请求交接时序；它没有证明具体根因，也不构成 receiver-exit 通过。
