@@ -100,6 +100,28 @@ switch ($Action) {
         }
 
         New-Item -ItemType Directory -Path $outputRootFull -Force | Out-Null
+        $existingCollector = Invoke-Logman @('query', '-n', $sessionName) -AllowFailure
+        if ($existingCollector.ExitCode -eq 0) {
+            if (!(Test-Path -LiteralPath $pointerPath)) {
+                throw "A Logman collector named $sessionName exists without this tool's ownership manifest; refusing to replace it."
+            }
+            $oldManifest = Read-CurrentRecord
+            if ($oldManifest.schema -ne 'eyepqc-g7-usb-etw-v1' -or $oldManifest.session_name -ne $sessionName) {
+                throw 'Existing Logman collector does not match the EYEPQC ETW manifest; refusing to replace it.'
+            }
+            [void](Invoke-Logman @('stop', '-n', $sessionName) -AllowFailure)
+            [void](Invoke-Logman @('delete', '-n', $sessionName))
+            $oldManifest | Add-Member -MemberType NoteProperty -Name stopped_utc -Value ([DateTime]::UtcNow.ToString('o')) -Force
+            $oldManifest | Add-Member -MemberType NoteProperty -Name etl_bytes -Value 0 -Force
+            if (Test-Path -LiteralPath $oldManifest.output_etl) {
+                $oldManifest.etl_bytes = (Get-Item -LiteralPath $oldManifest.output_etl).Length
+                $oldManifest.state = 'stale_collector_removed'
+            } else {
+                $oldManifest.state = 'stale_collector_removed_no_etl'
+            }
+            $oldManifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath ([string](Get-Content -LiteralPath $pointerPath -Raw | ConvertFrom-Json).manifest_path) -Encoding utf8
+        }
+
         $stamp = Get-Date -Format 'yyyyMMdd_HHmmss_fff'
         $prefix = Join-Path $outputRootFull "g7_usb_etw_$stamp"
         $etlPath = "$prefix.etl"
@@ -112,6 +134,8 @@ switch ($Action) {
             max_duration_seconds = $maxTraceSeconds
             max_file_megabytes = $maxTraceMegabytes
             output_etl = $etlPath
+            stopped_utc = $null
+            etl_bytes = 0
             device_instance_id = [string]$devices[0].InstanceId
             device_name = [string]$devices[0].FriendlyName
             git_head = ((& git -C $repoRoot rev-parse HEAD 2>$null) | Select-Object -First 1)
@@ -136,7 +160,7 @@ switch ($Action) {
                 [void](Invoke-Logman @('update', 'trace', '-n', $sessionName, '-p', $provider, $providerKeywords))
             }
             [void](Invoke-Logman @('update', 'trace', '-n', $sessionName, '-p', $ioProvider, '0', '2'))
-            [void](Invoke-Logman @('start', '-n', $sessionName, '-ets'))
+            [void](Invoke-Logman @('start', '-n', $sessionName))
 
             $manifest.state = 'running'
             $manifest.started_utc = [DateTime]::UtcNow.ToString('o')
@@ -146,7 +170,7 @@ switch ($Action) {
         }
         catch {
             if ($created) {
-                [void](Invoke-Logman @('stop', '-n', $sessionName, '-ets') -AllowFailure)
+                [void](Invoke-Logman @('stop', '-n', $sessionName) -AllowFailure)
                 [void](Invoke-Logman @('delete', '-n', $sessionName) -AllowFailure)
             }
             $manifest.state = 'start_failed'
@@ -160,16 +184,23 @@ switch ($Action) {
         if ($manifest.session_name -ne $sessionName) { throw 'Active manifest has an unexpected ETW session name.' }
         $active = Test-TraceActive
         if ($active) {
-            [void](Invoke-Logman @('stop', '-n', $sessionName, '-ets'))
+            [void](Invoke-Logman @('stop', '-n', $sessionName))
             $manifest.state = 'stopped_by_operator'
         }
         else {
             $manifest.state = 'session_already_stopped'
         }
         $manifest.stopped_utc = [DateTime]::UtcNow.ToString('o')
+        $deadline = [DateTime]::UtcNow.AddSeconds(10)
+        while (!(Test-Path -LiteralPath $manifest.output_etl) -and [DateTime]::UtcNow -lt $deadline) {
+            Start-Sleep -Milliseconds 100
+        }
         $manifest.etl_bytes = if (Test-Path -LiteralPath $manifest.output_etl) { (Get-Item -LiteralPath $manifest.output_etl).Length } else { 0 }
         $manifestPath = [string](Get-Content -LiteralPath $pointerPath -Raw | ConvertFrom-Json).manifest_path
         Write-JsonAtomic $manifestPath $manifest
+        if ($manifest.etl_bytes -le 0) { throw 'Logman stopped, but the expected ETL file is missing or empty.' }
+        if (Test-TraceActive) { throw "ETW session $sessionName is still active after logman stop." }
+        [void](Invoke-Logman @('delete', '-n', $sessionName))
         "G7_USB_ETW_STOPPED state=$($manifest.state) etl_bytes=$($manifest.etl_bytes) output=$($manifest.output_etl)"
     }
     'Status' {
