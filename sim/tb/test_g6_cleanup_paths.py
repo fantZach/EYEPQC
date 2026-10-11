@@ -65,41 +65,44 @@ class G6CleanupPathHarnessTests(unittest.TestCase):
             )
 
             for candidate in (False, True):
-                with self.subTest(candidate_cleanup=candidate):
-                    executable = temp_path / (
-                        "g6_cleanup_candidate.exe" if candidate else "g6_cleanup_default.exe"
-                    )
-                    command = [
-                        compiler, "-std=c11", "-O0", "-Wall", "-Wextra",
-                        "-ffunction-sections", "-fdata-sections",
-                        "-Wl,--gc-sections", "-I", str(stubs),
-                    ]
-                    for include in INCLUDES:
-                        command.extend(["-I", str(include)])
-                    if candidate:
-                        command.extend(["-DG6_SECURE_CLEANUP", "-DG6_AUTO_RECOVERY"])
-                    command.extend(str(source) for source in SOURCES)
-                    command.extend(["-o", str(executable)])
-                    built = subprocess.run(
-                        command, check=False, capture_output=True, text=True
-                    )
-                    self.assertEqual(
-                        built.returncode, 0,
-                        msg=f"native source harness build failed:\n{built.stderr}",
-                    )
-                    ran = subprocess.run(
-                        [str(executable)], check=False, capture_output=True, text=True
-                    )
-                    self.assertEqual(
-                        ran.returncode, 0,
-                        msg=f"real G6 branch harness failed:\n{ran.stdout}\n{ran.stderr}",
-                    )
-                    expected = (
-                        "candidate_cleanup_paths=PASS cleanup_failure_stops=PASS session_semantics=PASS"
-                        if candidate else
-                        "default_gcm_clear_paths=PASS session_semantics=PASS"
-                    )
-                    self.assertIn(expected, ran.stdout)
+                for optimization in ("-O0", "-O3"):
+                    with self.subTest(candidate_cleanup=candidate, optimization=optimization):
+                        executable = temp_path / (
+                            f"g6_cleanup_{'candidate' if candidate else 'default'}_"
+                            f"{optimization[1:]}.exe"
+                        )
+                        command = [
+                            compiler, "-std=c11", optimization, "-Wall", "-Wextra",
+                            "-ffunction-sections", "-fdata-sections",
+                            "-Wl,--gc-sections", "-I", str(stubs),
+                        ]
+                        for include in INCLUDES:
+                            command.extend(["-I", str(include)])
+                        if candidate:
+                            command.extend(["-DG6_SECURE_CLEANUP", "-DG6_AUTO_RECOVERY"])
+                        command.extend(str(source) for source in SOURCES)
+                        command.extend(["-o", str(executable)])
+                        built = subprocess.run(
+                            command, check=False, capture_output=True, text=True
+                        )
+                        self.assertEqual(
+                            built.returncode, 0,
+                            msg=f"native source harness build failed:\n{built.stderr}",
+                        )
+                        ran = subprocess.run(
+                            [str(executable)], check=False,
+                            capture_output=True, text=True
+                        )
+                        self.assertEqual(
+                            ran.returncode, 0,
+                            msg=f"real G6 branch harness failed:\n{ran.stdout}\n{ran.stderr}",
+                        )
+                        expected = (
+                            "candidate_cleanup_paths=PASS cleanup_failure_stops=PASS session_semantics=PASS"
+                            if candidate else
+                            "default_gcm_clear_paths=PASS session_semantics=PASS"
+                        )
+                        self.assertIn(expected, ran.stdout)
 
 
 if __name__ == "__main__":

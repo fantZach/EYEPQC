@@ -15,7 +15,7 @@
 | 安全域 | 源码中已有行为 | 缺口与结论 |
 |---|---|---|
 | 会话密钥与状态 | `src/ps/src/session.c` 用 volatile 写清会话 transcript hash、视频/控制 key、nonce prefix、session ID、序号和 replay 状态；派生与 HMAC 的若干临时状态也会清理。 | 只覆盖显式列出的对象。PS cache、栈/堆副本、寄存器、异常转储、调试访问和复位/掉电过程没有全域读回证据。`last_transcript` 是保留状态，不能按全结构清零描述。 |
-| ML-KEM 长期私钥与随机种子 | `src/ps/src/g6_usb.c` 从 `g6_sk_load`/`g6_seed_load` 复制到静态 `private_key`/`random_seed`，随后清 mailbox；输入校验失败时清静态副本。 | `prj/provision_g6_jtag.tcl` 明确是开发态，通过 JTAG 写入 1632 字节私钥与 32 字节主机生成的 seed。成功后的正常断连、STOP、REKEY 和 fail-closed 路径保留静态长期私钥/seed；源码没有生产 provisioning 或受保护持久化实现。 |
+| ML-KEM 长期私钥与随机种子 | `src/ps/src/g6_usb.c` 从 `g6_sk_load`/`g6_seed_load` 复制到静态 `private_key`/`random_seed`，随后清 mailbox；输入校验失败时清静态副本。当前开发态进入不可恢复 `FAULT` 时也会清静态私钥/seed、provisioning mailbox 和随机计数器。 | `prj/provision_g6_jtag.tcl` 明确是开发态，通过 JTAG 写入 1632 字节私钥与 32 字节主机生成的 seed。正常断连、STOP、REKEY 为支持同镜像后续会话仍保留静态长期私钥/seed；源码没有生产 provisioning 或受保护持久化实现。 |
 | 板端随机服务 | `board_random()` 计算 `HMAC-SHA-256(random_seed, host_random || counter)`，并清理其 40 字节输入缓冲。 | 该实现以注入的 seed 为根，没有从源码证据中发现被调用的板端噪声源、熵估算、启动/连续健康测试或 DRBG。不能据此确认此板不存在硬件噪声源，也不能把主机 seed 说成板端可信熵。重启后的 seed 唯一性和反回滚也未建立。 |
 | ML-KEM 和会话临时值 | 解封装共享秘密、Finished、nonce、HMAC/HKDF状态以及 session key 有显式清理。2026-10-10 的独立安全候选新增 CPU-local control 缓冲统一擦除，并在不再使用后擦除 HELLO/ACK/body_ack。ML-KEM 源码有中间对象 zeroize hook，见[实施报告](security_cleanup_20261010.md)。 | 这批实现只覆盖明确对象与路径。`tx` 的 USB 异步所有权、编译器 spill/寄存器、优化后的全调用图和硬复位过程未获全域清零证明；HELLO/ACK 是公开协议数据，不代表真实秘密域已全覆盖。 |
 | PL AES-GCM | `src/ps/src/g3_camera.c` 暴露 `g3_usb_zeroize()` 写 GCM 控制寄存器；每帧加密前、帧发送后以及 G6 STOP/REKEY、断连和 fail-closed 路径会调用。 | 控制寄存器命令与已有离线/局部证据不能证明全部寄存器/内部流水、异常中途复位和总线副本已清。当前没有 PL 全密钥状态读回验收，也没有侧信道/故障注入评估。 |

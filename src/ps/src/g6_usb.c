@@ -313,6 +313,15 @@ static int initialize_production_startup(void) {
 static void mark_fault(void) {
     eye_session_error(&session);
     clear_handshake_cache();
+#ifndef G6_PRODUCTION
+    /* A terminal development fault cannot resume with the loaded test key. */
+    wipe(private_key, sizeof private_key);
+    wipe(random_seed, sizeof random_seed);
+    wipe((void *)g6_sk_load, sizeof g6_sk_load);
+    wipe((void *)g6_seed_load, sizeof g6_seed_load);
+    random_counter = 0U;
+    g6_ready = 0U;
+#endif
 #ifdef G6_PRODUCTION
     eye_hmac_drbg_uninstantiate(&production_drbg);
     g6_production_security_shutdown();

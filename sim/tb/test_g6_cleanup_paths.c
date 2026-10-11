@@ -64,6 +64,9 @@ static void setup_case(enum phase initial_phase, enum eye_session_state state)
     memset(ack, 0x72, sizeof ack);
     memset(private_key, 0x53, sizeof private_key);
     memset(random_seed, 0x64, sizeof random_seed);
+    memset((void *)g6_sk_load, 0x65, sizeof g6_sk_load);
+    memset((void *)g6_seed_load, 0x76, sizeof g6_seed_load);
+    g6_ready = PROVISION_MAGIC;
     memset(session.pinned_pk_hash, 0x11, sizeof session.pinned_pk_hash);
     memset(session.last_transcript, 0x22, sizeof session.last_transcript);
     memset(session.transcript_hash, 0x33, sizeof session.transcript_hash);
@@ -105,6 +108,15 @@ static int long_term_material_preserved(void)
 {
     return bytes_are(private_key, sizeof private_key, 0x53) &&
            bytes_are(random_seed, sizeof random_seed, 0x64);
+}
+
+static int long_term_material_zeroized(void)
+{
+    return words_are_zero(private_key, sizeof private_key) &&
+           words_are_zero(random_seed, sizeof random_seed) &&
+           words_are_zero((const uint8_t *)g6_sk_load, sizeof g6_sk_load) &&
+           words_are_zero((const uint8_t *)g6_seed_load, sizeof g6_seed_load) &&
+           random_counter == 0U && g6_ready == 0U;
 }
 
 static int session_closed(enum eye_session_state expected_state)
@@ -336,7 +348,7 @@ static int test_fail_closed(void)
         if (phase != FAULT || g6_fatal_errors != 21U || g6_status != 11U ||
             !callbacks_stopped_at(fail) || !cleanup_failed_diag(fail) ||
             cleanup_diag_flush_calls != 1U ||
-            !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
+            !session_closed(EYE_STATE_ERROR) || !long_term_material_zeroized())
             return (int)(10U + fail);
     }
 #else
@@ -344,7 +356,7 @@ static int test_fail_closed(void)
     if (phase != FAULT || g6_fatal_errors != 21U || g6_status != 11U ||
         gcm_clear_calls != 1U || cleanup_order_count != 0U ||
         cleanup_diag_flush_calls != 0U ||
-        !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
+        !session_closed(EYE_STATE_ERROR) || !long_term_material_zeroized())
         return 1;
 #endif
     return 0;
@@ -381,7 +393,7 @@ static int test_disconnect(void)
             g6_transport_failure_diag.transport_error_count != 1U ||
             !callbacks_stopped_at(fail) || !cleanup_failed_diag(fail) ||
             cleanup_diag_flush_calls != 1U ||
-            !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
+            !session_closed(EYE_STATE_ERROR) || !long_term_material_zeroized())
             return (int)(10U + fail);
     }
     setup_case(STREAM, EYE_STATE_STREAMING);
@@ -417,7 +429,7 @@ static int exercise_stop_or_rekey(uint8_t command_type, unsigned fail_stage)
         if (phase != FAULT || g6_fatal_errors != 21U || g6_status != 11U ||
             !callbacks_stopped_at(fail_stage) || !cleanup_failed_diag(fail_stage) ||
             cleanup_diag_flush_calls != 1U ||
-            !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
+            !session_closed(EYE_STATE_ERROR) || !long_term_material_zeroized())
             return 3;
     } else if (phase != WAIT_HELLO || !callbacks_stopped_at(3U) ||
                g6_secure_cleanup_diag.stage != G6_CLEANUP_COMPLETE ||
@@ -466,7 +478,7 @@ static int exercise_auth_failure(unsigned fail_stage)
     }
     if (phase != FAULT || g6_control_errors != 31U || g6_fatal_errors != 21U ||
         g6_status != 11U || !session_closed(EYE_STATE_ERROR) ||
-        !long_term_material_preserved()) return 3;
+        !long_term_material_zeroized()) return 3;
 #ifdef G6_SECURE_CLEANUP
     if (!callbacks_stopped_at(fail_stage ? fail_stage : 3U) ||
         (fail_stage && !cleanup_failed_diag(fail_stage)) ||

@@ -189,13 +189,13 @@ EVIDENCE_STATUS = [
         "id": "production_security",
         "status": "not_passed",
         "evidence": "report/production_security_profile_20261011.md",
-        "scope": "目标已限定为课程/竞赛演示，不抗物理攻击；开发态仅用实验测试密钥，不能当作产品安全。生产 profile 已接入 HMAC_DRBG-SHA-256、NIST 向量/ARM 链接和 fail-closed 接口，CPU-owned 清零读回工具已就绪。真实 provider、可信板端熵源、密钥存储与板端全域清零读回仍未闭环；板上 secure element/TRNG 尚未核实。",
+        "scope": "目标已限定为课程/竞赛演示，不抗物理攻击；开发态仅用实验测试密钥，不能当作产品安全。生产 profile 已接入 HMAC_DRBG-SHA-256、NIST 向量/ARM 链接和 fail-closed 接口，CPU-owned 清零读回工具已就绪；G6 开发态进入终态 FAULT 时会覆写已装载测试私钥、seed 和 provisioning mailbox，并已由 -O0/-O3 harness 验证。真实 provider、可信板端熵源、密钥存储与板端全域清零读回仍未闭环；板上 secure element/TRNG 尚未核实。",
     },
     {
         "id": "full_sim_regression_20261011",
         "status": "passed_163_of_163_offline",
         "evidence": "report/production_security_profile_20261011.md",
-        "scope": "完整 sim/tb pytest 回归 163/163 通过，312.72 秒，87 个子测试；这是电脑端软件/仿真证据，不是板端生产安全或 G0/G7 验收。",
+        "scope": "完整 sim/tb pytest 回归 163/163 通过，313.64 秒，89 个子测试；这是电脑端软件/仿真证据，不是板端生产安全或 G0/G7 验收。",
     },
     {
         "id": "security_cleanup_candidate007",
