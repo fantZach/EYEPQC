@@ -18,10 +18,73 @@ import m10_board
 import g6_board
 import prepare_demo
 from handshake import wipe_secret
+from owned_ddr import require_disjoint_ranges
 from transient_file import read_mutable_file, staged_file
 
 
 class TransientJtagFileTests(unittest.TestCase):
+    def test_owned_ddr_ranges_allow_adjacency_and_reject_overlap(self):
+        require_disjoint_ranges((('job', 0x100000, 128),
+                                 ('key', 0x100080, m09.SK)))
+        with self.assertRaisesRegex(ValueError, "overlapping test buffers"):
+            require_disjoint_ranges((('job', 0x100000, 128),
+                                     ('key', 0x100040, m09.SK)),
+                                    "test buffers")
+        with self.assertRaisesRegex(ValueError, "invalid test buffers range"):
+            require_disjoint_ranges((('empty', 0x100000, 0),), "test buffers")
+
+    def test_m09_board_rejects_overlapping_manifest_ranges_before_xsdb(self):
+        with tempfile.TemporaryDirectory(prefix="eyepqc-m09-overlap-") as temp:
+            root = Path(temp)
+            workspace = root / "workspace"
+            out = root / "m09"
+            workspace.mkdir()
+            out.mkdir()
+            elf, xsa = root / "m09.elf", root / "m09.xsa"
+            elf.write_bytes(b"elf")
+            xsa.write_bytes(b"xsa")
+            manifest = {
+                "sources": {}, "elf": str(elf),
+                "elf_sha256": hashlib.sha256(elf.read_bytes()).hexdigest(),
+                "xsa": str(xsa), "xsa_sha256": hashlib.sha256(xsa.read_bytes()).hexdigest(),
+                "owned": {
+                    "m09_job": {"address": 0x100000, "size": 128},
+                    "m09_sk": {"address": 0x100000, "size": m09.SK},
+                    "m09_ct": {"address": 0x102000, "size": m09.CT},
+                },
+            }
+            (workspace / "build_manifest.json").write_text(json.dumps(manifest))
+            with patch.object(m09, "ROOT", root), patch.object(m09, "OUT", out), \
+                    patch.object(m09.subprocess, "run",
+                                 side_effect=AssertionError("must reject before XSDB")):
+                with self.assertRaisesRegex(ValueError, "overlapping ELF-owned M09 buffers"):
+                    m09.board(workspace, root)
+
+    def test_m10_manifest_check_rejects_overlapping_ranges(self):
+        with tempfile.TemporaryDirectory(prefix="eyepqc-m10-overlap-") as temp:
+            root = Path(temp)
+            workspace = root / "workspace"
+            bit = workspace / "m10/_ide/bitstream/m01.bit"
+            bit.parent.mkdir(parents=True)
+            bit.write_bytes(b"bit")
+            elf, xsa = root / "m10.elf", root / "m10.xsa"
+            elf.write_bytes(b"elf")
+            xsa.write_bytes(b"xsa")
+            manifest = {
+                "sources": {}, "elf": str(elf),
+                "elf_sha256": hashlib.sha256(elf.read_bytes()).hexdigest(),
+                "xsa": str(xsa), "xsa_sha256": hashlib.sha256(xsa.read_bytes()).hexdigest(),
+                "bit_sha256": hashlib.sha256(bit.read_bytes()).hexdigest(),
+                "owned": {
+                    "m10_job": {"address": 0x100000, "size": 256},
+                    "m10_sk": {"address": 0x100000, "size": m10_board.SK},
+                    "m10_wire": {"address": 0x102000, "size": 972},
+                },
+            }
+            (workspace / "build_manifest.json").write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, "overlapping ELF-owned M10 buffers"):
+                m10_board.manifest_check(workspace)
+
     def test_g6_jtag_rejects_overlapping_elf_owned_buffers(self):
         pk = bytes((index % 251 for index in range(m09.PK)))
         sk = bytearray((index % 239 for index in range(m09.SK)))

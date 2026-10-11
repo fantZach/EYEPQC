@@ -5,10 +5,14 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import vitis
 from build_pb2 import BuildResponse
 
 repo = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(repo / "src/host"))
+from owned_ddr import require_disjoint_ranges
+
 xsa = Path(os.environ.get("EYEPQC_M09_XSA", repo / "build/vivado/m01_hynix_v2/m01.xsa")).resolve()
 workspace = Path(os.environ.get("EYEPQC_M09_VITIS", repo / "build/vitis/m09_board_1")).resolve()
 toolroot = Path(os.environ.get("EYEPQC_TOOL_ROOT", "D:/AmdDesignTools/2026.1"))
@@ -57,6 +61,8 @@ try:
         if address % 64 or address < 0x100000 or address + size > 0x40000000:
             raise RuntimeError("Unexpected owned DDR address: " + name)
         owned[name] = dict(address=address, size=size)
+    require_disjoint_ranges(((name, item["address"], item["size"])
+                             for name, item in owned.items()), "ELF-owned M09 buffers")
     manifest = dict(xsa=str(xsa), xsa_sha256=hashlib.sha256(xsa.read_bytes()).hexdigest(),
                     sources=hashes, owned=owned, elf=str(elf), elf_sha256=hashlib.sha256(elf.read_bytes()).hexdigest(),
                     board_validated=False)

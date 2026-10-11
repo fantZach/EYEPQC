@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import struct
 
+from owned_ddr import require_disjoint_ranges
 from transient_file import read_mutable_file, staged_file
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -201,6 +202,9 @@ def board(workspace, tool_root):
         address = item["address"]
         if item["size"] != size or address % 64 or not 0x100000 <= address <= 0x40000000 - size:
             raise ValueError("Invalid ELF-owned DDR symbol: " + name)
+    require_disjoint_ranges(((name, owned[name]["address"], owned[name]["size"])
+                             for name in ("m09_job", "m09_sk", "m09_ct")),
+                            "ELF-owned M09 buffers")
     pk = (OUT / "public.bin").read_bytes()
     sk = read_mutable_file(OUT / "private.bin", SK)
     expected = None

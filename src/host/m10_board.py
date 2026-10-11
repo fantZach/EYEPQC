@@ -10,6 +10,7 @@ import subprocess
 
 from handshake import HostSession, wipe_secret
 from m09 import Kem, LIB, OUT as M09_OUT, PK, SK
+from owned_ddr import require_disjoint_ranges
 from protocol import MessageType
 from transient_file import read_mutable_file, staged_file
 
@@ -36,6 +37,9 @@ def manifest_check(workspace):
         address = item["address"]
         if item["size"] != size or address % 64 or not 0x100000 <= address <= 0x40000000 - size:
             raise ValueError("Invalid ELF-owned DDR symbol: " + name)
+    require_disjoint_ranges(((name, owned[name]["address"], owned[name]["size"])
+                             for name in ("m10_job", "m10_sk", "m10_wire")),
+                            "ELF-owned M10 buffers")
     return owned
 
 

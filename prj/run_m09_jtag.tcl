@@ -16,6 +16,16 @@ if {[catch {
         ($command eq "decap" && [file size $data] != 768)} {
         error "Invalid M09 owned DDR request/arguments"
     }
+    set ranges [list [list $mailbox 128] [list $sk 1632] [list $ct 768]]
+    for {set i 0} {$i < [llength $ranges]} {incr i} {
+        lassign [lindex $ranges $i] start_i size_i
+        for {set j [expr {$i + 1}]} {$j < [llength $ranges]} {incr j} {
+            lassign [lindex $ranges $j] start_j size_j
+            if {$start_i < $start_j + $size_j && $start_j < $start_i + $size_i} {
+                error "Overlapping M09 owned DDR buffers"
+            }
+        }
+    }
     connect -url tcp:127.0.0.1:3121
     if {$boot} {
         targets -set -filter {name == "APU"}

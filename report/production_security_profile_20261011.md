@@ -56,13 +56,15 @@ Opaque-key provider 接口和生产源列表收紧后的候选为 `build/vitis/g
 
 另以同一 XSA 和当前构建脚本编译开发 profile：`build/vitis/g6_dev_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `f80f9fd014d0ee6d329b8149c7a12cb62e881801eb10858e722d807f236dff1c`。开发 ELF 保留 mailbox 和旧开发随机状态，未编译/链接 DRBG 源；生产 ELF 则相反。两个 manifest 分别标记 `development_jtag_mailbox` 与 `external_provider_unvalidated`。两个构建的 `g6_usb.c`/DRBG 源码哈希均匹配；该对照验证 DRBG 仅进入显式生产配置。
 
-本节最新全量电脑端回归 `.venv/Scripts/python.exe -m pytest -q sim/tb` 为 **160 passed、87 subtests passed**，耗时 **311.27 秒，无警告**；Icarus Verilog 通过哈希核验的用户范围安装包解到临时目录运行，Vivado 通过 `VIVADO_ROOT` 指定，工具路径未写入仓库或持久化 PATH。覆盖 host 临时秘密与 JTAG 传输文件清理、M09/M10 私钥和回复直接读入有界可覆写缓冲、DRBG 输入失败状态覆写、opaque-key provider 身份/失败门禁、输出区调用前清零、生产启动单次初始化、启动失败清理，SHA/HMAC/HKDF 非法参数输出清零、session 无效重初始化及 malformed Finished/command、序号错误、空输出指针和拒绝路径输出清零；USB TX 仅在清理回调确认释放后覆写，前序清理失败时不越权写入。M09/M10 fake-XSDB 验证请求/数据/回复临时文件退出后已覆写并移除，首次私钥装载失败也会尝试 AP0 clear；打包策略测试覆盖误跟踪的 `board/output` 文件与包含此目录条目的 ZIP 拒绝；M09 keyset 失败注入覆盖私钥提交前拒绝使用及清理后重试。生产 profile C harness 在 `-O0` 与 `-O3` 均通过；新增可覆写文件读取与大小上限回归；manifest 驱动的只读清零读回工具测试拒绝错 ELF、地址重叠、非零范围、重复总结和不完整/夸大的证据。故障后断连保持终态及全部既有 RTL/协议用例也通过。production/development ARM profile 均完成重建，生产 ELF 必需/禁止安全符号 link gate 通过。电脑端回归不代表熵源、密钥服务、host 全进程清零或板端安全验收；实际 AP0 读回仍待板测。
+本节最新全量电脑端回归 `.venv/Scripts/python.exe -m pytest -q sim/tb` 为 **163 passed、87 subtests passed**，耗时 **312.72 秒，无警告**；Icarus Verilog 通过哈希核验的用户范围安装包解到临时目录运行，Vivado 通过 `VIVADO_ROOT` 指定，工具路径未写入仓库或持久化 PATH。覆盖 host 临时秘密与 JTAG 传输文件清理、M09/M10 私钥和回复直接读入有界可覆写缓冲、DRBG 输入失败状态覆写、opaque-key provider 身份/失败门禁、输出区调用前清零、生产启动单次初始化、启动失败清理，SHA/HMAC/HKDF 非法参数输出清零、session 无效重初始化及 malformed Finished/command、序号错误、空输出指针和拒绝路径输出清零；USB TX 仅在清理回调确认释放后覆写，前序清理失败时不越权写入。M09/M10 fake-XSDB 验证请求/数据/回复临时文件退出后已覆写并移除，首次私钥装载失败也会尝试 AP0 clear；打包策略测试覆盖误跟踪的 `board/output` 文件与包含此目录条目的 ZIP 拒绝；M09 keyset 失败注入覆盖私钥提交前拒绝使用及清理后重试。生产 profile C harness 在 `-O0` 与 `-O3` 均通过；新增可覆写文件读取与大小上限回归；manifest 驱动的只读清零读回工具测试拒绝错 ELF、地址重叠、非零范围、重复总结和不完整/夸大的证据。故障后断连保持终态及全部既有 RTL/协议用例也通过。production/development ARM profile 均完成重建，生产 ELF 必需/禁止安全符号 link gate 通过。电脑端回归不代表熵源、密钥服务、host 全进程清零或板端安全验收；实际 AP0 读回仍待板测。
 
 本轮继续收紧开发主机密钥生命周期：G6 USB 验收运行器现在将 `private.bin` 直接读入有界 `bytearray`；纯软件 `prepare_demo.py` 统一使用 M09 的私钥最后提交写入和 keyset 校验，修复半成品 keyset 无法恢复的问题，并覆写生成种子、临时私钥、封装 coins、共享秘密和解封装结果。回归注入“上一轮留下公钥/pin、私钥未提交”状态，确认可以安全重试且各可控缓冲归零。以上是课程/竞赛演示的主机端改进，不声称 Python/密码库内部副本可清除，也不补足板端熵源/provider 或安全存储。
 
 G6 开发态 JTAG provisioning 的临时随机种子文件现在使用统一的暂存文件清理器，退出前覆写、flush/fsync 并删除；内存种子也在成功和失败路径覆写。Fake XSDB 通过删除钩子核验磁盘内容在 unlink 前为零。没有调用真实 XSDB 或访问板卡。
 
 G6 JTAG loader 与 `provision_g6_jtag.tcl` 现在都会拒绝 private-key、seed、ready、status ELF-owned DDR 区域之间的重叠，避免错误符号布局造成跨缓冲写入。Python fake-XSDB 用例验证拒绝发生在启动/连接命令之前；Vivado `xtclsh` 使用合成输入做了真实 Tcl 预检，输出了重叠拒绝信息且未进入 provisioning。该结果仍不是 AP0 实板地址读回。
+
+M09/M10 的同类保护现已扩展到 ELF builder、主机 JTAG runner 和 Tcl runner：mailbox、私钥及输出区必须是有效且互不重叠的半开 DDR 区间，拒绝发生在 XSDB/连接前。Python 回归覆盖有效相邻区间、重叠和无效长度；Vivado `xtclsh` 使用合成重叠地址分别预检两份 Tcl，均报告拒绝且没有完成标记。该检查验证的是门禁逻辑，不证明实际 ELF 地址或板端清零。
 
 ## 仍未完成
 

@@ -26,6 +26,7 @@ from m09 import Kem, OUT, PK, SK
 from protocol import (MessageType, USB_CONTROL, USB_VIDEO, UsbRecordDecoder,
                       decode_control, decode_video, encode_control, encode_usb_record,
                       make_nonce)
+from owned_ddr import require_disjoint_ranges
 from transient_file import read_mutable_file, staged_file
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -82,11 +83,8 @@ def jtag(workspace, pk, sk, tool_root):
         address, actual = symbols[name]
         if actual != size or address % 64 or not 0x100000 <= address <= 0x40000000 - size:
             raise ValueError("invalid ELF-owned G6 buffer: " + name)
-    owned_ranges = sorted((symbols[name][0], symbols[name][0] + size, name)
-                          for name, size in owned_sizes)
-    for previous, current in zip(owned_ranges, owned_ranges[1:]):
-        if current[0] < previous[1]:
-            raise ValueError("overlapping ELF-owned G6 buffers: " + previous[2] + "/" + current[2])
+    require_disjoint_ranges(((name, symbols[name][0], size) for name, size in owned_sizes),
+                            "ELF-owned G6 buffers")
     if len(pk) != PK or len(sk) != SK or sk[768:1568] != pk:
         raise ValueError("private/public key mismatch")
     xsdb = tool_root / "Vivado/bin/xsdb.bat"
