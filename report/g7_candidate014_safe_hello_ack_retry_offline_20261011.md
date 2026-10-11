@@ -25,3 +25,7 @@ candidate012 的 receiver-exit 批次出现两次 HELLO_ACK 超时。candidate01
 ## 后续门禁
 
 candidate012 的 13 个通过轮不能折算到 candidate014。candidate014 仍需新板上短基线、ETW/AP0 单轮；单轮通过后从零完成 20/20 receiver-exit，再单独完成 20/20 物理 USB 拔插。当前没有访问或写入板卡、SD、Flash 或 eFuse。
+
+## 项目级离线回归补测（2026-10-11）
+
+`sim/tb` 全套发现共运行 123 项，首次运行有 2 项因 Vivado/XSim 与 Icarus 路径未配置而无法启动。设置本机 Vivado `E:\fpg\2026.1\Vivado` 并补齐 Icarus PATH 后，重新运行 M04 和 M05 文件，相关 4 项（M04 1 项、M05 3 项）全部通过；没有未解决的代码断言失败。该补测只覆盖软件/RTL 仿真，不是板卡验收。
