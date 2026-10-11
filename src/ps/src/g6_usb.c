@@ -292,14 +292,18 @@ static int production_decapsulate(uint8_t shared[32], const uint8_t ciphertext[7
     return status;
 }
 
-/* No application control/TX transfer has been submitted before both startup
- * calls return successfully, so tx is still CPU-owned on this error path. */
-static void production_startup_teardown(void) {
+/* No application control/TX transfer has been submitted before transport
+ * startup succeeds, so tx is still CPU-owned on these startup error paths. */
+static void production_startup_wipe_state(void) {
     eye_session_reset(&session);
     clear_handshake_cache();
     wipe(tx, sizeof tx);
     phase = FAULT;
     eye_hmac_drbg_uninstantiate(&production_drbg);
+}
+
+static void production_startup_teardown(void) {
+    production_startup_wipe_state();
     g6_production_security_shutdown();
 }
 
@@ -308,6 +312,16 @@ static int initialize_production_transports(void) {
     if (!status) status = usb_cdc_init();
     if (status) production_startup_teardown();
     return status;
+}
+
+static int initialize_production_startup(void) {
+    int status = initialize_production_security();
+    if (status) {
+        /* The security initializer already shut down a partial provider init. */
+        production_startup_wipe_state();
+        return status;
+    }
+    return initialize_production_transports();
 }
 #endif
 static void mark_fault(void) {
@@ -530,23 +544,15 @@ static int send_frame(const uint8_t *jpeg, unsigned size) {
 
 int main(void) {
 #ifdef G6_PRODUCTION
-    int status = initialize_production_security();
+    int status = initialize_production_startup();
     if (status) {
-        eye_hmac_drbg_uninstantiate(&production_drbg);
         g6_status = 0xffffffffU;
-        xil_printf("G6_SECURITY_PROVIDER_FAIL %d\r\n", status);
+        xil_printf("G6_PRODUCTION_STARTUP_FAIL %d\r\n", status);
         for (;;) {}
     }
-    status = initialize_production_transports();
 #else
     int status = g3_usb_init(CAMERA_CFG);
-#endif
     if (!status) status = usb_cdc_init();
-#ifdef G6_PRODUCTION
-    if (status) {
-        eye_hmac_drbg_uninstantiate(&production_drbg);
-        g6_production_security_shutdown();
-    }
 #endif
     if (status) { xil_printf("G6_INIT_FAIL %d\r\n", status); for (;;) {} }
 #ifndef G6_PRODUCTION

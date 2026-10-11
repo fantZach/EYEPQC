@@ -316,44 +316,64 @@ static int test_pinned_key_and_provider_random(void)
 static int test_startup_failure_wipes_cpu_owned_secrets(void)
 {
     reset_provider();
-    if (initialize_production_security()) return 1;
-    memset(session.video_key, 0xa1, sizeof session.video_key);
-    memset(session.control_key, 0xb2, sizeof session.control_key);
-    memset(session.transcript_hash, 0xc3, sizeof session.transcript_hash);
+    memset(&session, 0xa1, sizeof session);
+    memset(hello, 0xd4, sizeof hello);
+    memset(ack, 0xe5, sizeof ack);
+    memset(tx, 0xf6, sizeof tx);
+    phase = STREAM;
+    provider_init_status = 40;
+    if (initialize_production_startup() != 40 || provider_init_calls != 1U ||
+        camera_init_calls != 0U || cdc_init_calls != 0U ||
+        provider_shutdown_calls != 1U || production_drbg.instantiated ||
+        phase != FAULT || cleanup_usb_calls != 0U)
+        return 1;
+    for (unsigned i = 0; i < sizeof session; ++i)
+        if (((const uint8_t *)&session)[i]) return 2;
+    for (unsigned i = 0; i < sizeof hello; ++i)
+        if (hello[i] || ack[i]) return 3;
+    for (unsigned i = 0; i < sizeof tx; ++i)
+        if (tx[i]) return 4;
+
+    reset_provider();
     memset(hello, 0xd4, sizeof hello);
     memset(ack, 0xe5, sizeof ack);
     memset(tx, 0xf6, sizeof tx);
     phase = STREAM;
     camera_init_status = 41;
-    if (initialize_production_transports() != 41 || camera_init_calls != 1U ||
+    if (initialize_production_startup() != 41 || provider_init_calls != 1U ||
+        camera_init_calls != 1U ||
         cdc_init_calls != 0U || provider_shutdown_calls != 1U ||
         production_drbg.instantiated || phase != FAULT || cleanup_usb_calls != 0U)
-        return 2;
+        return 5;
     for (unsigned i = 0; i < sizeof session; ++i)
-        if (((const uint8_t *)&session)[i]) return 3;
+        if (((const uint8_t *)&session)[i]) return 6;
     for (unsigned i = 0; i < sizeof hello; ++i)
-        if (hello[i] || ack[i]) return 4;
+        if (hello[i] || ack[i]) return 7;
     for (unsigned i = 0; i < sizeof tx; ++i)
-        if (tx[i]) return 5;
+        if (tx[i]) return 8;
 
     reset_provider();
-    if (initialize_production_security()) return 6;
-    memset(session.video_key, 0xa1, sizeof session.video_key);
-    memset(session.control_key, 0xb2, sizeof session.control_key);
     memset(hello, 0xd4, sizeof hello);
     memset(ack, 0xe5, sizeof ack);
     memset(tx, 0xf6, sizeof tx);
     cdc_init_status = 42;
-    if (initialize_production_transports() != 42 || camera_init_calls != 1U ||
+    if (initialize_production_startup() != 42 || provider_init_calls != 1U ||
+        camera_init_calls != 1U ||
         cdc_init_calls != 1U || provider_shutdown_calls != 1U ||
-        production_drbg.instantiated || cleanup_usb_calls != 0U)
-        return 7;
+        production_drbg.instantiated || phase != FAULT || cleanup_usb_calls != 0U)
+        return 9;
     for (unsigned i = 0; i < sizeof session; ++i)
-        if (((const uint8_t *)&session)[i]) return 8;
+        if (((const uint8_t *)&session)[i]) return 10;
     for (unsigned i = 0; i < sizeof hello; ++i)
-        if (hello[i] || ack[i]) return 9;
+        if (hello[i] || ack[i]) return 11;
     for (unsigned i = 0; i < sizeof tx; ++i)
-        if (tx[i]) return 10;
+        if (tx[i]) return 12;
+
+    reset_provider();
+    if (initialize_production_startup() != 0 || provider_init_calls != 1U ||
+        camera_init_calls != 1U || cdc_init_calls != 1U ||
+        provider_shutdown_calls != 0U || phase == FAULT)
+        return 13;
     return 0;
 }
 
@@ -369,6 +389,6 @@ int main(void)
         fprintf(stderr, "g6_production_profile_failed=%d\n", status);
         return 1;
     }
-    puts("G6_PRODUCTION_PROFILE_PASS entropy_fail_closed=1 reseed_failure_no_ack=1 cleanup_order=1 cleanup_failure_fail_closed=1 disconnect_cleanup_without_recovery=1 key_identity_pinned=1 startup_failure_wipe=1");
+    puts("G6_PRODUCTION_PROFILE_PASS entropy_fail_closed=1 reseed_failure_no_ack=1 cleanup_order=1 cleanup_failure_fail_closed=1 disconnect_cleanup_without_recovery=1 key_identity_pinned=1 startup_single_pass=1 startup_failure_wipe=1");
     return 0;
 }
