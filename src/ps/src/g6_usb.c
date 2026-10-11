@@ -271,6 +271,7 @@ static int initialize_production_security(void) {
 }
 
 static int production_decapsulate(uint8_t shared[32], const uint8_t ciphertext[768]) {
+    wipe(shared, 32U);
     int status = g6_production_mlkem512_decapsulate(
         shared, ciphertext, session.pinned_pk_hash);
     if (status) wipe(shared, 32U);

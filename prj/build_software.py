@@ -244,11 +244,23 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
     abi = symbols(gcc.with_name('arm-none-eabi-nm.exe'), elf)
     if production_provider is not None:
         forbidden = {'eye_mlkem_dec', 'eye_mlkem_check_sk',
-                     'g6_production_read_mlkem512_private_key'}
+                     'g6_production_read_mlkem512_private_key', 'g6_sk_load',
+                     'g6_seed_load', 'g6_ready', 'random_seed', 'random_counter'}
         present = sorted(forbidden.intersection(abi))
         if present:
-            raise RuntimeError('Production ELF contains forbidden private-key operations: ' +
+            raise RuntimeError('Production ELF contains forbidden development/private-key symbols: ' +
                                ', '.join(present))
+        required = {'eye_hmac_drbg_instantiate', 'eye_hmac_drbg_generate',
+                    'eye_hmac_drbg_reseed', 'g6_production_security_init',
+                    'g6_production_read_mlkem512_public_key',
+                    'g6_production_mlkem512_decapsulate', 'g6_production_entropy_bytes',
+                    'g6_production_security_shutdown', 'g6_secure_cleanup_diag',
+                    'secure_cleanup', 'secure_tx_quiesce', 'secure_tx_wipe',
+                    'secure_tx_rebuild', 'usb_cdc_secure_cleanup_tx'}
+        missing = sorted(required.difference(abi))
+        if missing:
+            raise RuntimeError('Production ELF omits required security symbols: ' +
+                               ', '.join(missing))
     expected = {'g3_job': 128, 'g3_frame': 65600, 'g3_sealed': 68096}
     if name == 'g6_usb':
         if production_provider is None:

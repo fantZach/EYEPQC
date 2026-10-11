@@ -40,6 +40,8 @@ NIST [HMAC_DRBG-SHA-256 示例向量](https://csrc.nist.gov/CSRC/media/Projects/
 
 Opaque-key provider 接口和生产源列表收紧后的候选为 `build/vitis/g6s11/g6_usb/build/g6_usb.elf`，SHA-256 `5bc7b5c6b558adc8b51ec4aeb25c630d6a23a4fe42b9552e5abf4e87d0b3fd5d`；manifest 中 `src/ps/src/g6_usb.c` SHA-256 `f49a100dd14d1bf6b2db86c632a43b5d92b250d6b246139130e6f89afc8fe8dc` 与源码相符，XSA SHA-256 `46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024`。生产 builder 不再编译 `m09_mlkem.c`，并把 `eye_mlkem_dec`、`eye_mlkem_check_sk`、私钥导出 API 设为硬失败门禁；ARM `nm` 确认这些符号及开发 mailbox/seed 均不在 ELF，DRBG/provider/secure-cleanup 符号仍在。相同 builder 的开发对照 `build/vitis/g6dev11/g6_usb/build/g6_usb.elf`（SHA-256 `ae7b83adacd4b85b59e2e251a4b26d5629040ff99f2272ca8b26d4001f3fe971`）仍含开发 decapsulation 和 JTAG mailbox。生产候选 manifest 仍是 `external_provider_unvalidated`、`board_validated=false`，临时 provider 故意 fail closed。
 
+增加必需 DRBG/provider/secure-cleanup 符号检查，并在调用 provider 前先清零共享秘密输出区后的候选为 `build/vitis/g6s12/g6_usb/build/g6_usb.elf`，SHA-256 `f5ade2b395e51de3bc35b00022c9b2ce267479cfe530f80b502b4cb0e5db41ed`；`g6_usb.c` SHA-256 `99765b137a3726252ca7e33f54ab98a41b7d76c720b3726d3e6fa63675876556` 与 manifest 一致。builder 要求 instantiate/generate/reseed、全部 provider API、受限清理诊断与 cleanup callbacks 均链接，并拒绝应用侧 ML-KEM、私钥导出和开发 provision/seed 符号；该 ARM 构建通过全部要求。manifest 仍标记 `external_provider_unvalidated`、`board_validated=false`，临时 provider 故意 fail closed。
+
 ## 主机握手临时秘密生命周期（电脑端）
 
 `src/host/m09.py` 现在把 ML-KEM keygen/encaps/decaps 的私钥或共享秘密返回到可覆写的 `bytearray`；原生 C 输出缓冲仍在返回前清零。`src/host/handshake.py` 将 HKDF 中间值和 56 字节派生材料放在可覆写缓冲中，退出 `derive()` 时清 PRK、T1、T2 与上下文；`HostSession.begin()` 在成功、重复 transcript 拒绝或异常退出时清本次拥有的 encapsulation coins、shared secret 与完整派生材料。生产 G6/M10 主机入口在调用后也清传入的 coins 缓冲；离线 board 测试路径清 decaps shared/material 和私钥缓冲。握手会话关闭时，先前持有引用的 video/control key 缓冲会被覆写后再从 session 释放。
@@ -48,7 +50,7 @@ Opaque-key provider 接口和生产源列表收紧后的候选为 `build/vitis/g
 
 另以同一 XSA 和当前构建脚本编译开发 profile：`build/vitis/g6_dev_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `f80f9fd014d0ee6d329b8149c7a12cb62e881801eb10858e722d807f236dff1c`。开发 ELF 保留 mailbox 和旧开发随机状态，未编译/链接 DRBG 源；生产 ELF 则相反。两个 manifest 分别标记 `development_jtag_mailbox` 与 `external_provider_unvalidated`。两个构建的 `g6_usb.c`/DRBG 源码哈希均匹配；该对照验证 DRBG 仅进入显式生产配置。
 
-本节最新全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **128 tests / OK**，耗时 **268.380 秒**。覆盖 host 临时秘密清理、DRBG 输入失败状态覆写、opaque-key provider 身份/失败门禁、生产启动单次初始化、失败清理、故障后断连保持终态，以及全部既有 RTL/协议用例；production/development ARM profile 均完成重建，production ELF 禁止应用侧 ML-KEM 解封装符号的 link gate 通过。电脑端回归不代表熵源、密钥服务、host 全进程清零或板端安全验收。
+本节最新全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **128 tests / OK**，耗时 **273.937 秒**。覆盖 host 临时秘密清理、DRBG 输入失败状态覆写、opaque-key provider 身份/失败门禁、输出区调用前清零、生产启动单次初始化、失败清理、故障后断连保持终态，以及全部既有 RTL/协议用例；production/development ARM profile 均完成重建，生产 ELF 必需/禁止安全符号 link gate 通过。电脑端回归不代表熵源、密钥服务、host 全进程清零或板端安全验收。
 
 ## 仍未完成
 

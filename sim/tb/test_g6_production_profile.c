@@ -21,6 +21,7 @@ static unsigned provider_shutdown_calls;
 static unsigned provider_public_key_calls;
 static unsigned provider_entropy_calls;
 static unsigned decapsulation_calls;
+static unsigned decapsulation_output_was_zero;
 static unsigned usb_send_calls;
 static uint8_t last_send[1040];
 static unsigned last_send_length;
@@ -59,8 +60,12 @@ int g6_production_mlkem512_decapsulate(uint8_t shared[32],
 {
     uint8_t public_key[800], current_hash[32];
     (void)ciphertext;
+    decapsulation_output_was_zero = 1U;
+    for (unsigned i = 0; i < 32U; ++i)
+        if (shared[i]) decapsulation_output_was_zero = 0U;
     memset(public_key, provider_key_value, sizeof public_key);
     int status = eye_sha256(current_hash, public_key, sizeof public_key);
+    if (!decapsulation_output_was_zero) status = 1;
     for (unsigned i = 0; !status && i < sizeof current_hash; ++i)
         if (current_hash[i] != expected_public_key_hash[i]) status = 1;
     memset(shared, 0xee, 32U); /* model a partial provider output on every path */
@@ -168,6 +173,7 @@ static void reset_provider(void)
     provider_key_value = 0x5aU;
     provider_init_calls = provider_shutdown_calls = provider_public_key_calls = 0U;
     provider_entropy_calls = decapsulation_calls = usb_send_calls = 0U;
+    decapsulation_output_was_zero = 0U;
     cleanup_stop_calls = cleanup_wipe_calls = cleanup_usb_calls = 0U;
     cleanup_order = 0U;
     cleanup_stop_status = cleanup_wipe_status = cleanup_usb_status = 0;
@@ -314,7 +320,7 @@ static int test_pinned_key_and_provider_random(void)
     provider_key_value = 0x33U;
     memset(shared, 0xcc, sizeof shared);
     if (production_decapsulate(shared, kem_message + 12U) == 0 ||
-        decapsulation_calls != 0U)
+        decapsulation_calls != 0U || !decapsulation_output_was_zero)
         return 4;
     for (unsigned i = 0; i < sizeof shared; ++i)
         if (shared[i]) return 5;
@@ -326,14 +332,15 @@ static int test_pinned_key_and_provider_random(void)
     if (handle_control(hello_message, sizeof hello_message) ||
         handle_control(kem_message, sizeof kem_message) ||
         phase != WAIT_FINISHED || provider_public_key_calls != 1U ||
-        decapsulation_calls != 1U || usb_send_calls != 2U ||
+        decapsulation_calls != 1U || !decapsulation_output_was_zero ||
+        usb_send_calls != 2U ||
         provider_entropy_calls != 1U)
         return 7;
 
     memset(shared, 0xcc, sizeof shared);
     provider_decapsulate_status = 9;
     if (production_decapsulate(shared, kem_message + 12U) == 0 ||
-        decapsulation_calls != 2U)
+        decapsulation_calls != 2U || !decapsulation_output_was_zero)
         return 8;
     for (unsigned i = 0; i < sizeof shared; ++i)
         if (shared[i]) return 9;
