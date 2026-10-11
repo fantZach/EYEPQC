@@ -77,6 +77,38 @@ static int test_nist_additional_input_vector(void)
     return 0;
 }
 
+static int test_nist_successful_reseed_vector(void)
+{
+    static const char expected_hex[] =
+        "FABD0AE25C69DC2EFDEFB7F20C5A31B57AC938AB771AA19BF8F5F1468F665C93"
+        "8C9A1A5DF0628A5690F15A1AD8A613F31BBD65EEAD5457D5D26947F29FE91AA7";
+    struct eye_hmac_drbg state;
+    uint8_t entropy[55], reseed_entropy[55], nonce[8];
+    uint8_t expected[64], output[64];
+
+    for (unsigned i = 0; i < sizeof entropy; ++i) {
+        entropy[i] = (uint8_t)i;
+        reseed_entropy[i] = (uint8_t)(0x80U + i);
+    }
+    for (unsigned i = 0; i < sizeof nonce; ++i)
+        nonce[i] = (uint8_t)(0x20U + i);
+
+    if (from_hex(expected, sizeof expected, expected_hex) != 64 ||
+        eye_hmac_drbg_instantiate(&state, 128U, entropy, sizeof entropy,
+                                  nonce, sizeof nonce, NULL, 0U)) return 1;
+    if (eye_hmac_drbg_reseed(&state, reseed_entropy,
+                             sizeof reseed_entropy, NULL, 0U) ||
+        state.reseed_counter != 1U || eye_hmac_drbg_needs_reseed(&state))
+        return 2;
+    if (eye_hmac_drbg_generate(&state, output, sizeof output, NULL, 0U) ||
+        memcmp(output, expected, sizeof output) || state.reseed_counter != 2U)
+        return 3;
+    eye_hmac_drbg_uninstantiate(&state);
+    for (unsigned i = 0; i < sizeof state; ++i)
+        if (((const uint8_t *)&state)[i]) return 4;
+    return 0;
+}
+
 static int test_bounds_and_reseed_gate(void)
 {
     struct eye_hmac_drbg state, snapshot;
@@ -115,11 +147,12 @@ int main(void)
 {
     int status = test_nist_sha256_vector();
     if (!status) status = test_nist_additional_input_vector();
+    if (!status) status = test_nist_successful_reseed_vector();
     if (!status) status = test_bounds_and_reseed_gate();
     if (status) {
         fprintf(stderr, "G6_HMAC_DRBG_FAIL=%d\n", status);
         return 1;
     }
-    puts("G6_HMAC_DRBG_PASS nist_outputs=4 additional_input=2 personalization=1 reseed_gate=1");
+    puts("G6_HMAC_DRBG_PASS nist_outputs=5 additional_input=2 personalization=1 successful_reseed=1 reseed_gate=1");
     return 0;
 }
