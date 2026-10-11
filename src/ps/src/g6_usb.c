@@ -350,6 +350,10 @@ static int retire_disconnected_session(unsigned send_status,
                                        unsigned resume_status,
                                        unsigned ready_at_failure,
                                        uint32_t epoch_at_failure) {
+#ifdef G6_PRODUCTION
+    /* A fatal production fault shuts down the provider and DRBG permanently. */
+    if (phase == FAULT) return 1;
+#endif
 #ifndef G6_AUTO_RECOVERY
     (void)send_status;
     (void)resume_status;

@@ -280,6 +280,18 @@ static int test_disconnect_uses_secure_cleanup_without_auto_recovery(void)
         g6_secure_cleanup_diag.stage != G6_CLEANUP_FAILED ||
         g6_secure_cleanup_diag.failed_stage != G6_CLEANUP_USB_TX_QUIESCE)
         return 4;
+
+    reset_provider();
+    g6_disconnects = 0U;
+    if (initialize_production_security()) return 5;
+    fail_closed();
+    if (phase != FAULT || provider_shutdown_calls != 1U || cleanup_order != 3U)
+        return 6;
+    if (retire_disconnected_session(7U, 8U, 0U, 9U) != 1 ||
+        phase != FAULT || g6_disconnects != 0U || provider_shutdown_calls != 1U ||
+        cleanup_stop_calls != 1U || cleanup_wipe_calls != 1U ||
+        cleanup_usb_calls != 1U || cleanup_order != 3U)
+        return 7;
     return 0;
 }
 
