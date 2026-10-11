@@ -6,7 +6,7 @@
 
 ## 2026-10-11：G6 生产 profile 软件隔离
 
-G6 生产 profile 已隔离开发 JTAG mailbox 与 host-seed 路径；加入 HMAC_DRBG-SHA-256、256-bit strength 输入长度门禁、1024 次重播种和失败关闭。DRBG 只编入显式生产配置，开发态仍保留原 mailbox 路径；两个 XC7Z020 ARM profile 的源码清单、manifest 与 ELF 符号检查符合预期。NIST 无附加输入、additional_input/personalization、成功重播种共五组输出及失败注入定向通过；全量 `sim/tb` **127/127** 通过（含 M04/M05 原生 XSim，268.491 秒）。真实 provider/熵源、持久密钥保护、启动链、PS/PL/DDR 全域清零读回和板端验收仍缺失，**生产安全未通过**。细节与哈希见[实施记录](production_security_profile_20261011.md)。
+G6 生产 profile 已隔离开发 JTAG mailbox 与 host-seed 路径；加入 HMAC_DRBG-SHA-256、256-bit strength 输入长度门禁、1024 次重播种和失败关闭。DRBG 只编入显式生产配置，开发态仍保留原 mailbox 路径；两个 XC7Z020 ARM profile 的源码清单、manifest 与 ELF 符号检查符合预期。NIST 无附加输入、additional_input/personalization、成功重播种共五组输出及失败注入定向通过；全量 `sim/tb` **127/127** 通过（含 M04/M05 原生 XSim，268.491 秒）。源码复核确认 CPU 本地 ML-KEM 私钥副本与解封装中间缓冲有清零路径，但当前生产 ELF 尚未编入 `G6_SECURE_CLEANUP`，PS/PL/DDR/DMA/USB 全域清理、真实 provider/熵源、持久密钥保护、启动链与板端验收仍未闭环，**生产安全未通过**。细节与哈希见[实施记录](production_security_profile_20261011.md)。
 
 ## 2026-10-11：完整电脑端回归 19/19
 

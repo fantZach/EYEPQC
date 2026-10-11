@@ -10,6 +10,10 @@
 - 生产 profile 启动时只在栈上临时读取密钥，用 ML-KEM 检查并固定公钥身份后清除副本。每次 KEM 解封装重新从 provider 读取、验证并比较公钥身份，之后清除栈上的密钥和公钥哈希。密钥服务失败或返回另一设备身份时拒绝解封装。严重协议错误关闭 provider。
 - 新增 `--g6-production-provider <source.c>` 构建入口。若未给出该源文件，构建继续生成明确标为 `development_jtag_mailbox` 的开发 profile；显式给出时，manifest 标为 `external_provider_unvalidated` 并记录 provider 源码 SHA-256。外部实现缺失时，生产链接因 provider 符号未定义而失败。
 
+对 CPU 本地密钥清理做了源码边界复核：`production_decapsulate()` 在返回前清除栈上的 ML-KEM 私钥副本与公钥哈希，调用方清除共享密钥；便携式 ML-KEM 的解封装中间缓冲通过 `MLK_FREE` 调用 `mlk_zeroize()` 清理。这是源码与构建配置层面的证据，仍需目标板对 PS/DDR/DMA/PL/GCM 状态做停机、cache 处理和清零读回。
+
+另发现当前 `prj/build_software.py --g6-production-provider` 只定义 `G6_PRODUCTION`，**生产 ELF 未编入 `G6_SECURE_CLEANUP`**。该宏目前还耦合 G6 自动恢复分支和有界 USBPS SDK overlay；候选恢复固件中的清理实现不能算作生产 ELF 的清理验收。下一步纯软件工作是把安全清理与自动恢复解耦，或为生产构建显式接入经过哈希固定的清理 USBPS overlay，并补齐生产 profile harness 与 ARM 链接检查。当前生产安全仍未通过。
+
 `src/ps/src/g6_hmac_drbg.c` 实现 [NIST SP 800-90A Rev. 1 §10.1.2](https://csrc.nist.gov/pubs/sp/800/90/a/r1/final) 的 HMAC_DRBG-SHA-256，启动明确请求 256-bit security strength，并按 strength 检查 entropy_input/nonce 最小长度；另限定输入长度、最大请求长度和 1024 次重播种间隔。失败输出会清零，熵/provider 或密码运算失败时清除 DRBG 状态。生产接口启动时取 32 字节 entropy_input 和 16 字节 nonce；重播种时取 32 字节 entropy_input 与 16 字节 additional input。接口定义不是熵评估：provider 必须用实际源证明所需熵量、健康检查和故障锁止。仓库没有实际 provider 源码；任意 provider 也不会自动获得可信、认证或量产状态。
 
 本轮对 `src/rtl`、`src/ps`、`board`、`prj`、`doc` 搜索 TRNG、XADC、PUF、熵采集等实现标记，没有找到项目内熵源 IP 或 PS 驱动。该搜索只说明当前仓库未见对应实现，不证明板卡芯片或外接电路不存在可用源；生产熵仍待按实际板型识别与测量。
