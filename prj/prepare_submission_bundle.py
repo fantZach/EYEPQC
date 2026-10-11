@@ -37,7 +37,7 @@ MEDIA_SUFFIXES = {
 }
 DENIED_PARTS = {
     "build", "captures", "g7_runs", ".venv", "venv", "__pycache__",
-    "secrets", "private", "localkeys",
+    "secrets", "private", "localkeys", "output",
 }
 DENIED_NAME_MARKERS = (
     "localkey", "local_key", "privatekey", "private_key", "privkey", "seed",
@@ -193,9 +193,9 @@ EVIDENCE_STATUS = [
     },
     {
         "id": "full_sim_regression_20261011",
-        "status": "passed_152_of_152_offline",
+        "status": "passed_154_of_154_offline",
         "evidence": "report/production_security_profile_20261011.md",
-        "scope": "完整 sim/tb pytest 回归 152/152 通过，307.89 秒，83 个子测试；这是电脑端软件/仿真证据，不是板端生产安全或 G0/G7 验收。",
+        "scope": "完整 sim/tb pytest 回归 154/154 通过，306.98 秒，87 个子测试；这是电脑端软件/仿真证据，不是板端生产安全或 G0/G7 验收。",
     },
     {
         "id": "security_cleanup_candidate007",
@@ -446,7 +446,7 @@ def build_bundle(root: Path, output_dir: Path, includes: list[str]) -> tuple[Pat
         "included_uncommitted_paths": uncommitted_paths,
         "working_tree_bytes_note": "payload hashes preserve raw working-tree bytes; canonical Git comparison normalizes configured checkout line endings",
         "selection_policy": "git-tracked text sources/docs plus explicit report/supplemental allowlists",
-        "excluded_without_reading": ["build/", "data/captures/", "report/g7_runs/", ".venv/", "binary/media suffixes"],
+        "excluded_without_reading": ["build/", "board/output/", "data/captures/", "report/g7_runs/", ".venv/", "binary/media suffixes"],
         "files": payload_entries,
     }
     manifest_data = json_bytes(content_manifest)

@@ -3,6 +3,7 @@
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 from zipfile import ZipFile
 
 from prj.prepare_submission_bundle import (
@@ -10,6 +11,7 @@ from prj.prepare_submission_bundle import (
     EVIDENCE_STATUS,
     INDEX_NAME,
     BUNDLE_NAME,
+    MANIFEST_MEMBER,
     ROOT,
     selected_paths,
     is_explicit_extra_candidate,
@@ -45,7 +47,7 @@ class SubmissionBundlePolicyTests(unittest.TestCase):
         )
         self.assertEqual(
             statuses["full_sim_regression_20261011"]["status"],
-            "passed_152_of_152_offline",
+            "passed_154_of_154_offline",
         )
         self.assertEqual(statuses["production_security"]["status"], "not_passed")
         selected, _, _ = selected_paths(ROOT, [])
@@ -88,6 +90,38 @@ class SubmissionBundlePolicyTests(unittest.TestCase):
         # test secrets are public vector data, never provisioning inputs.
         self.assertTrue(is_public_candidate("data/kat/nist_mlkem512.json"))
         self.assertTrue(is_public_candidate("data/kat/nist_gcm.json"))
+
+    def test_board_output_is_never_selected_even_if_tracked(self):
+        generated_files = {
+            "board/output/m09/private.bin",
+            "board/output/m09/expected_shared.bin",
+            "board/output/m10/finished.reply",
+            "board/output/m10/key.txt",
+        }
+        for path in generated_files:
+            with self.subTest(path=path):
+                self.assertTrue(is_forbidden_path(path))
+                self.assertFalse(is_public_candidate(path))
+
+        with patch("prj.prepare_submission_bundle.git_tracked_paths",
+                   return_value=generated_files | {"src/host/handshake.py"}):
+            selected, _, _ = selected_paths(ROOT, [])
+        self.assertIn("src/host/handshake.py", selected)
+        self.assertTrue(generated_files.isdisjoint(selected))
+
+    def test_zip_verifier_rejects_board_output_member(self):
+        path = "board/output/m10/finished.reply"
+        payload = b"synthetic secret fixture"
+        digest = sha256_bytes(payload)
+        manifest = json_bytes({"files": [{"path": path, "sha256": digest}]})
+        expected = {path: digest, MANIFEST_MEMBER: sha256_bytes(manifest)}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bundle = Path(temp_dir) / "forbidden.zip"
+            with ZipFile(bundle, "w") as archive:
+                archive.writestr(path, payload)
+                archive.writestr(MANIFEST_MEMBER, manifest)
+            with self.assertRaisesRegex(BundleError, "forbidden ZIP entry"):
+                verify_zip(bundle, expected)
 
     def test_future_files_need_safe_explicit_allowlist_shape(self):
         self.assertTrue(is_explicit_extra_candidate("report/keccak_board_acceptance.md"))
