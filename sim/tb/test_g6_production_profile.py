@@ -56,34 +56,37 @@ class G6ProductionProfileTests(unittest.TestCase):
                 "#include <stdint.h>\ntypedef uintptr_t UINTPTR;\n"
                 "void Xil_DCacheFlushRange(UINTPTR address, unsigned length);\n",
                 encoding="ascii")
-            executable = temp_path / "g6_production_profile.exe"
-            command = [compiler, "-std=c11", "-O0", "-Wall", "-Wextra",
-                       "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
-                       "-DG6_PRODUCTION", "-DG6_SECURE_CLEANUP", "-I", str(stubs)]
-            for include in INCLUDES:
-                command.extend(["-I", str(include)])
-            command.extend(str(source) for source in SOURCES)
-            command.extend(["-o", str(executable)])
-            built = subprocess.run(command, check=False, capture_output=True, text=True)
-            self.assertEqual(built.returncode, 0,
-                             msg=f"production-profile harness build failed:\n{built.stderr}")
-            ran = subprocess.run([str(executable)], check=False,
-                                 capture_output=True, text=True)
-            self.assertEqual(ran.returncode, 0,
-                             msg=f"production-profile harness failed:\n{ran.stdout}\n{ran.stderr}")
-            self.assertIn("G6_PRODUCTION_PROFILE_PASS", ran.stdout)
-
             nm = Path(compiler).with_name("nm.exe")
             if not nm.is_file():
                 nm_on_path = shutil.which("nm")
                 nm = Path(nm_on_path) if nm_on_path else nm
             self.assertTrue(nm.is_file(), "Compiler's nm tool is required for mailbox-symbol check")
-            symbols = subprocess.run([str(nm), str(executable)], check=True,
-                                     capture_output=True, text=True).stdout
-            for forbidden_symbol in (
-                    "g6_sk_load", "g6_seed_load", "g6_ready", "random_seed",
-                    "g6_production_read_mlkem512_private_key", "eye_mlkem_dec"):
-                self.assertNotIn(forbidden_symbol, symbols)
+
+            for profile, optimization in (("debug", "-O0"), ("optimized", "-O3")):
+                with self.subTest(profile=profile):
+                    executable = temp_path / f"g6_production_profile_{profile}.exe"
+                    command = [compiler, "-std=c11", optimization, "-Wall", "-Wextra",
+                               "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
+                               "-DG6_PRODUCTION", "-DG6_SECURE_CLEANUP", "-I", str(stubs)]
+                    for include in INCLUDES:
+                        command.extend(["-I", str(include)])
+                    command.extend(str(source) for source in SOURCES)
+                    command.extend(["-o", str(executable)])
+                    built = subprocess.run(command, check=False, capture_output=True, text=True)
+                    self.assertEqual(built.returncode, 0,
+                                     msg=f"{profile} production harness build failed:\n{built.stderr}")
+                    ran = subprocess.run([str(executable)], check=False,
+                                         capture_output=True, text=True)
+                    self.assertEqual(ran.returncode, 0,
+                                     msg=f"{profile} production harness failed:\n"
+                                         f"{ran.stdout}\n{ran.stderr}")
+                    self.assertIn("fault_cleanup_bytes=1", ran.stdout)
+                    symbols = subprocess.run([str(nm), str(executable)], check=True,
+                                             capture_output=True, text=True).stdout
+                    for forbidden_symbol in (
+                            "g6_sk_load", "g6_seed_load", "g6_ready", "random_seed",
+                            "g6_production_read_mlkem512_private_key", "eye_mlkem_dec"):
+                        self.assertNotIn(forbidden_symbol, symbols)
 
 
 if __name__ == "__main__":
