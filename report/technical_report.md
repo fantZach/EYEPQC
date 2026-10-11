@@ -1,17 +1,17 @@
 # EYEPQC：基于 ML-KEM 与 AES-GCM 的单向 JPEG 视频保护系统
 
-**技术报告稿 | 更新：2026-10-10**
-本文按当前仓库记录和可追溯测试证据整理。比赛名称、正式规则、评分细则及提交模板尚未提供；本文是技术报告草稿，不代表组委会格式的最终定稿。系统有历史实板功能证据和新的候选恢复/Keccak板测，但 G0 SD 启动与完整 G7 尚未通过，生产安全也未通过。
+**技术报告稿 | 更新：2026-10-11**
+本文按当前仓库记录和可追溯测试证据整理。赛事协办方[赛程页](https://www.gowinsemi.com.cn/university/match2026)与[高校通知](https://wdz.qust.edu.cn/info/1055/1203.htm)列出作品提交截止时间为 2026-11-04 18:00；队伍报名/资格状态、AMD 具体赛道细则和报告/视频模板仍待核对。本文是技术报告草稿，不代表组委会格式的最终定稿。系统有历史和最新候选的实板证据，但 G0 SD 启动、G7 receiver-exit 恢复和生产安全尚未通过。
 
-当前电脑端软件回归和构建交付范围见[软件交付记录](software_ready.md)。最终候选 `candidate006d` 的板测只覆盖报告所列短时视频及受控 camera-reset/routing-stall 场景；该候选的 PC 退出/DTR 20 次和物理 USB 拔插 20 次仍待测。独立 Keccak 工程的 tcId 76 功能路径通过三轮，但完整 ML-KEM 解封装平均慢约 8.62%，未集成正式视频构建。上述结果均不构成整机、G0/G7 或生产安全验收。
+电脑端软件回归和构建交付范围见[软件交付记录](software_ready.md)。历史候选 `candidate006d` 的 camera-reset 与 routing-stall 各 20/20 通过；最新 `candidate012` 的 receiver-exit 单轮失败，但同构建普通 CDC 重连基线认证 141 帧、1,130 包、47.672 fps。普通重连不能替代故障恢复门禁。独立 KX41 候选已完成 software、hardware、timeout fallback 三窗口各 60/60 KAT；该独立工程不代表正式视频构建集成。M02 的用户确认整板断电/上电后 JTAG 配置 20/20 及无摄像头 fail-closed 已通过，但不代表 SD 独立启动或 DVP/JPEG 实拍。以上证据均不构成整机、G0/G7 或生产安全验收。
 
 ## 摘要
 
 EYEPQC 是面向正点原子领航者 Zynq-7020 与 OV5640 JPEG 摄像头的单向视频保护原型。摄像头输出 JPEG 后，PL 侧执行采集、异步跨时钟域、DMA 数据搬运和 AES-128-GCM 加密；PS 侧负责 ML-KEM-512 握手、会话状态、DMA 调度和 USB CDC 通信。主机先验证每个视频分片的 GCM 标签，再重组并解码 JPEG。视频只从板卡发送到主机，握手和控制消息使用同一双向 CDC 字节流。
 
-项目已有固定 DDR 数据 AES-GCM、摄像头 JPEG 加密、USB 视频传输、标签篡改拒绝和开发态 ML-KEM 动态会话的历史板测证据。历史 G4 明文视频约 47.258 fps、G5 AES-GCM 视频约 47.270 fps，来自 2026-09-29 的 CF7020B 实测；它们不是 2026-10-10 `candidate006d` 的持续性能结果。`candidate006d` 的单次短时认证视频为 471 帧、47.3579 fps；受控 camera-reset 与 routing-stall 各 20/20 恢复通过。该候选的 PC 退出/DTR 与物理拔插批次尚缺，且 G0 SD 启动仍未测。构建身份和证据范围见[006d 验收报告](g7_candidate006d_acceptance_20261010.md)及[验收矩阵](acceptance_matrix_20261009.md)。
+项目已有固定 DDR 数据 AES-GCM、摄像头 JPEG 加密、USB 视频传输、标签篡改拒绝和开发态 ML-KEM 动态会话的历史板测证据。历史 G4 明文视频约 47.258 fps、G5 AES-GCM 视频约 47.270 fps，来自 2026-09-29 的 CF7020B 实测；它们不是当前候选的持续性能结果。`candidate006d` 的单次短时认证视频为 471 帧、47.3579 fps，受控 camera-reset 与 routing-stall 各 20/20 恢复通过。`candidate012` 的普通无 JTAG CDC 重连基线为 141 帧、1,130 包、47.672 fps；其 receiver-exit 单轮仍失败，G7 未通过。详细身份和证据边界见[candidate012 报告](g7_candidate012_tx_ownership_board_20261011.md)、[006d 验收报告](g7_candidate006d_acceptance_20261010.md)及[验收矩阵](acceptance_matrix_20261009.md)。
 
-续推进的身份核验优化版又完成三次独立启动，每个窗口逐次核对三次 tcId76 结果，HW 仍慢约 8.41%，不集成正式视频；见[优化版板测](keccak_identity_cached_20261010.md)。CPU本地协议缓冲清理已实现，candidate007 双会话共284帧及坏Finished拒绝功能回归通过；全域清零仍未证明，见[清理实施记录](security_cleanup_20261010.md)。
+较早的 Keccak 身份核验优化版只覆盖 tcId 76 三次启动，HW 慢约 8.41%；更新的独立 KX41 候选现已覆盖 60 个唯一向量的 software/hardware/timeout fallback 三个窗口，硬件窗口计时为软件的 88.6%。该结果仍限于独立候选，并未集成正式视频工程，也未读回 Keccak 内部 STATE/OUTPUT；见[KX41 板测报告](keccak_sponge_x4_capture_fix_20261011.md)。CPU 本地协议缓冲清理和 candidate007 的历史双会话功能回归不证明全域清零，见[清理实施记录](security_cleanup_20261010.md)。
 
 ## 1. 目标与边界
 
@@ -66,18 +66,21 @@ USB CDC 使用 `channel:u8 || record_length:u16_be || record` 外层记录，将
 | G5 USB 加密 | 59.953 秒、2835 帧、47.270 fps；真实包 Tag 篡改被拒绝 | 历史 CF7020B 实板测试，见 [G4/G5](../doc/g4_g5.md) |
 | G6 动态会话 | 双会话换钥、坏 Finished 拒绝和 DTR 逻辑重连通过，吞吐约 47 fps | 开发态测试密钥/JTAG 注入，不是生产安全验收，见 [G6](../doc/g6.md) |
 | G7 `candidate006d` 短测与受控恢复 | 短时认证视频 471 帧、47.3579 fps；camera-reset 20/20、routing-stall 20/20 | 同一候选构建的限定证据；PC退出/DTR 20 次和物理USB拔插20次待测，不能据此判定 G7 整体通过，见 [006d 报告](g7_candidate006d_acceptance_20261010.md) |
-| Keccak 隔离工程 | tcId 76 ML-KEM-512 解封装路径 3 轮功能通过；HW 相对同启动 SW 平均慢 8.62% | 独立 PS+PL/XSA、不是正式视频工程；故障回退和 STATUS 读回通过，不证明全域清零；未集成正式视频构建，见 [Keccak 实板基准](keccak_board_benchmark_20261010.md) |
+| G7 `candidate012` USB 基线/故障恢复 | 普通 CDC 重连认证 141 帧、1,130 包、47.672 fps；receiver-exit 单轮在 HELLO_ACK 等待处失败，主机 39 次读取为 0 字节 | 同一构建、无 JTAG 重载的普通重连与故障恢复分开计；dTD completion 不能证明 CDC 用户态收到 ACK，G7 未通过，见 [candidate012 报告](g7_candidate012_tx_ownership_board_20261011.md) |
+| M02 冷启动及模组缺席 | 用户确认 20 次整板断电/上电后的 JTAG 配置 20/20；全断电拔除摄像头后 fail-closed 通过 | 限 JTAG 配置与 fail-closed；SD/Flash 独立启动和 DVP/JPEG 实拍未测，见 [M02 报告](m02_sensor_reset_board_20261011.md) |
+| 旧 Keccak 隔离工程 | tcId 76 ML-KEM-512 解封装路径 3 轮功能通过；HW 相对同启动 SW 平均慢 8.62% | 独立 PS+PL/XSA，不是正式视频工程；故障回退和 STATUS 读回通过，不证明全域清零；见 [Keccak 实板基准](keccak_board_benchmark_20261010.md) |
+| KX41 独立固件 | software、hardware、timeout fallback 三窗口各 60/60 个 ML-KEM-512 KAT；硬件窗口 ticks 为软件的 88.6% | 仅限独立候选和所测 60 个唯一向量，不外推到正式视频构建、内部状态清零或完整产品性能，见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md) |
 
-实现报告中 Vivado 2026.1 当前 G3 设计 WNS 为 +0.013 ns、WHS 为 +0.018 ns。DRC 有 warning/advisory，其中 OV5640 PCLK 的 `PLCK-12` 非专用时钟路由警告通过 `CLOCK_DEDICATED_ROUTE FALSE` 放行；必须保留该风险，不能写成“零告警”或“无时序风险”。
+G3 implementation report 中 Vivado 2026.1 设计 WNS 为 +0.013 ns、WHS 为 +0.018 ns。DRC 有 warning/advisory，其中 OV5640 PCLK 的 `PLCK-12` 非专用时钟路由警告通过 `CLOCK_DEDICATED_ROUTE FALSE` 放行；必须保留该风险，不能写成“零告警”或“无时序风险”。KX41 的 WNS/WHS 属于不同的独立 XSA，不能替代该 G3 报告。
 
 ## 5. 复现与交付
 
-工具根目录由 `EYEPQC_TOOL_ROOT` 指定，相关本机记录使用 `E:/fpg/2026.1`。源码、仿真、构建与板测入口见 [README](../README.md)、[G3 操作说明](../doc/g3.md)、[M15 交付要求](../doc/steps.md#19-m15调试观测与交付材料) 和[电脑端构建记录](pc_build.md)。2026-10-07 软件交付记录的电脑端回归为 17/17 PASS，包含 M04/M05 原生 XSim 和 G6 内存 USB 集成检查；它们属于电脑端验证，不等同于新候选实板验收。2026-10-10 `candidate006d` 的 manifest 保留 `board_validated=false`，实板结果由独立报告承载；Keccak 也使用隔离工程，未集成到正式视频构建。软件检查、构建身份与板测范围须分别引用[软件交付记录](software_ready.md)、[006d 验收报告](g7_candidate006d_acceptance_20261010.md)和[Keccak 实板基准](keccak_board_benchmark_20261010.md)。
+工具根目录由 `EYEPQC_TOOL_ROOT` 指定，相关本机记录使用 `E:/fpg/2026.1`。源码、仿真、构建与板测入口见 [README](../README.md)、[G3 操作说明](../doc/g3.md)、[M15 交付要求](../doc/steps.md#19-m15调试观测与交付材料) 和[电脑端构建记录](pc_build.md)。电脑端回归、哈希预检和时序报告都不等同于实板验收。`candidate012`、`candidate006d` 和 KX41 的构建 manifest 与板测结果分别见[对应报告](g7_candidate012_tx_ownership_board_20261011.md)、[006d 报告](g7_candidate006d_acceptance_20261010.md)、[KX41 报告](keccak_sponge_x4_capture_fix_20261011.md)；软件检查、构建身份与板测范围须分别引用各自证据，不跨候选借用。
 
 ## 6. 尚待完成的竞赛验收
 
-1. G0 的 JTAG 临时启动/局部 DDR/timer/LED 有限定证据；SD 独立启动、物理复位与断电冷启动仍未测。若提交要求 SD 启动，需准备专用介质并按现场步骤完成板测；不能将已有 JTAG 结果写成 SD 或全 DDR 验收。
-2. G7 `candidate006d` 的短时认证视频与 camera-reset/routing-stall 各 20/20 已通过；同构建 PC 退出/DTR 20 次和物理 USB 拔插 20 次仍待测。约 50 分钟运行属于时长例外，未实测满两小时；G7 整体仍未通过。
-3. Keccak 的独立 tcId 76 功能路径三轮通过，但当前完整解封装慢约 8.62%，因此未集成正式视频工程；后续若优化后再评估，应重新做同构建板测。当前数据不证明硬件加速收益。
+1. G0 的 JTAG 临时启动/局部 DDR/timer/LED 有限定证据；SD 独立启动、物理复位与 30 分钟断电冷启动仍未验收。用户目前没有读卡器，板上 SD 保持原样；需要专用介质及现场步骤才能补测。不能将 JTAG 结果写成 SD 或全 DDR 验收。
+2. G7 的 camera-reset/routing-stall 20/20 是历史 `candidate006d` 的受控场景结果。最新 `candidate012` receiver-exit 单轮失败，普通 CDC 重连通过不能替代该门禁；须先取得主机 USB 请求/串口层可观测记录并定位，再跑单轮、20 轮和物理 USB 拔插回归。约 50 分钟运行属于时长例外，未实测满两小时。
+3. 较早的 Keccak 路径 tcId 76 三轮通过但硬件慢约 8.62%；KX41 更新候选现有 60/60 三窗口 KAT，硬件窗口 ticks 为软件的 88.6%。二者均为独立工程，KX41 未集成正式视频，且内部 STATE/OUTPUT 清零未读回；不得把单候选 KAT 窗口称作系统级 ML-KEM 加速。
 4. 生产安全未通过：可信板端熵源、生产私钥存储/注入、全域清零读回及侧信道/故障防护均未完成；目前证据不能形成熵源、生产安全或全清零主张。
-5. 按组委会要求补充正式规则对应的篇幅、图表、声明与附件。当前尚未获得正式比赛规则、评分细则或提交模板，本文暂按技术证据编写，不臆造规则或验收标准。
+5. 赛事协办方赛程页列出 2026-11-04 18:00 截止，但需从官网/报名后台复核是否更新并确认队伍资格。报告、视频及其他附件的细则与 AMD 具体赛道要求尚待官方文件；本文暂按技术证据编写，不臆造模板或验收标准。
