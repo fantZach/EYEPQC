@@ -181,6 +181,15 @@ function Get-ValidatedPassedTrials([string]$Directory,[object]$Identity,[int]$Re
     for ($n=1;$n -le $passed.Count;$n++) { if (!$passed.ContainsKey($n)) { throw "Passed trial set is not a contiguous prefix 1..N; missing trial $n." } }
     return ,$passed
 }
+function Get-NextTryNumber([string]$Directory, [int]$Trial) {
+    $pattern = '^trial_{0:d2}_try(\d+)$' -f $Trial
+    $numbers = @()
+    foreach ($file in Get-ChildItem -LiteralPath $Directory -File -Filter ('trial_{0:d2}_try*.json' -f $Trial) -ErrorAction SilentlyContinue) {
+        if ($file.BaseName -match $pattern) { $numbers += [int]$Matches[1] }
+    }
+    if ($numbers.Count -eq 0) { return 1 }
+    return (($numbers | Measure-Object -Maximum).Maximum + 1)
+}
 
 $identity = Get-BuildIdentity
 if ($DryRun) {
@@ -277,8 +286,7 @@ try {
 
     while ($passed -lt $Attempts) {
         $trial = $passed + 1
-        $prior = @(Get-ChildItem -LiteralPath $runDir -Filter ('trial_{0:d2}_try*.json' -f $trial) -ErrorAction SilentlyContinue)
-        $tryNumber = $prior.Count + 1
+        $tryNumber = Get-NextTryNumber $runDir $trial
         $casePath = Join-Path $runDir ('trial_{0:d2}_try{1:d2}.json' -f $trial,$tryNumber)
         $workerOut = Join-Path $runDir ('trial_{0:d2}_try{1:d2}_interrupted.stdout.log' -f $trial,$tryNumber)
         $workerErr = Join-Path $runDir ('trial_{0:d2}_try{1:d2}_interrupted.stderr.log' -f $trial,$tryNumber)

@@ -40,6 +40,9 @@ static unsigned cleanup_order[3];
 static unsigned cleanup_order_count;
 static int fake_usb_ready = 1;
 static uint32_t fake_connection_epoch = 7U;
+static unsigned usb_send_calls;
+static uint8_t usb_last_send[1040];
+static uint32_t usb_last_send_size;
 
 static int bytes_are(const uint8_t *memory, size_t length, uint8_t value)
 {
@@ -79,6 +82,14 @@ static void setup_case(enum phase initial_phase, enum eye_session_state state)
     cleanup_fail_at = 0U;
     fake_usb_ready = 1;
     fake_connection_epoch = 7U;
+    usb_send_calls = 0U;
+    memset(usb_last_send, 0, sizeof usb_last_send);
+    usb_last_send_size = 0U;
+#ifdef G6_SECURE_CLEANUP
+    diag_hello_attempt_count = 0U;
+    diag_hello_ack_send_attempts = 0U;
+    diag_hello_ack_send_status = UINT32_MAX;
+#endif
     g6_status = 10U;
     g6_fatal_errors = 20U;
     g6_control_errors = 30U;
@@ -139,8 +150,10 @@ int usb_cdc_secure_cleanup_tx(uint8_t *buffer, unsigned capacity)
 
 int usb_cdc_send(uint8_t *data, uint32_t size)
 {
-    (void)data;
-    (void)size;
+    if (size > sizeof usb_last_send) return 98;
+    ++usb_send_calls;
+    usb_last_send_size = size;
+    memcpy(usb_last_send, data, size);
     return 0;
 }
 
@@ -257,6 +270,32 @@ static int make_bad_finished(uint8_t message[44])
     uint8_t body[32];
     memset(body, 0xa5, sizeof body);
     return eye_control_encode(message, 44U, EYE_FINISHED_HOST, body, sizeof body);
+}
+
+static int test_duplicate_hello_replays_cached_ack(void)
+{
+    uint8_t hello_message[48], body[36] = {1U, 1U, 0U, 1U};
+    uint8_t first_reply[sizeof usb_last_send];
+    for (unsigned i = 0; i < 32U; ++i) body[4U + i] = (uint8_t)(i + 1U);
+    setup_case(WAIT_HELLO, EYE_STATE_IDLE);
+    if (eye_control_encode(hello_message, sizeof hello_message,
+                           EYE_HELLO, body, sizeof body)) return 1;
+    if (handle_control(hello_message, sizeof hello_message) ||
+        phase != WAIT_KEM || usb_send_calls != 1U || usb_last_send_size != 51U)
+        return 2;
+    memcpy(first_reply, usb_last_send, usb_last_send_size);
+    if (handle_control(hello_message, sizeof hello_message) ||
+        phase != WAIT_KEM || usb_send_calls != 2U ||
+        usb_last_send_size != 51U ||
+        memcmp(first_reply, usb_last_send, usb_last_send_size) != 0 ||
+        g6_control_errors != 30U ||
+        g6_fatal_errors != 20U || g6_status != 10U)
+        return 3;
+#ifdef G6_SECURE_CLEANUP
+    if (diag_hello_attempt_count != 2U || diag_hello_ack_send_attempts != 2U ||
+        diag_hello_ack_send_status != 0U) return 4;
+#endif
+    return 0;
 }
 
 #ifdef G6_SECURE_CLEANUP
@@ -451,12 +490,14 @@ static int test_authentication_failure(void)
 
 int main(void)
 {
+    int duplicate_hello_status = test_duplicate_hello_replays_cached_ack();
     int fail_closed_status = test_fail_closed();
     int disconnect_status = test_disconnect();
     int command_status = test_stop_and_rekey();
     int auth_status = test_authentication_failure();
-    if (fail_closed_status || disconnect_status || command_status || auth_status) {
-        fprintf(stderr, "g6_cleanup_paths_failed=%d,%d,%d,%d\n",
+    if (duplicate_hello_status || fail_closed_status || disconnect_status || command_status || auth_status) {
+        fprintf(stderr, "g6_cleanup_paths_failed=%d,%d,%d,%d,%d\n",
+                duplicate_hello_status,
                 fail_closed_status, disconnect_status, command_status, auth_status);
         return 1;
     }

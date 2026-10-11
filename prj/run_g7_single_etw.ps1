@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$workspace = 'build/vitis/g6_secure_cleanup_20261011_candidate012_tx_ownership_r3'
+$workspace = 'build/vitis/g6_secure_cleanup_20261011_candidate013_hello_ack_retry'
 $workspaceFull = [IO.Path]::GetFullPath((Join-Path $root $workspace))
 $toolRoot = if ($env:EYEPQC_TOOL_ROOT) { $env:EYEPQC_TOOL_ROOT } else { 'E:/fpg/2026.1' }
 $python = Join-Path $root '.venv/Scripts/python.exe'

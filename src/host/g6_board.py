@@ -138,7 +138,8 @@ def send_control(ser, message, stage="control"):
         ser.flush()
 
 
-def read_control(ser, decoder, cancelled=None, debug_stage=False, timeout=10.0):
+def read_control(ser, decoder, cancelled=None, debug_stage=False, timeout=10.0,
+                 ignore_records=()):
     pending = pending_records(decoder)
     deadline = time.monotonic() + timeout
     read_calls = raw_bytes = 0
@@ -156,6 +157,11 @@ def read_control(ser, decoder, cancelled=None, debug_stage=False, timeout=10.0):
             pending.extend(records)
         if pending:
             channel, record = pending.popleft()
+            if channel == USB_CONTROL and record in ignore_records:
+                if debug_stage:
+                    print("G6_HOST_DIAG stage=duplicate_control_ignored "
+                          f"channel={channel} record_bytes={len(record)}", flush=True)
+                continue
             if channel != USB_CONTROL:
                 if debug_stage:
                     print(f"G6_HOST_DIAG stage=unexpected_control_channel channel={channel} "
@@ -175,6 +181,29 @@ def read_control(ser, decoder, cancelled=None, debug_stage=False, timeout=10.0):
               f"decoder_buffer_bytes={len(buffer)} decoder_channel={channel} "
               f"decoder_declared_length={declared_length}", flush=True)
     raise TimeoutError("G6 control response timeout")
+
+
+def read_hello_ack(ser, decoder, hello, cancelled=None, debug_stage=False,
+                   attempt_timeout=3.0, max_retries=2):
+    """Retry the same HELLO when its unauthenticated ACK is lost in transport.
+
+    The board must replay its cached HELLO_ACK for an identical HELLO while in
+    WAIT_KEM. Reusing the exact request keeps the handshake transcript stable.
+    """
+    if attempt_timeout <= 0 or max_retries < 0:
+        raise ValueError("HELLO_ACK retry bounds must be positive")
+    for attempt in range(max_retries + 1):
+        try:
+            return read_control(ser, decoder, cancelled, debug_stage,
+                                timeout=attempt_timeout)
+        except TimeoutError:
+            if attempt >= max_retries:
+                raise
+            if debug_stage:
+                print(f"G6_HOST_STAGE stage=hello_ack_retry attempt={attempt + 1}/{max_retries}",
+                      flush=True)
+            send_control(ser, hello, stage=f"hello_retry_{attempt + 1}")
+    raise AssertionError("unreachable HELLO_ACK retry state")
 
 
 def pending_records(decoder):
@@ -227,13 +256,16 @@ def stop_and_drain(ser, decoder, session, enabled=False, timeout=5.0, quiet=0.1)
         drain_rekey(ser, decoder, timeout=timeout, quiet=quiet)
 
 
-def handshake(ser, decoder, session, bad_finished=False, cancelled=None, debug_stage=False):
+def handshake(ser, decoder, session, bad_finished=False, cancelled=None, debug_stage=False,
+              hello_ack_timeout=3.0, hello_ack_retries=2):
     host_random = secrets.token_bytes(32)
     hello = encode_control(MessageType.HELLO, b"\x01\x01\x00\x01" + host_random)
     send_control(ser, hello, stage="hello")
     if debug_stage:
         print("G6_HOST_STAGE stage=hello_ack_wait_begin", flush=True)
-    ack = read_control(ser, decoder, cancelled, debug_stage=debug_stage)
+    ack = read_hello_ack(ser, decoder, hello, cancelled, debug_stage=debug_stage,
+                         attempt_timeout=hello_ack_timeout,
+                         max_retries=hello_ack_retries)
     if debug_stage:
         print("G6_HOST_STAGE stage=hello_ack_received", flush=True)
     kind, body = decode_control(ack)
@@ -247,7 +279,8 @@ def handshake(ser, decoder, session, bad_finished=False, cancelled=None, debug_s
     if debug_stage:
         print("G6_HOST_STAGE stage=board_finished_wait_begin", flush=True)
     session.verify_board_finished(read_control(ser, decoder, cancelled,
-                                               debug_stage=debug_stage))
+                                               debug_stage=debug_stage,
+                                               ignore_records=(ack,)))
     if debug_stage:
         print("G6_HOST_STAGE stage=board_finished_received", flush=True)
     finished = session.host_finished()

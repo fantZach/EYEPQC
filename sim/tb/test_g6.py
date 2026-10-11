@@ -35,6 +35,10 @@ from test_m10 import Session, array, setup
 class MemoryBoard:
     def __init__(self, lib, kem, pk, sk, fault=None):
         self.lib, self.kem, self.sk, self.fault = lib, kem, sk, fault
+        self.drop_first_hello_ack = False
+        self.duplicate_ack_on_retry = False
+        self.hello_messages = []
+        self.ack_generations = 0
         self.session = Session()
         assert lib.eye_session_init(ct.byref(self.session), array(pk)) == 0
         self.decoder = UsbRecordDecoder()
@@ -46,9 +50,17 @@ class MemoryBoard:
             assert channel == USB_CONTROL
             kind, body = decode_control(message)
             if kind == MessageType.HELLO:
-                self.hello = message
-                self.ack = encode_control(MessageType.HELLO_ACK, b'\x01\x01\x00\x01' + secrets.token_bytes(32))
+                if not self.hello_messages or message != self.hello:
+                    self.hello = message
+                    self.ack = encode_control(MessageType.HELLO_ACK,
+                                              b'\x01\x01\x00\x01' + secrets.token_bytes(32))
+                    self.ack_generations += 1
+                self.hello_messages.append(message)
+                if self.drop_first_hello_ack and len(self.hello_messages) == 1:
+                    continue
                 self.pending.extend(encode_usb_record(USB_CONTROL, self.ack))
+                if self.duplicate_ack_on_retry and len(self.hello_messages) == 2:
+                    self.pending.extend(encode_usb_record(USB_CONTROL, self.ack))
             elif kind == MessageType.KEM_CIPHERTEXT:
                 shared = self.kem.decaps(self.sk, body)
                 assert self.lib.eye_session_begin(ct.byref(self.session), array(shared), array(self.hello),
@@ -257,6 +269,21 @@ class G6(unittest.TestCase):
         self.assertIn('decoder_channel=1', diagnostic)
         self.assertIn('decoder_declared_length=48', diagnostic)
         self.assertNotIn(ack.hex(), diagnostic)
+
+    def test_hello_retry_reuses_transcript_and_ignores_duplicate_cached_ack(self):
+        board, host = self.create_pair()
+        board.drop_first_hello_ack = True
+        board.duplicate_ack_on_retry = True
+        decoder = UsbRecordDecoder()
+        handshake(board, decoder, host, hello_ack_timeout=0.001,
+                  hello_ack_retries=1)
+        self.assertEqual(len(board.hello_messages), 2)
+        self.assertEqual(board.hello_messages[0], board.hello_messages[1])
+        self.assertEqual(board.ack_generations, 1)
+        self.assertFalse(getattr(decoder, "_g6_pending", []))
+        self.assertTrue(board.pending)
+        self.assertIsNotNone(host.video_key)
+        host.close()
 
     def test_rekey_drains_fragmented_old_video_before_new_handshake(self):
         board, host = self.create_pair()

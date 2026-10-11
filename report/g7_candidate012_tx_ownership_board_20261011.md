@@ -1,6 +1,6 @@
 # G7 candidate012 TX ownership 实板诊断
 
-日期：2026-10-11。结论：candidate012 r3 的一次 receiver-exit 恢复仍失败，G7 未通过，20 轮 receiver-exit 和物理 USB 拔插批次均未启动。新增的发送所有权诊断确认本次 51 字节 HELLO_ACK 对应的 EP1 IN dTD 已报告完成；Windows 主机进程仍记录 39 次读取、0 字节。随后同一构建、无 JTAG 重载的普通 CDC 重连基线通过，认证 141 帧和 1,130 包，且接收进程退出后板端再次回到 `WAIT_HELLO`。因此一般 CDC 重连与视频传输可用，但 receiver-exit 场景仍失败；该对照不能证明 ACK 已进入 Windows CDC 应用层，也没有确认根因。
+日期：2026-10-11。结论：candidate012 r3 的 receiver-exit 20 轮批次累计有 13 个轮次通过，但 trial 7 和 trial 14 均出现 HELLO_ACK 超时，G7 未通过；物理 USB 拔插批次未开始。新增的发送所有权诊断确认 trial 7 try01 的 51 字节 HELLO_ACK 对应 EP1 IN dTD 已报告完成；Windows 主机进程仍记录 40 次读取、0 字节。trial 7 try04 随后通过，trial 8–13 也通过；trial 14 主机打开 COM16 后 39 次读取仍为 0 字节。同期 USB ETW 完整采集但未包含载荷，不能证明 ACK 实际到达 CDC 应用层，根因仍未确认。candidate013 已加入同一 HELLO 重试和缓存 ACK 重放的离线修正并完成构建与预检，但尚未下载或实板验证。
 
 ## 构建与基线
 
@@ -37,8 +37,9 @@
 
 ## 状态与下一步
 
-- 单轮失败；G7 不通过，receiver-exit 20 轮和物理 USB 拔插 20 轮均未开始。
-- 普通无 JTAG CDC 重连与视频基线已通过，但不能替代 receiver-exit 门禁。下一步应取得受限主机 USB 控制器/串口层事务完成记录，把设备 dTD completion、主机 USB 请求状态和应用层读取关联起来；任何新候选都先跑基线和单轮，禁止盲目重复长批次。
+- candidate012 r3 的 20 轮 receiver-exit 批次停在 13/20 个唯一轮次通过：trial 1–6、7 try04、8–13 通过；trial 7 try01 与 trial 14 try01 的 recovery handshake 均超时。原失败记录保留在忽略目录 `report/g7_runs/g7_batch_receiver_exit_20261011_111918_837_220dcd2d/`，不能把 13/20 写成 G7 通过。
+- 普通无 JTAG CDC 重连与视频基线已通过，但不能替代 receiver-exit 门禁。trial 14 的主机阶段为 COM16 枚举、串口打开、DTR 拉高，随后 HELLO_ACK 等待 39 次读取、RX 0 字节；ETW 记录无事件丢失，但不含 USB 数据包/字节长度，不能区分 ACK 未到设备、控制器完成与 CDC 应用投递之间的边界。
+- candidate013 的离线修正、ARM 构建、197 项哈希预检和 dry-run 已通过；其固件哈希不同于 candidate012，所以 candidate012 的 13 个通过轮不能计入 candidate013。candidate013 仍需新的板上基线、单轮、20 轮 receiver-exit，再单独进行物理 USB 拔插门禁。
 - SD/Flash/eFuse 未写入；candidate012 仅临时 JTAG 下载。不得把短时基线或单次 dTD 完成上升为 G7 验收。
 
 ## Windows USB ETW 采集准备（2026-10-11）
@@ -47,7 +48,16 @@
 
 当前 Windows PnP 查询看到实验用 CDC `USB\VID_03FD&PID_7020`（COM16）状态正常。已新增 `prj/collect_g7_usb_etw.ps1` 和 [单轮采集说明](g7_usb_etw_capture_guide.md)：Windows 自带 logman 的 USBXHCI/UCX/USBHUB3 trace 启用 `Default`、`HeadersBusTrace`、`StateMachine`、`Rundown`，并启用 Kernel-IoTrace 元数据；不启用 `PartialDataBusTrace` 或 `FullDataBusTrace`，最长 5 分钟、ETL 上限 128 MB，输出在 Git 忽略的 `build/g7_usb_etw/`。另加 `prj/run_g7_single_etw.ps1` 将候选哈希检查、易失性 JTAG 加载、短基线、ETW 单轮和自动停止串成一个管理员命令。
 
-脚本 AST 解析、无副作用 `-Action Plan` 和 provider 注册检查通过。当前 PowerShell 令牌非管理员，自动提权没有启动采集进程；没有活动 ETW session、manifest 或 ETL，也没有运行新一轮 receiver-exit。通用 `run_g7_recovery.ps1 -CheckOnly` 因 candidate012 没有其要求的 `software_build.json` 而在离线预检停止，未访问板卡；正确的 candidate 门禁为 `g6_board.py --verify-only`，197 项哈希通过。准备工作不是 G7 新验收证据。
+脚本 AST 解析、无副作用 `-Action Plan` 和 provider 注册检查通过。在最初准备阶段，PowerShell 令牌非管理员，自动提权没有启动采集进程；当时没有活动 ETW session、manifest 或 ETL，也没有运行新一轮 receiver-exit。通用 `run_g7_recovery.ps1 -CheckOnly` 因 candidate012 没有其要求的 `software_build.json` 而在离线预检停止，未访问板卡；正确的 candidate 门禁为 `g6_board.py --verify-only`，197 项哈希通过。准备工作不是 G7 新验收证据。
+
+## candidate012 receiver-exit 批次与 ETW 记录（11:19–11:32）
+
+同构建基线 `data/captures/g6_usb_20261011_111408_321429/result.json` 通过，141 帧、47.492 fps。receiver-exit 批次目录为 `report/g7_runs/g7_batch_receiver_exit_20261011_111918_837_220dcd2d/`，summary 标记 `status=failed`、`attempts_passed=13`、`current_trial=14`，全程未在轮次之间重载 JTAG。
+
+- Trial 1–6 首次通过；trial 7 try01 在恢复握手阶段超时，主机 40 次读取、0 字节。AP0 前后快照显示 HELLO 与 ACK 计数各增加 1；ACK 长度 51/51、残余 0、token `0x8000`、匹配标志 `0x1f`、错误计数为 0，但主机未读到字节。try04 通过，随后 trial 8–13 通过。
+- Trial 14 try01 在启动中断接收端时退出：COM16 枚举、串口打开及 DTR 拉高均完成；HELLO_ACK 等待阶段 39 次读取、0 字节，`decoded_control=0`，最终为 `G6 control response timeout`。该失败没有板端 AP0 后快照，因此设备侧 ACK 状态未知。
+- Trial 14 ETW 文件为本机忽略产物 `build/g7_usb_etw/g7_usb_etw_20261011_113055_851_000001.etl`，23,986,176 字节；USBXHCI/UCX/USBHUB3 与 Kernel-IoTrace 已启用，ETL 头部 `EventsLost=0`、`BuffersLost=0`。在失败时窗内观察到主机 USB bulk/interrupt 请求活动和成功 NTSTATUS 完成，但此 trace 不含 USB 数据载荷、逐传输实际字节长度，且事件指针尚未可靠映射到 CDC endpoint；不能据此证明 ACK 已由主机串口应用接收。
+- 原 runner 以 `trial_*_try*.json` 文件数生成 retry 编号，导致 trial 7 的 `_rekey_before/_after.json` 诊断 sidecar 使下一次编号跳到 try04，尽管 try02/try03 没有实际硬件尝试。此脚本缺陷已在 candidate013 源码中修正并由离线回归测试覆盖。
 
 ## candidate012 普通 CDC 重连基线（10:29）
 

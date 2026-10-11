@@ -296,6 +296,21 @@ static int handle_control(const uint8_t *message, unsigned length) {
 #endif
         return 0;
     }
+    if (phase == WAIT_KEM && type == EYE_HELLO && length == sizeof hello &&
+        memcmp(hello, message, sizeof hello) == 0) {
+#ifdef G6_SECURE_CLEANUP
+        ++diag_hello_attempt_count;
+        ++diag_hello_ack_send_attempts;
+        diag_hello_ack_send_status = UINT32_MAX;
+        publish_rekey_diag();
+#endif
+        int status = send_control(ack, sizeof ack);
+#ifdef G6_SECURE_CLEANUP
+        diag_hello_ack_send_status = (uint32_t)status;
+        publish_rekey_diag();
+#endif
+        return status ? 1 : 0;
+    }
     if (phase == WAIT_KEM && type == EYE_KEM_CIPHERTEXT && length == 780) {
         uint8_t shared[32], finished[44];
         int status = eye_mlkem_dec(shared, body, private_key);

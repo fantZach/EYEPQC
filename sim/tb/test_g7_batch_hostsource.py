@@ -89,6 +89,34 @@ class G7BatchHostSourceTests(unittest.TestCase):
         self.assertIn("$postRekeyDiag.hello_ack_send_status -ne 0", source)
         self.assertTrue((ROOT / "prj/capture_g6_rekey_diag.py").is_file())
 
+    def test_retry_number_ignores_diagnostic_json_sidecars(self) -> None:
+        run_dir = self.temp_root / "batch evidence"
+        run_dir.mkdir()
+        for name in (
+            "trial_07_try01.json",
+            "trial_07_try01_rekey_before.json",
+            "trial_07_try01_rekey_after.json",
+        ):
+            (run_dir / name).write_text("{}", encoding="utf-8")
+        helper = self.temp_root / "check retry number.ps1"
+        helper.write_text(
+            r'''$tokens=$null; $errors=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($args[0],[ref]$tokens,[ref]$errors)
+if($errors.Count){throw 'runner parse failed'}
+$node=$ast.Find({param($candidate) $candidate -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $candidate.Name -eq 'Get-NextTryNumber'},$true)
+if(!$node){throw 'Get-NextTryNumber was not found'}
+Invoke-Expression $node.Extent.Text
+$next=Get-NextTryNumber $args[1] 7
+if($next -ne 2){throw "expected retry 2 after try01 sidecars, got $next"}
+''',
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [self.powershell, "-NoProfile", "-File", str(helper), str(RUNNER), str(run_dir)],
+            cwd=ROOT, text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=120,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_dry_run_keeps_legacy_default_workspace(self) -> None:
         result = subprocess.run(
             [self.powershell, "-NoProfile", "-File", str(RUNNER), "-DryRun"],

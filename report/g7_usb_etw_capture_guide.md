@@ -17,7 +17,7 @@
 .\prj\run_g7_single_etw.ps1
 ```
 
-脚本先验证 candidate012 r3 的文件哈希，再通过易失性 JTAG 下载并建立 3 秒认证视频基线；确认基线同构建、JTAG 完成且至少有 2 帧后，启动 ETW 并只执行一次 receiver-exit runner，最后自动停止采集。试验期间不重新下载固件。基线、runner stdout/stderr、ETL 和 launcher 清单均留在 Git 忽略的本地目录。运行前不要同时打开其他摄像头接收进程，也不要在脚本完成前断电或拔线。
+脚本先验证 candidate013 HELLO_ACK retry 的文件哈希，再通过易失性 JTAG 下载并建立 3 秒认证视频基线；确认基线同构建、JTAG 完成且至少有 2 帧后，启动 ETW 并只执行一次 receiver-exit runner，最后自动停止采集。试验期间不重新下载固件。基线、runner stdout/stderr、ETL 和 launcher 清单均留在 Git 忽略的本地目录。运行前不要同时打开其他摄像头接收进程，也不要在脚本完成前断电或拔线。
 
 可先无副作用查看计划：
 
@@ -37,10 +37,10 @@
 
    脚本要求恰好一个状态正常的 `03FD:7020` CDC 设备，并在输出里显示 ETL 路径。若检查失败或设备数不符，不会启动采集。
 
-2. 在另一个普通 PowerShell 窗口，从项目根目录运行一次候选 012 receiver-exit 测试：
+2. 在另一个普通 PowerShell 窗口，从项目根目录运行一次 candidate013 receiver-exit 测试：
 
    ```powershell
-   .\run_g7_batch.ps1 -Mode ReceiverExit -Attempts 1 -RecoverySeconds 2 -FaultSeconds 30 -WaitCdcSeconds 20 -Workspace build/vitis/g6_secure_cleanup_20261011_candidate012_tx_ownership_r3 -HostSourceRoot .
+   .\run_g7_batch.ps1 -Mode ReceiverExit -Attempts 1 -RecoverySeconds 2 -FaultSeconds 30 -WaitCdcSeconds 20 -Workspace build/vitis/g6_secure_cleanup_20261011_candidate013_hello_ack_retry -HostSourceRoot .
    ```
 
    只跑一轮，不启动长批次。runner 在试验期间不重载 JTAG；它会记录 build identity、主机读取和板端 AP0 元数据。
@@ -56,7 +56,7 @@
 
 ## 判读边界
 
-把 ETL、`trial_01_try*.json`、receiver/recovery stdout/stderr 与 AP0 前后快照按 UTC 时间对齐。重点检查：USB IN URB 的提交/完成状态和长度、设备/endpoint 标识、Windows 串口 I/O 完成时刻，以及主机读取是否仍为 0 字节。
+把 ETL、`trial_01_try*.json`、receiver/recovery stdout/stderr 与 AP0 前后快照按 UTC 时间对齐。重点检查 USB IN URB 的提交/完成状态、设备/endpoint 线索、Windows 串口 I/O 完成时刻，以及主机读取是否仍为 0 字节。当前仅采集 ETW 事件头，不含 USB 数据载荷或逐次传输字节长度；必须与主机读取计数及 AP0 dTD 快照联合判读。
 
 如果设备 dTD 已完成而 USB 主机 URB 未正常完成，继续查 USB 传输/主控制器路径；如果 URB 完成但串口 I/O 仍不交付，转查 Windows `usbser`/应用句柄交接；如果两层都显示成功而应用读取仍为空，再检查用户态关闭/重开时序。单次 trace 的阴性结果只说明本轮没有捕获到相应事件，不能直接当作根因结论。
 

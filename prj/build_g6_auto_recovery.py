@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / 'prj'))
 import build_software as base
 
 CPU_FLAGS = ['-mcpu=cortex-a9', '-mfpu=vfpv3', '-mfloat-abi=hard']
-VARIANT = 'g6-secure-buffer-cleanup-candidate012-tx-ownership-diag-v2'
+VARIANT = 'g6-secure-buffer-cleanup-candidate013-hello-ack-retry-v1'
 LOOP_OLD = '''        if (status) {
             ++g6_capture_errors;
             ++g6_dropped;
@@ -239,7 +239,7 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
     build = app / 'build'
     build.mkdir(parents=True, exist_ok=True)
     pinned_cpu, bsp_inputs = pin_bsp_inputs(bsp_workspace, workspace)
-    # Candidate011 compiles the reviewed cleanup source directly. Its new hash
+    # Candidate013 compiles the reviewed cleanup source directly. Its new hash
     # is explicit above and captured in source_baseline_manifest.json; it is not
     # passed off as the accepted pre-cleanup G6 source.
     candidate_usb = baseline_usb
@@ -430,7 +430,7 @@ def main():
     parser.add_argument('--base-manifest', type=Path,
                         default=ROOT / 'build/vitis/usbfix3_20261007/g6_usb_manifest.json')
     parser.add_argument('--output', type=Path,
-                        default=ROOT / 'build/vitis/g6_secure_cleanup_20261010_candidate011_receiver_exit_diag')
+                        default=ROOT / 'build/vitis/g6_secure_cleanup_20261011_candidate013_hello_ack_retry')
     parser.add_argument('--reuse-bsp', type=Path, default=None,
                         help='reuse an existing same-XSA BSP workspace without regenerating it')
     parser.add_argument('--expected-g6-source-sha256', required=True,

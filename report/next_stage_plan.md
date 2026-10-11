@@ -1,6 +1,6 @@
 # 下一阶段执行计划
 
-更新：2026-10-11。M02 Explore 候选静态时序门禁、RTL 仿真 4/4、同会话传感器复位/配置 20/20、20 次整板断电/上电后 JTAG 配置 20/20，以及无模组 fail-closed 均通过；探针不代表 SD/Flash 独立启动或 DVP/JPEG 采集。KX41 新候选 software/hardware/timeout fallback 三窗口全 60 组实板 KAT 通过，硬件窗口耗时为软件的 88.6%。G7 candidate012 的 ownership 诊断构建通过离线预检、dry-run 和短时认证视频基线；receiver-exit 恢复时电脑仍读到 0 字节，但板端确认新 HELLO_ACK 的 IN dTD 完成（51/51 字节、零残余、所有身份匹配标志通过）。之后同构建、无 JTAG 重载的普通 CDC 重连认证 141 帧/1,130 包、47.672 fps；这证明普通重连链路可用，不替代 receiver-exit 门禁。Windows CDC 应用层是否收到失败轮 ACK 及根因仍未确认。SDK 源码检查未发现 `XUsbPs_ReconfigureEp(..., DirectionChanged=0)` 改写 EPCR toggle reset 位；DTR 恢复路径也不请求 toggle reset。未运行 G7 20 轮或物理 USB 拔插批次。Windows 现查到 COM16 的 `03FD:7020` CDC 状态正常；candidate012 已在 KX41/M02 测试后重新 JTAG 加载，短时基线 141 帧、47.748 fps，build hashes 匹配；非载荷 ETW 单轮采集脚本与一键执行器已准备，但当前 shell 非管理员，自动提权没有启动采集进程，未生成 ETL 或运行新单轮。G0/G7 剩余门禁独立保留，不因顺序调整视作通过。M02 逐轮证据见 [M02 实板报告](m02_sensor_reset_board_20261011.md)；G7 证据见 [candidate012 ownership 报告](g7_candidate012_tx_ownership_board_20261011.md)。
+更新：2026-10-11。M02 Explore 候选静态时序门禁、RTL 仿真 4/4、同会话传感器复位/配置 20/20、20 次用户确认的整板断电/上电后 JTAG 配置 20/20，以及无模组 fail-closed 均通过；探针不代表 SD/Flash 独立启动或 DVP/JPEG 采集。KX41 新候选 software/hardware/timeout fallback 三窗口全 60 组实板 KAT 通过，硬件窗口耗时为软件的 88.6%。candidate012 r3 的 receiver-exit 批次累计 13/20 个唯一轮次通过后，在 trial14 再次出现 HELLO_ACK 10 秒超时（COM16 已打开，39 次读取、0 字节）；此前 trial7 try01 也超时，try04 重试通过。ETW 无丢事件，但不含 USB 载荷/字节长度，根因仍未确认。candidate013 已完成同 HELLO 重试与缓存 ACK 重放修正、ARM GCC 构建、197 项哈希预检、dry-run 和 24 项 G6 测试和 9 项 batch runner 测试；`board_validated=false`，尚未下载到板卡，candidate012 旧轮次不能折算。candidate013 仍需新板上基线、ETW/AP0 单轮、20 轮 receiver-exit，之后另行完成物理 USB 拔插 20 轮。G0/G7 门禁彼此独立。证据见 [M02 实板报告](m02_sensor_reset_board_20261011.md)、[candidate012 实板报告](g7_candidate012_tx_ownership_board_20261011.md) 和 [candidate013 离线候选报告](g7_candidate013_hello_ack_retry_offline_20261011.md)。
 
 ## 本轮续推进（2026-10-11）
 
@@ -13,21 +13,21 @@ USB EP0 所有权修复已完成。最终 candidate006d/v4 的短时认证视频
 | 顺序 | 任务与交付 | 前置条件/完成判据 | 用户介入 |
 |---|---|---|---|
 | 0 | GitHub 上传 | KX41、M02、candidate012 脱敏报告及验收材料已推送到主分支；本机 ELF、原始 UART/JTAG 和原始 M02 日志留在忽略目录 | 无需动作 |
-| 1 | candidate012 receiver-exit 故障定位与恢复验收 | candidate012 r3 离线预检 197 项、dry-run、普通 CDC 基线通过。receiver-exit 单轮失败：中断前 4 帧认证有效；恢复 HELLO 后电脑 39 次读取为 0 字节，板端 HELLO/ACK 调用各 +1。EP1 IN 所有权快照显示 ACK 请求/期望长度均 51、残余 0、token=`0x8000`、match flags=`0x1f`。这证明该 dTD 与本次 ACK 调用关联并报告完成，但不证明电脑 CDC 应用收到数据。之后同构建无 JTAG 普通重连认证 141 帧/1,130 包；根因仍未知，receiver-exit 20 轮未开始。SDK 核查未支持 DTR 重建重置 toggle 的推断。新 candidate012 JTAG 基线 141 帧已通过；一键 ETW 单轮脚本完成候选校验、易失性下载、ETW 捕获、一次 receiver-exit 和自动停止，待管理员会话运行以取得主机 USB/CDC 事务证据；随后形成有依据的修正并通过单轮，再进入 20 轮 | 当前 shell 非管理员；请在管理员 PowerShell 运行 `prj/run_g7_single_etw.ps1`；新单轮门禁通过后再安排重复批次 |
-| 2 | candidate012 同构建物理 USB 拔插 20 次 | 第 1 项单轮和独立 20 轮门禁通过后逐轮提示；确认拔线时接收进程存活且认证流活动，PnP 断开/返回、新握手与认证帧，无恢复 JTAG 下载；独立记录 ready/epoch、cleanup 与原始 failure diagnosis，不以预期断连分类替代恢复判据 | 需要按提示拔插 USB Slave 数据线，保留 JTAG 和板卡供电 |
+| 1 | candidate013 HELLO_ACK 重试单轮与 receiver-exit 20 轮 | candidate013 ARM GCC 构建、197 项哈希预检、dry-run、24 项 G6 测试和 9 项 batch runner 测试通过，`board_validated=false`。先做新板上短基线，再通过 ETW/AP0 采集跑单轮；单轮通过后使用同一 ELF/manifest 完成 20/20 receiver-exit。candidate012 的 13 个通过轮不折算。 | 当前无需现场操作；板卡旁时确认 COM16/JTAG 后运行 `prj/run_g7_single_etw.ps1` |
+| 2 | candidate013 同构建物理 USB 拔插 20 次 | 第 1 项单轮和 receiver-exit 20/20 均通过后逐轮提示；确认拔线时接收进程存活且认证流活动，PnP 断开/返回、新握手与认证帧，无恢复 JTAG 下载；独立记录 ready/epoch、cleanup 与失败诊断，不以预期断连分类替代恢复判据 | 需要按提示拔插 USB Slave 数据线，保留 JTAG 和板卡供电 |
 | 3 | G0 SD 独立启动、物理复位和 30 分钟冷启动 | 使用匹配 final2 BOOT.BIN/XSA/manifest 与专用 SD；按 G0 现场流程采集启动、一次物理复位、全断电上电后的 1800 秒日志 | 需要读卡器、可用于项目的专用 SD 卡及拨码/复位/上电操作。当前没有读卡器，板上原卡保持原样 |
 | 4 | M02 摄像头物理启动补证 | 已完成：Explore 候选通过静态时序（WNS `+0.017 ns`/WHS `+0.041 ns`/DRC 0）、仿真 4/4、同会话 reset/config 20/20、20 次用户确认的整板断电/上电并逐轮 JTAG 配置 20/20、无模组 fail-closed。日志索引见 `build/m02_coldboot_cycles_20261011.jsonl`；JTAG 临时下载不代表 SD/Flash 独立启动，也未验证 DVP/JPEG 实际采集 | M02 现场门禁已完成；独立启动和采集按 G0/M03 单独安排 |
 | 5 | Keccak KX41 全 60 组实板 KAT 与性能判定 | 已完成：新候选 `--verify-only` 715 项哈希复核通过；software、KX41 hardware、forced-timeout 三窗口各 60/60 KAT 通过。硬件 absorb 60 次、squeeze 182 blocks、正常硬件零回退，timeout 窗口 60/60 清 STATUS；硬件窗口耗时为 software 的 88.6%。只针对独立 KX41 候选，不代表视频工程性能；Keccak 内部 STATE/OUTPUT 未读回 | 无 |
 | 6 | CPU 临时协议缓冲清理已实现，生产硬件/产品门禁待闭环 | candidate007 控制 helper harness、183 项预检与实板双会话/坏 Finished 回归通过；完整清零仍未证明。确定可信熵、密钥 provisioning/存储和 PS/cache/DDR/PL/USB 的清零边界，实现并取得读回/失败场景证据；JTAG 开发注入不等于生产安全 | 需要安全目标/部署条件信息时再集中询问 |
 | 7 | 脱敏源码/证据审阅包已准备，正式比赛定稿待官方细则 | 截止时间已核实为 2026-11-04 18:00；仍需确认队长后台报名/资格、AMD 具体组别规则和作品报告/视频格式，再据此定稿。现有 15 秒 722 帧录像不外推长录可靠性；Skill 与协作记录初版已补，项目级许可证/公开授权未决定 | 需要队长后台的报名/资格结果和对应 AMD 赛道最新官方文件 |
 
-本轮实际产物见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md)、[M02 实板探针](m02_sensor_reset_board_20261011.md)、[生产安全计划](production_security_plan_20261010.md)、[提交包计划](submission_delivery_plan_20261010.md)、[协作记录](collaboration_log.md)、[Skill README](../skill/eyepqc-fpga/README.md)、[许可证盘点](reuse_license_audit_20261011.md)、[candidate012 ownership 诊断报告](g7_candidate012_tx_ownership_board_20261011.md) 和 [USB ETW 采集说明](g7_usb_etw_capture_guide.md)。candidate012 新增的关联诊断排除了“旧发送完成被误认为本次 ACK 完成”的解释，但电脑仍报告 RX 零字节，实际 CDC 应用层交付和根因未确认。下一步定位主机 USB/CDC 边界，再决定是否需要新修正和单轮。G7 整体未通过。
+本轮实际产物见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md)、[M02 实板探针](m02_sensor_reset_board_20261011.md)、[生产安全计划](production_security_plan_20261010.md)、[提交包计划](submission_delivery_plan_20261010.md)、[协作记录](collaboration_log.md)、[Skill README](../skill/eyepqc-fpga/README.md)、[许可证盘点](reuse_license_audit_20261011.md)、[candidate012 实板诊断报告](g7_candidate012_tx_ownership_board_20261011.md) 和 [candidate013 离线候选报告](g7_candidate013_hello_ack_retry_offline_20261011.md)。candidate012 的 dTD 完成记录不能证明 CDC 应用层交付；candidate013 增加有界重试作为待实板验证的容错方案。G7 整体未通过。
 
-第 1 项仍是恢复验收的下一项板测任务；当前没有需要用户现场操作的步骤，可继续电脑端证据归档、生产安全方案和比赛材料缺口整理。本轮 Keccak 测试仅临时 JTAG，不写 SD/Flash、不改变板上原卡。任何新候选单轮或长测前都需重新核验设备与固件身份，避免并发 reader/JTAG。
+第 1 项仍是恢复验收的下一项板测任务；目前已完成可离线推进的修正、构建、预检、测试与记录，本轮未访问板卡。candidate013 上板前仍须核验设备与固件身份；candidate012 的旧轮次不得移记到 candidate013。
 
 约 50 分钟长测沿用用户既有时长例外，始终标明未实测满 2 小时。camera-reset 与 routing-stall 证明受控 PL 故障下 S2MM Busy 到约 3 秒软件 deadline 的恢复，不宣称硬件 DMA timeout IRQ 或物理传感器拔除。下一次上板前仍须重新核验设备状态，不能将本次短时回归外推至持续在线或剩余 G7 场景。
 
-续推进证据见 [身份核验优化板测](keccak_identity_cached_20261010.md)、[CPU 清理实施记录](security_cleanup_20261010.md) 和已更新的 [技术报告稿](technical_report.md)。新候选不覆盖旧006d验收；此前恢复冻结006d并复测140帧的记录仍有效，最新 3 秒认证视频回归也已通过。candidate011 的清理结果门槛和 HELLO/ACK 诊断已离线实现；candidate012 实板仍未通过 receiver-exit 单轮，因此 20 轮和物理 USB 拔插 20 轮尚未开始。当前无需用户现场操作；完成有证据的修正并通过新单轮后，再安排重复批次。
+续推进证据见 [身份核验优化板测](keccak_identity_cached_20261010.md)、[CPU 清理实施记录](security_cleanup_20261010.md) 和已更新的 [技术报告稿](technical_report.md)。新候选不覆盖旧006d验收；此前恢复冻结006d并复测140帧的记录仍有效，最新 3 秒认证视频回归也已通过。candidate012 receiver-exit 批次累计 13 个唯一轮次通过，但两个 HELLO_ACK 超时使该批次失败；candidate013 增加缓存 ACK 重放和有限主机重试，需从新板上基线、单轮开始，再做 20/20 receiver-exit 和后续物理 USB 拔插 20/20。
 
 ## 本轮续推进（2026-10-10）
 

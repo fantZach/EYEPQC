@@ -191,11 +191,17 @@ switch ($Action) {
             $manifest.state = 'session_already_stopped'
         }
         $manifest.stopped_utc = [DateTime]::UtcNow.ToString('o')
+        $baseName = [IO.Path]::GetFileNameWithoutExtension([string]$manifest.output_etl)
+        $etlNamePattern = '^' + [regex]::Escape($baseName) + '(?:_\d+)?\.etl$'
         $deadline = [DateTime]::UtcNow.AddSeconds(10)
-        while (!(Test-Path -LiteralPath $manifest.output_etl) -and [DateTime]::UtcNow -lt $deadline) {
-            Start-Sleep -Milliseconds 100
+        $etlFile = $null
+        while (!$etlFile -and [DateTime]::UtcNow -lt $deadline) {
+            $etlFile = Get-ChildItem -LiteralPath $outputRootFull -File -Filter "$baseName*.etl" -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match $etlNamePattern } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+            if (!$etlFile) { Start-Sleep -Milliseconds 100 }
         }
-        $manifest.etl_bytes = if (Test-Path -LiteralPath $manifest.output_etl) { (Get-Item -LiteralPath $manifest.output_etl).Length } else { 0 }
+        if ($etlFile) { $manifest.output_etl = $etlFile.FullName; $manifest.etl_bytes = $etlFile.Length }
+        else { $manifest.etl_bytes = 0 }
         $manifestPath = [string](Get-Content -LiteralPath $pointerPath -Raw | ConvertFrom-Json).manifest_path
         Write-JsonAtomic $manifestPath $manifest
         if ($manifest.etl_bytes -le 0) { throw 'Logman stopped, but the expected ETL file is missing or empty.' }
