@@ -189,6 +189,46 @@ static void reset_provider(void)
     phase = WAIT_HELLO;
 }
 
+static int bytes_are(const uint8_t *bytes, unsigned length, uint8_t expected)
+{
+    for (unsigned i = 0; i < length; ++i)
+        if (bytes[i] != expected) return 0;
+    return 1;
+}
+
+static void seed_active_sensitive_state(void)
+{
+    memset(session.transcript_hash, 0x33, sizeof session.transcript_hash);
+    memset(session.video_key, 0x44, sizeof session.video_key);
+    memset(session.control_key, 0x55, sizeof session.control_key);
+    session.nonce_prefix = 0x66778899U;
+    session.session_id = 0xaabbccddU;
+    session.packet_sequence = 1U;
+    session.command_sequence = 2U;
+    session.receive_high = 3U;
+    session.receive_mask = 4U;
+    session.receive_started = 1U;
+    session.state = EYE_STATE_STREAMING;
+    memset(hello, 0x77, sizeof hello);
+    memset(ack, 0x88, sizeof ack);
+    memset(tx, 0x99, sizeof tx);
+    phase = STREAM;
+}
+
+static int active_cpu_secrets_are_cleared(void)
+{
+    return bytes_are(session.transcript_hash, sizeof session.transcript_hash, 0U) &&
+           bytes_are(session.video_key, sizeof session.video_key, 0U) &&
+           bytes_are(session.control_key, sizeof session.control_key, 0U) &&
+           session.nonce_prefix == 0U && session.session_id == 0U &&
+           session.packet_sequence == 0U && session.command_sequence == 0U &&
+           session.receive_high == 0U && session.receive_mask == 0U &&
+           session.receive_started == 0U && session.state == EYE_STATE_ERROR &&
+           bytes_are(hello, sizeof hello, 0U) && bytes_are(ack, sizeof ack, 0U) &&
+           bytes_are((const uint8_t *)&production_drbg,
+                     sizeof production_drbg, 0U);
+}
+
 static int test_missing_provider_fails_closed(void)
 {
     reset_provider();
@@ -250,6 +290,7 @@ static int test_cleanup_failure_stays_fail_closed(void)
 {
     reset_provider();
     if (initialize_production_security()) return 1;
+    seed_active_sensitive_state();
     cleanup_wipe_status = 1;
     fail_closed();
     if (phase != FAULT || provider_shutdown_calls != 1U ||
@@ -258,6 +299,19 @@ static int test_cleanup_failure_stays_fail_closed(void)
         g6_secure_cleanup_diag.stage != G6_CLEANUP_FAILED ||
         g6_secure_cleanup_diag.failed_stage != G6_CLEANUP_FRAME_AND_SEALED)
         return 2;
+    if (!active_cpu_secrets_are_cleared() || tx[0] != 0x99U)
+        return 3; /* USB still owns TX when an earlier cleanup stage fails. */
+
+    reset_provider();
+    if (initialize_production_security()) return 4;
+    seed_active_sensitive_state();
+    fail_closed();
+    if (phase != FAULT || provider_shutdown_calls != 1U ||
+        cleanup_stop_calls != 1U || cleanup_wipe_calls != 1U ||
+        cleanup_usb_calls != 1U ||
+        g6_secure_cleanup_diag.stage != G6_CLEANUP_COMPLETE ||
+        !active_cpu_secrets_are_cleared() || !bytes_are(tx, sizeof tx, 0U))
+        return 5;
     return 0;
 }
 
@@ -423,6 +477,6 @@ int main(void)
         fprintf(stderr, "g6_production_profile_failed=%d\n", status);
         return 1;
     }
-    puts("G6_PRODUCTION_PROFILE_PASS entropy_fail_closed=1 reseed_failure_no_ack=1 cleanup_order=1 cleanup_failure_fail_closed=1 disconnect_cleanup_without_recovery=1 key_identity_pinned=1 opaque_key_decapsulation=1 startup_single_pass=1 startup_failure_wipe=1");
+    puts("G6_PRODUCTION_PROFILE_PASS entropy_fail_closed=1 reseed_failure_no_ack=1 cleanup_order=1 cleanup_failure_fail_closed=1 fault_cleanup_bytes=1 tx_owner_gate=1 disconnect_cleanup_without_recovery=1 key_identity_pinned=1 opaque_key_decapsulation=1 startup_single_pass=1 startup_failure_wipe=1");
     return 0;
 }
