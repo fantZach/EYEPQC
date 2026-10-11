@@ -1,6 +1,6 @@
 # 比赛提交检查表
 
-更新：2026-10-10。本文件是当前源码仓库的提交索引，不代表比赛组委会验收；正式格式与评分规则尚未提供。
+更新：2026-10-11。本文件是当前源码仓库的提交索引，不代表比赛组委会验收；正式格式与评分规则尚未提供。
 历史发布范围见 [2026-10-08 同步记录](github_sync_20261008.md)；本轮状态、脱敏证据摘要和隔离 Keccak 交付分别见 [验收矩阵](acceptance_matrix_20261009.md)、[Benchmark 汇总](benchmark_summary_20261009.md) 与 [C 线报告](parallel_C_20261009.md)。
 
 **同日更新：** 新的 `build/vitis/software_ready` 已具备 G3/G4/G5/G6、FSBL 和 `BOOT.BIN`；
@@ -9,6 +9,8 @@ M04/M05 原生 XSim 已通过，软件修正与统一入口见 [软件阶段交�
 首次实机使用 [bringup 指南](../doc/bringup.md)，不要继续使用源码哈希已失效的旧 `g3_delivery`。
 
 最新 USB 修复及同构建 40 轮恢复的审核见 [006d 报告](g7_candidate006d_acceptance_20261010.md) 与 [本轮同步](github_sync_20261010.md)。
+
+2026-10-11 新增：KX41 独立候选全 60 组三窗口实板 KAT 和性能结果见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md)；M02 Explore 候选传感器复位探针 20/20 见 [M02 实板报告](m02_sensor_reset_board_20261011.md)。M02 整板冷启动、无摄像头 fail-closed、G0/G7 未完成门禁仍按验收矩阵保留。
 
 ## 提交包索引
 

@@ -18,6 +18,7 @@ except ImportError:  # Allow direct execution by the board runner.
 
 ROOT = Path(__file__).resolve().parents[1]
 XSDB = Path(r"E:\fpg\2026.1\Vivado\bin\xsdb.bat")
+COMPLETION_MARKER = b"KX41_BENCH_DONE"
 
 
 def digest(path: Path) -> str:
@@ -88,7 +89,7 @@ def capture_uart(ser, proc, timeout: float, *, started_at: float | None = None,
             if chunk:
                 raw.extend(chunk)
             code = proc.poll()
-            if b"KECCAK_SX4_BENCH_DONE" in raw and code is not None:
+            if COMPLETION_MARKER in raw and code is not None:
                 break
             if code is not None and code != 0:
                 break
@@ -147,7 +148,7 @@ def main() -> int:
               "captured_utc": datetime.now(timezone.utc).isoformat(),
               "uart_sha256": hashlib.sha256(raw).hexdigest(), "uart_bytes": len(raw),
               "persistent_storage_written": False, "board_claim": "not asserted until parser passes"}
-    if code == 0 and "KECCAK_SX4_BENCH_DONE" in text:
+    if code == 0 and COMPLETION_MARKER.decode("ascii") in text:
         try:
             record["parsed"] = parse_log(text, expected_counter_hz=audit["counter_hz_expected"])
             record["status"] = "passed"

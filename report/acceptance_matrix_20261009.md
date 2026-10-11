@@ -1,4 +1,4 @@
-# EYEPQC 统一验收矩阵（建立 2026-10-09，更新 2026-10-10）
+# EYEPQC 统一验收矩阵（建立 2026-10-09，更新 2026-10-11）
 
 状态口径：**完成**仅指所列构建与证据满足该行判据；**部分**表示已有单轮/短窗口证据但重复或场景范围未满足；**未测**表示没有该门禁的有效测量；**失败**表示该批次发生失败，不将失败轮次删除或并入通过数。旧证据不自动代表当前候选构建。
 
@@ -9,7 +9,7 @@
 | G0 SD 独立启动 | final2 的 BOOT.BIN 与 SD0-enabled XSA 已构建；当前没有本镜像 SD 启动记录 | 未测 | 需要可写入的专用 SD 介质后，按本报告现场步骤采集单次 SD 启动日志；现有卡不写 | 是：介质准备、对应跳帽/拨码、冷上电、LED 观察；用户本轮确认没有读卡器，板上有一张 SD 卡并保持原样 |
 | G0 物理复位后恢复 | 没有本轮 final2 的 SD 物理复位证据；JTAG reset/load 不替代用户按板载复位键 | 未测 | 单独跑 `reset_probe`，验证恰好两次 SD BOOT 且第二次 READY/STAT | 是：确认板卡复位键并恰好按一次 |
 | G0 断电冷启动稳定性 | final2 当前仅有 30 秒 JTAG；无 SD 全断电后 30 分钟连续日志 | 未测 | SD 启动后连续 1800 秒；保存 JSONL 和 result；不加 20 次 G0 启动要求 | 是：全断电再上电、保持板卡和 UART 采集 30 分钟 |
-| M02 摄像头冷启动与错误接线退出（独立于 G0/G7） | 本轮电脑端 `sim/tb/test_m02.py` 4/4 通过，包含仿真 20 次配置启动；G7 受控 camera-reset/routing-stall 20/20 不是物理断电冷启动或错误接线退出 | 电脑仿真通过；物理冷启动与未插/错误接线退出仍未测 | 按 M02 独立批次及原判据采集，不并入 G0 单次/30 分钟或 G7 受控恢复批次 | 是：摄像头接线与冷启动操作；当前板卡端点未被 Windows 枚举 |
+| M02 摄像头冷启动与错误接线退出（独立于 G0/G7） | `sim/tb/test_m02.py` 4/4；Explore 候选板上 sensor reset/config 20/20，ID `0x5640`、error=0。传感器复位不是整板断电启动 | 仿真与板上传感器探针通过；20 次整板冷启动和无摄像头 fail-closed 未测 | 按 M02 独立批次采集 20 次电源循环和断电后无模组退出，不并入 G0/G7 | 是：用户需执行真实电源循环；负向项需完全断电后拔模组 |
 | G1 摄像头 JPEG 至 DDR、解码和统计 | 历史 M05/G3 实拍含 JPEG 解码、连续帧统计；`report/competition_submission.md` 与 `doc/steps.md` 记录 1000 帧结果。与当前 G0 门禁分开 | 完成（已有历史证据；提交包需整理关联素材） | 交付时附上准确构建、帧长、FPS 和对应原始素材索引 | 否（复核/整理） |
 | G2 DMA→PL AES-GCM→DDR 黄金参考比对及长度/背压 | `doc/steps.md` 记载 21 个固定包、尾长覆盖、Tag 验证；M08 另有仿真背压 | 完成（已有证据） | 汇总统一 Benchmark 时链接现有证据，不重复宣称整机 USB 通过 | 否 |
 | G3 摄像头→DDR→AES-GCM→主机认证解密 | 历史 G3 有实拍逐包认证/解密、JPEG 可解码及 1000 帧快速子采样数据；不同模式分别标明 | 完成（限定离线视频链路） | 交付明确指出连续任务的末帧认证范围，不把 G3 等同 USB G4/G5 | 否 |
@@ -24,7 +24,7 @@
 | 实机录像/导出/回放 | `report/demo_software_ready.md`：15 秒窗口、722/722 回调帧保存，MP4/AVI 各解码 722 帧；包含换钥空档 | 完成（短测） | 长录与不同负载仍需独立证据；不把 722 帧短测写成长时可靠性 | 否；A 独占板卡，若连接/供电异常才用户介入 |
 | 生产密钥、可信熵、全域清零 | 已完成源码审阅与 [实施计划](production_security_plan_20261010.md)，既有显式清理范围逐项列明；JTAG/主机 seed 仍是开发态，未验证可信熵、生产存储和全域清零 | 源审阅/计划完成；生产安全未通过 | 按实际熵/存储可行性和产品威胁模型建立接口、fail-closed 与秘密清理矩阵；安全目标需要时集中确认 | 需要部署/器件方案信息时再询问；本轮未写永久配置 |
 | C Keccak PS AXI-Lite 隔离工程 | 原 route4k 实现/XSA 哈希不变；新 safe_elfs 修复 MMIO 条件与 printf ABI 后，实板 SW 1/HW 3 轮，ID/version、tc76 KAT、96 HW 调用及 96 timeout fallback 通过。完整 ML-KEM HW 约慢 8.6%，STATUS 清理为 0 | 功能在所列范围完成；本版无加速收益；全域清零读回未证 | 按用户本轮授权提前测试，结束已恢复006d。优化 MMIO/批处理后再实测，不把当前隔离 XSA 代替视频工程；见 [Benchmark](keccak_board_benchmark_20261010.md) | 无需当前物理动作 |
-| C-KX41 全 60 组 ML-KEM-512 板测候选 | `report/keccak_sponge_x4_board_60kat_offline_20261010.md/.json`；全 60 向量同 ELF 三窗口逐项 KAT 设计，ELF/XSA/manifest hash 固定，严格硬件窗口拒绝软件回退 | 离线 ARM 构建、715 项 hash 复核、parser 11 项测试通过；该 ELF 尚未上板 | 重新枚举后进行三个窗口的 60 向量硬件采集；旧 tcId 76 记录不代替本候选板测 | 需要 JTAG/USB CDC 可见；本轮 PnP 未发现板卡端点 |
+| C-KX41 全 60 组 ML-KEM-512 板测候选 | 新 ELF `3ed1f6b8…`；715 项哈希复核、匹配 XSA 和严格 UART 采集；software/hardware/timeout fallback 三窗口各 60/60 | 通过（限本独立候选）；正常硬件零回退，timeout STATUS 60/60 清零；硬件窗口耗时为软件的 88.6% | 保持独立于正式视频工程；Keccak STATE/OUTPUT 内部清零未做读回证明。详见 [实板报告](keccak_sponge_x4_capture_fix_20261011.md) | 无；候选实板测试后已恢复 candidate006d |
 | 统一 Benchmark 和比赛材料 | 新增 `report/benchmark_summary_20261009.json`，显式列出 10 条隔离记录；包括 C route4k 离线 Keccak 实现/XSA 哈希验证（不含板测/性能指标）；脚本/测试/字段说明见 `prj/collect_benchmark_summary.py`、`sim/tb/test_benchmark_summary.py`、`report/benchmark_summary_20261009.md` | 电脑端汇总完成；正式规则/格式与答辩材料待定 | 缺少结构化原始数据的 G4/G5 和重复批次仍保持未汇总；继续收集同构建下的窗口、分辨率、吞吐、延迟与资源数据；新增 006d 固定来源逐轮独立摘要；规则未给定前不造论文/PPT/评分数据 | 否 |
 
 ## 本轮可直接完成的用户侧操作

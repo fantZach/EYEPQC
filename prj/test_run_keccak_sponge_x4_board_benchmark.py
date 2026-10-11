@@ -1,6 +1,6 @@
 import unittest
 
-from prj.run_keccak_sponge_x4_board_benchmark import capture_uart
+from prj.run_keccak_sponge_x4_board_benchmark import COMPLETION_MARKER, capture_uart
 
 
 class FakeClock:
@@ -43,7 +43,7 @@ class FakeProcess:
 
 class BoardCaptureTests(unittest.TestCase):
     def test_waits_for_firmware_marker_after_successful_xsdb_exit(self):
-        ser = FakeSerial([b"", b"", b"KECCAK_SX4_BENCH_DONE\r\n"])
+        ser = FakeSerial([b"", b"", COMPLETION_MARKER + b"\r\n"])
         proc = FakeProcess(0)
 
         raw, code, _elapsed = capture_uart(ser, proc, timeout=10,
@@ -51,7 +51,7 @@ class BoardCaptureTests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         self.assertEqual(ser.read_count, 3)
-        self.assertIn(b"KECCAK_SX4_BENCH_DONE", raw)
+        self.assertIn(b"KX41_BENCH_DONE", raw)
 
     def test_stops_early_on_xsdb_failure(self):
         ser = FakeSerial([b""] * 5)

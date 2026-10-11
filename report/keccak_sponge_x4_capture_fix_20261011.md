@@ -1,23 +1,24 @@
-# KX41 串口采集修复与候选固件复核
+# KX41 串口采集修复与 60 组实板验收
 
-**状态：离线构建、清单复核和采集器回归测试通过；全 60 组实板测试仍未执行。** 新候选没有替代硬件验收证据，也不与历史 tcId 76 单向量板测合并。
+**状态：KX41 新候选完成实板验收；M02 探针完成 20/20 次板上摄像头传感器复位。M02 整板冷启动和无摄像头 fail-closed 仍待现场操作。**
 
-## 修复内容
+## 采集器修复
 
-旧采集器在 XSDB 成功退出后最多再等待 1 秒；而 XSDB Tcl 已经启动固件并断开连接，固件仍可能继续输出三窗口的 60 组 KAT。该时间窗会截断 UART 日志，导致完整板测结果无法可靠归档。现在采集器在 XSDB 成功退出后持续读串口，直到固件输出 `KECCAK_SX4_BENCH_DONE` 且 XSDB 已退出，或达到整体串口超时；XSDB 非零退出仍立即结束并判失败。
+旧采集器会在 XSDB 成功退出后 1 秒停止读串口。首次延长等待时误用了不存在的完成标记 `KECCAK_SX4_BENCH_DONE`；固件实际输出 `KX41_BENCH_DONE`。因此首个试跑等待到 600 秒并把运行记录标成 incomplete，虽然保留的 UART 文件完整。该记录未作为验收批次。
 
-新增的模拟串口测试覆盖“XSDB 成功退出后延迟收到完成标记”和“XSDB 非零退出立即终止”两种情况。解析器原有 11 项测试与采集器新增 2 项测试共 **13/13 通过**。
+现已把真实完成标记定义为 `COMPLETION_MARKER = b"KX41_BENCH_DONE"`，采集器在 XSDB 成功后持续读到该标记，新增的延迟完成标记和 XSDB 失败测试均使用真实字符串。解析器 11 项测试与采集器 2 项测试共 **13/13 通过**。
 
-## 新候选离线证据
+## 最终候选与实板结果
 
-- 构建目录：`build/kx41_capturefix_20261011/`。首次长路径尝试留下在 `build/parallel_20261011/C/firmware_sx4_retry3_board_60kat_capturefix/`；HSI 生成 BSP 时目标路径达到 261 个字符并失败。该目录保留作故障记录；新候选使用较短的全新路径重新构建，没有复用失败输出。
-- ARM ELF SHA-256：`c978de597bbc9eaea63a686171d706d5adabed97e50ab9f66eff7bc9d1c472f9`，大小 564520 字节。
-- 候选 `build_manifest.json` SHA-256：`23f1e5fdcffc626be6e2231a5e6b89552964f4bd1d42e5d2fa5f03571acef8c1`。
-- `--verify-only` 通过，复核 715 项输入哈希；匹配 XSA SHA-256 `ed634c6d480de36c16af64962093069cc120e04af5b38498978e210bf404318d`，最终布线 WNS `+0.029 ns`、WHS `+0.082 ns`，失败端点为零。
-- 测试仍覆盖 keygen 25、encapsulation 25、decapsulation 10 个向量，并计划在软件、KX41 硬件、强制超时回退三个窗口逐项比对输出。普通硬件窗口的任何软件/超时/错误回退都会使 parser 拒绝验收。
+- 构建目录：`build/kx41_capturefix2_20261011/`；运行证据：`build/keccak_sponge_x4_board/kx41_capturefix2_20261011_run1/`。
+- 固件 ELF SHA-256：`3ed1f6b87c3318750a6e6f6904a8c82d33002b4b77f6747c71b8df69c37d2d17`；候选 manifest SHA-256：`961d9e869c104bb96c2be4f0cdf98e7e50d0a5864b81addc03fb6bd2b09dda76`；`--verify-only` 的 715 项哈希检查通过。
+- 匹配 XSA SHA-256：`ed634c6d480de36c16af64962093069cc120e04af5b38498978e210bf404318d`，最终布线 WNS `+0.029 ns`、WHS `+0.082 ns`，失败端点为零。
+- 2026-10-11 实板采集状态 `passed`，XSDB 返回码 0，耗时 10.157 秒；UART 13,009 字节，SHA-256 `458059e8bb7e01a3953e9cb8e9c3dda983e0a4f8b066eae72ff23bc703bbc525`。
+- Software、KX41 hardware、timeout fallback 三窗口分别覆盖 60/60 个唯一 KAT，keygen 25、encapsulation 25、decapsulation 10。硬件窗口有 60 次硬件 absorb、182 个 squeeze block，软件/超时/错误回退均为 0；timeout 窗口 60/60 次按预期回退且 STATUS 全零，最终 STATUS 为 `0x00000000`。
+- 计数器频率 `333333343 Hz` 下，software/hardware/timeout 窗口分别为 `50.106/44.391/50.678 ms`；本批硬件窗口耗时为软件的 88.6%。这只代表该独立 KX41 候选的本次 ML-KEM-512 KAT 窗口，不外推到视频工程。
 
-## 硬件边界与下一步
+新的实际板测通过可复现的严格 parser；首个错标记试跑保留为采集器缺陷记录，不并入验收。固件只临时经 JTAG 下载，没有写 SD/Flash。超时清理只读取 STATUS；没有读回 Keccak 内部 STATE/OUTPUT，不能据此声称内部数据清零。
 
-本轮只构建固件、校验文件哈希并运行本地单元测试；没有打开 UART、XSDB、JTAG，也没有向 FPGA 或启动介质写入内容。最新 Windows present-only 枚举可见 USB-SERIAL CH340（COM14），仍未发现目标 `03FD:7020` CDC 或 Xilinx/Digilent JTAG，因此全 60 组板测不能开始。
+## M02 补测与板卡恢复
 
-待 JTAG 与 USB CDC 同时恢复枚举后，使用本目录执行严格采集：先 software，再 KX41 hardware，再 forced-timeout；三窗口都要包含完整 60 组且通过 parser。板测需独占串口/JTAG，保留原始 UART/JTAG 日志与候选 manifest。新的离线清单位于 `build/kx41_capturefix_20261011/build_manifest.json`；旧候选 `firmware_sx4_retry3_board_60kat_strict2` 及其构建身份保持不变。
+M02 Explore 候选已在板上完成 20 次传感器复位探针，20/20 配置均读到 sensor ID `0x5640`、error=0；这不是 20 次整板冷启动。KX41 和 M02 测试后均已恢复哈希匹配的 candidate006d bitstream/PS7 init/ELF。最新枚举看到视频 CDC `03FD:7020` 为 COM16，KX41 UART 为 CH340 COM14。M02 的整板冷启动批次和完全断电后移除摄像头模组的 fail-closed 项仍待现场操作。
