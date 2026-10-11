@@ -187,7 +187,13 @@ EVIDENCE_STATUS = [
         "id": "production_security",
         "status": "not_passed",
         "evidence": "report/production_security_profile_20261011.md",
-        "scope": "生产 profile 已接入 HMAC_DRBG-SHA-256、NIST 向量/ARM 链接和 fail-closed 接口；真实 provider、可信板端熵源、密钥存储与全域清零读回均未闭环。",
+        "scope": "生产 profile 已接入 HMAC_DRBG-SHA-256、NIST 向量/ARM 链接和 fail-closed 接口；主机可控临时 ML-KEM/HKDF 缓冲现已 best-effort 擦除。真实 provider、可信板端熵源、密钥存储与全域清零读回均未闭环。",
+    },
+    {
+        "id": "full_sim_regression_20261011",
+        "status": "passed_128_of_128_offline",
+        "evidence": "report/production_security_profile_20261011.md",
+        "scope": "完整 sim/tb 回归 128/128 通过，265.763 秒；这是电脑端软件/仿真证据，不是板端生产安全或 G0/G7 验收。",
     },
     {
         "id": "security_cleanup_candidate007",
