@@ -7,7 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "prj" / "read_g6_rekey_diag.tcl"
-VALID_ARGS = ["0x100000", "116"]
+VALID_ARGS = ["0x100000", "144"]
 
 
 def run_script(
@@ -22,9 +22,11 @@ def run_script(
     except ValueError:
         diag_addr = int(VALID_ARGS[0], 0)
     diag = [
-        0x47365244, 1, 116, 2, 0, 1, 6, 2, 2, 0xFFFFFFFF,
+        0x47365244, 2, 144, 2, 0, 1, 6, 2, 2, 0xFFFFFFFF,
         1, 0, 1, 1, 14, 1, 0, 17, 17, 0,
-        0x20000, 0x20000, 0x12000000, 0, 0, 1, 1, 0, 2,
+        0x20000, 0x20000, 0x12000000, 0, 0, 1, 1, 0,
+        0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0,
+        2,
     ]
     for index, value in (overrides or {}).items():
         diag[index] = value
@@ -99,6 +101,8 @@ class ReadG6RekeyDiagTests(unittest.TestCase):
         self.assertIn("hello_attempts=2", output)
         self.assertIn("hello_ack_send_status=ffffffff", output)
         self.assertIn("ep1_ready=00020000", output)
+        self.assertIn("tx_completion_count=0", output)
+        self.assertIn("tx_completion_status=ffffffff", output)
         self.assertIn("payload_or_keys=not_read", output)
         self.assertNotRegex(
             SCRIPT.read_text(encoding="utf-8"),
@@ -106,8 +110,8 @@ class ReadG6RekeyDiagTests(unittest.TestCase):
         )
 
     def test_invalid_args_rejected_before_connect(self):
-        for args in (["0x100004", "116"], ["0x3fffffc0", "116"],
-                     ["0x100000", "112"], ["not-an-address", "116"],
+        for args in (["0x100004", "144"], ["0x3fffffc0", "144"],
+                     ["0x100000", "116"], ["not-an-address", "144"],
                      ["0x100000"]):
             with self.subTest(args=args):
                 exit_code, _output, calls = run_script(list(args))
@@ -116,7 +120,8 @@ class ReadG6RekeyDiagTests(unittest.TestCase):
                 self.assertEqual(calls["mrd"], 0)
 
     def test_bad_header_phase_boolean_or_torn_snapshot_rejected(self):
-        for overrides in ({0: 0}, {1: 2}, {2: 112}, {3: 3}, {4: 6}, {12: 2}, {16: 2048}):
+        for overrides in ({0: 0}, {1: 1}, {2: 116}, {3: 3}, {4: 6},
+                          {12: 2}, {16: 2048}, {29: 6}, {34: 32}):
             with self.subTest(overrides=overrides):
                 exit_code, _output, calls = run_script(
                     VALID_ARGS, overrides=dict(overrides)

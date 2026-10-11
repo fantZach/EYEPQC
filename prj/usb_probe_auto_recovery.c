@@ -14,6 +14,13 @@ void usb_cdc_g6_diag_fill(volatile struct g6_rekey_diag *diag)
     diag->usb_dtr = dtr ? 1U : 0U;
     diag->connection_epoch = connection_epoch;
     diag->tx_ready = tx_ready ? 1U : 0U;
+    diag->tx_completion_count = tx_completion_count;
+    diag->tx_completion_status = tx_completion_status;
+    diag->tx_completion_token = tx_completion_token;
+    diag->tx_completion_residual = tx_completion_residual;
+    diag->tx_completion_requested = tx_completion_requested;
+    diag->tx_completion_expected = tx_completion_expected;
+    diag->tx_completion_match_flags = tx_completion_match_flags;
 #ifdef G6_USB
     diag->rx_head = rx_head;
     diag->rx_tail = rx_tail;
@@ -227,6 +234,7 @@ static int secure_tx_cleanup(XUsbPs *usb, uint8_t *buffer, unsigned capacity)
         diag->usb_cleanup_path = G6_USB_CLEANUP_PATH_QUIESCE_REBUILD;
         status = g6_secure_usb_tx_cleanup_run(&context, &ops, diag);
     }
+    if (!status) tx_release_after_quiesce();
     usb_irq_restore(irq_state);
     return status;
 }
@@ -249,10 +257,10 @@ int usb_cdc_clear_control_queue(void)
     if (!configured || !dtr || eye_usb_rearm_data(&usb, 0)) {
         ++usb_recovery_failures;
         configured = 0;
-        tx_ready = 1;
         rx_reset();
         return 1;
     }
+    tx_release_after_quiesce();
     rx_reset();
     memset(rx_ring, 0, sizeof rx_ring);
     memset(control_record, 0, sizeof control_record);

@@ -29,8 +29,29 @@ static u8 jpeg[65536] __attribute__((aligned(64)));
 static u8 line_coding[8] __attribute__((aligned(64))) = {0x00, 0xc2, 0x01, 0x00, 0, 0, 8};
 static volatile int configured, dtr, tx_ready = 1, line_pending, mode;
 static volatile u32 connection_epoch;
+#define USB_TX_RESULT_NOT_COMPLETED 0xffffffffU
+#define USB_TX_RESULT_TRANSFER_ERROR 4U
+#define USB_TX_RESULT_OWNERSHIP_UNCERTAIN 5U
+static volatile int tx_pending;
+static const u8 * volatile tx_pending_buffer;
+static XUsbPs_dTD * volatile tx_pending_td;
+static volatile u32 tx_pending_size, tx_pending_epoch;
+static volatile u32 tx_completion_count;
+static volatile u32 tx_completion_status = USB_TX_RESULT_NOT_COMPLETED;
+static volatile u32 tx_completion_token = USB_TX_RESULT_NOT_COMPLETED;
+static volatile u32 tx_completion_residual = USB_TX_RESULT_NOT_COMPLETED;
+static volatile u32 tx_completion_requested = USB_TX_RESULT_NOT_COMPLETED;
+static volatile u32 tx_completion_expected = USB_TX_RESULT_NOT_COMPLETED;
+static volatile u32 tx_completion_match_flags;
 volatile u32 usb_recovery_failures;
 static volatile u32 test_epoch, test_epoch_bytes;
+static void usb_memory_barrier(void) {
+#if defined(__arm__) && !defined(G6_USB_NATIVE_TEST)
+    __asm__ volatile("dmb sy" ::: "memory");
+#else
+    __asm__ volatile("" ::: "memory");
+#endif
+}
 #ifdef G6_USB
 static u8 rx_ring[2048], control_record[1039];
 static volatile u32 rx_head, rx_tail, rx_bad;
@@ -42,11 +63,7 @@ static void rx_push(u8 value) {
     u32 next = (rx_head + 1U) & 2047U;
     if (next == rx_tail) { rx_bad = 1; return; }
     rx_ring[rx_head] = value;
-#if defined(__arm__) && !defined(G6_USB_NATIVE_TEST)
-    __asm__ volatile("dmb sy" ::: "memory");
-#else
-    __asm__ volatile("" ::: "memory");
-#endif
+    usb_memory_barrier();
     rx_head = next;
 }
 #endif
@@ -59,6 +76,16 @@ static void be16(u8 *p, u32 n) { p[0] = n >> 8; p[1] = n; }
 static void be32(u8 *p, u32 n) { p[0] = n >> 24; p[1] = n >> 16; p[2] = n >> 8; p[3] = n; }
 static void be64(u8 *p, u32 n) { memset(p, 0, 4); be32(p + 4, n); }
 #endif
+
+/* tx_ready means the submitted buffer is no longer owned by the USB DMA. */
+static void tx_release_after_quiesce(void) {
+    tx_pending = 0;
+    tx_pending_buffer = NULL;
+    tx_pending_td = NULL;
+    tx_pending_size = tx_pending_epoch = 0;
+    usb_memory_barrier();
+    tx_ready = 1;
+}
 
 /* Device class CDC, ACM control interface 0 + data interface 1. Test VID/PID only. */
 static const u8 dev_desc[] = {
@@ -113,15 +140,20 @@ void XUsbPs_SetConfiguration(XUsbPs *u, int index) {
     rx_reset();
 #endif
     jpeg_receiving = jpeg_ready = jpeg_bad = 0;
-    tx_ready = 1;
     line_pending = 0;
     if (index != 1) {
+        if (eye_usb_rearm_data(u, 0)) {
+            ++usb_recovery_failures;
+        } else {
+            tx_release_after_quiesce();
+        }
         XUsbPs_EpDisable(u, 1, XUSBPS_EP_DIRECTION_OUT);
         XUsbPs_EpDisable(u, 1, XUSBPS_EP_DIRECTION_IN);
         XUsbPs_EpDisable(u, 2, XUSBPS_EP_DIRECTION_IN);
         return;
     }
     if (eye_usb_rearm_data(u, 1)) { ++usb_recovery_failures; return; }
+    tx_release_after_quiesce();
     configured = 1;
 }
 void XUsbPs_SetConfigurationApp(XUsbPs *u, XUsbPs_SetupData *s) { (void)u; (void)s; }
@@ -145,9 +177,13 @@ void XUsbPs_ClassReq(XUsbPs *u, XUsbPs_SetupData *s) {
         rx_reset();
 #endif
         jpeg_receiving = jpeg_ready = jpeg_bad = 0;
-        if (!dtr && configured) {
-            if (eye_usb_rearm_data(u, 0)) { ++usb_recovery_failures; configured = 0; }
-            tx_ready = 1;
+        if (!dtr && (configured || tx_pending)) {
+            if (eye_usb_rearm_data(u, 0)) {
+                ++usb_recovery_failures;
+                configured = 0;
+            } else {
+                tx_release_after_quiesce();
+            }
         }
         if (dtr) block_no = 0;
         XUsbPs_EpBufferSend(u, 0, NULL, 0);
@@ -183,8 +219,59 @@ static void ep0(void *ref, u8 ep, u8 event, void *data) {
     }
 }
 static void ep1_in(void *ref, u8 ep, u8 event, void *data) {
-    (void)ref; (void)ep; (void)data;
-    if (event == XUSBPS_EP_EVENT_DATA_TX) tx_ready = 1;
+    if (event != XUSBPS_EP_EVENT_DATA_TX || ep != 1) return;
+    XUsbPs *u = ref;
+    if (!u) return;
+    XUsbPs_EpIn *in = &u->DeviceConfig.Ep[ep].In;
+    XUsbPs_dTD *td = in->dTDTail;
+    u32 token, residual, requested, match = 0U;
+    const u32 ownership_uncertain = XUSBPS_dTDTOKEN_ACTIVE_MASK;
+    const u32 transfer_errors = XUSBPS_dTDTOKEN_HALT_MASK |
+        XUSBPS_dTDTOKEN_XERR_MASK | XUSBPS_dTDTOKEN_BUFERR_MASK;
+
+    if (!tx_pending) {
+        /* The standalone throughput probe queues directly through the SDK. */
+        tx_ready = 1;
+        return;
+    }
+    if (!td) {
+        tx_completion_status = USB_TX_RESULT_OWNERSHIP_UNCERTAIN;
+        return;
+    }
+
+    token = XUsbPs_ReaddTD(td, XUSBPS_dTDTOKEN);
+    residual = (token & XUSBPS_dTDTOKEN_LEN_MASK) >> 16;
+    requested = in->RequestedBytes;
+    if ((const u8 *)data == tx_pending_buffer) match |= 1U;
+    if (XUsbPs_ReaddTD(td, XUSBPS_dTDUSERDATA) ==
+        (u32)(UINTPTR)tx_pending_buffer)
+        match |= 2U;
+    if (td == tx_pending_td) match |= 4U;
+    if (tx_pending_epoch == connection_epoch) match |= 8U;
+    if (requested == tx_pending_size) match |= 16U;
+
+    ++tx_completion_count;
+    tx_completion_token = token;
+    tx_completion_residual = residual;
+    tx_completion_requested = requested;
+    tx_completion_expected = tx_pending_size;
+    tx_completion_match_flags = match;
+
+    /* A mismatched descriptor, pointer, request size, or connection epoch
+     * cannot release the caller's buffer. Keep it locked for secure cleanup. */
+    if (match != 31U || (token & ownership_uncertain)) {
+        tx_completion_status = USB_TX_RESULT_OWNERSHIP_UNCERTAIN;
+        return;
+    }
+
+    tx_completion_status = ((token & transfer_errors) || residual)
+        ? USB_TX_RESULT_TRANSFER_ERROR : 0U;
+    tx_pending = 0;
+    tx_pending_buffer = NULL;
+    tx_pending_td = NULL;
+    tx_pending_size = tx_pending_epoch = 0;
+    usb_memory_barrier();
+    tx_ready = 1;
 }
 static void ep1_out(void *ref, u8 ep, u8 event, void *data) {
     (void)data;
@@ -247,7 +334,7 @@ static void usb_event(void *ref, u32 mask) {
     if (mask & XUSBPS_IXR_UR_MASK) {
         ++connection_epoch;
         configured = dtr = mode = line_pending = 0;
-        tx_ready = 1;
+        if (!tx_pending) tx_ready = 1;
 #ifdef G6_USB
         rx_reset();
 #endif
@@ -361,9 +448,21 @@ int usb_cdc_send(u8 *data, u32 size) {
         if (now - start > COUNTS_PER_SECOND) return 2;
     }
     if (!usb_cdc_ready() || connection_epoch != epoch) return 1;
+    if (!data || !size || size > 16384U) return 3;
+    tx_pending_buffer = data;
+    tx_pending_size = size;
+    tx_pending_epoch = epoch;
+    tx_pending_td = usb.DeviceConfig.Ep[1].In.dTDHead;
+    tx_completion_status = USB_TX_RESULT_NOT_COMPLETED;
+    tx_completion_token = USB_TX_RESULT_NOT_COMPLETED;
+    tx_completion_residual = USB_TX_RESULT_NOT_COMPLETED;
+    tx_completion_requested = USB_TX_RESULT_NOT_COMPLETED;
+    tx_completion_expected = size;
+    tx_completion_match_flags = 0U;
+    tx_pending = 1;
     tx_ready = 0;
     if (XUsbPs_EpBufferSend(&usb, 1, data, size) != XST_SUCCESS) {
-        tx_ready = 1;
+        tx_completion_status = 3U;
         return 3;
     }
     XTime_GetTime(&start);
@@ -372,7 +471,11 @@ int usb_cdc_send(u8 *data, u32 size) {
         XTime_GetTime(&now);
         if (now - start > COUNTS_PER_SECOND) return 2;
     }
-    return usb_cdc_ready() && connection_epoch == epoch ? 0 : 1;
+    if (!usb_cdc_ready() || connection_epoch != epoch) return 1;
+    if (tx_completion_status == 0U) return 0;
+    if (tx_completion_status == USB_TX_RESULT_NOT_COMPLETED)
+        return (int)USB_TX_RESULT_OWNERSHIP_UNCERTAIN;
+    return (int)tx_completion_status;
 }
 
 #ifndef USB_LIBRARY

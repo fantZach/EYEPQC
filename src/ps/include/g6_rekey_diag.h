@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #define G6_REKEY_DIAG_MAGIC 0x47365244U /* G6RD */
-#define G6_REKEY_DIAG_VERSION 1U
+#define G6_REKEY_DIAG_VERSION 2U
 
 /* Candidate-only, non-sensitive snapshot for receiver-exit / REKEY diagnosis.
  * The ABI contains counters and controller status only. It never stores any
@@ -39,10 +39,17 @@ struct g6_rekey_diag {
     volatile uint32_t control_errors;           /* 100 */
     volatile uint32_t fatal_errors;             /* 104 */
     volatile uint32_t transport_errors;         /* 108 */
-    volatile uint32_t sequence_end;             /* 112: equals even sequence */
+    volatile uint32_t tx_completion_count;      /* 112 */
+    volatile uint32_t tx_completion_status;     /* 116: 0 ok, 4 transfer error, 5 ownership uncertain */
+    volatile uint32_t tx_completion_token;      /* 120: raw EP1 IN dTD token */
+    volatile uint32_t tx_completion_residual;   /* 124: remaining bytes */
+    volatile uint32_t tx_completion_requested; /* 128: SDK request byte count */
+    volatile uint32_t tx_completion_expected;   /* 132: caller byte count */
+    volatile uint32_t tx_completion_match_flags;/* 136: bit0 callback ptr, bit1 dTD ptr, bit2 slot, bit3 epoch, bit4 size */
+    volatile uint32_t sequence_end;             /* 140: equals even sequence */
 };
 
-_Static_assert(sizeof(struct g6_rekey_diag) == 116U,
+_Static_assert(sizeof(struct g6_rekey_diag) == 144U,
                "G6 rekey diagnostic ABI size changed");
 _Static_assert(offsetof(struct g6_rekey_diag, phase) == 16U &&
                offsetof(struct g6_rekey_diag, hello_ack_send_status) == 36U &&
@@ -50,7 +57,9 @@ _Static_assert(offsetof(struct g6_rekey_diag, phase) == 16U &&
                offsetof(struct g6_rekey_diag, ep1_prime) == 80U &&
                offsetof(struct g6_rekey_diag, ep1_ready) == 84U &&
                offsetof(struct g6_rekey_diag, epcr1) == 88U &&
-               offsetof(struct g6_rekey_diag, sequence_end) == 112U,
+               offsetof(struct g6_rekey_diag, tx_completion_count) == 112U &&
+               offsetof(struct g6_rekey_diag, tx_completion_match_flags) == 136U &&
+               offsetof(struct g6_rekey_diag, sequence_end) == 140U,
                "G6 rekey diagnostic ABI offsets changed");
 
 void usb_cdc_g6_diag_fill(volatile struct g6_rekey_diag *diag);

@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / 'prj'))
 import build_software as base
 
 CPU_FLAGS = ['-mcpu=cortex-a9', '-mfpu=vfpv3', '-mfloat-abi=hard']
-VARIANT = 'g6-secure-buffer-cleanup-usb-bounded-candidate011-receiver-exit-diag-v1'
+VARIANT = 'g6-secure-buffer-cleanup-candidate012-tx-ownership-diag-v2'
 LOOP_OLD = '''        if (status) {
             ++g6_capture_errors;
             ++g6_dropped;
@@ -318,7 +318,7 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
                 'g6_injected_capture_errors': 4, 'g6_auto_recovery_request': 4,
                 'g6_auto_recovery_diag': 56,
                 'g6_transport_failure_diag': 32, 'g6_secure_cleanup_diag': 120,
-                'g6_rekey_diagnostic': 116}
+                'g6_rekey_diagnostic': 144}
     owned = {}
     for name, size in expected.items():
         address, actual = abi.get(name, (0, 0))

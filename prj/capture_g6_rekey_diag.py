@@ -15,14 +15,16 @@ TCL = ROOT / 'prj/read_g6_rekey_diag.tcl'
 PHASES = {'WAIT_HELLO', 'WAIT_KEM', 'WAIT_FINISHED', 'WAIT_START', 'STREAM', 'FAULT'}
 HEX_FIELDS = {
     'hello_ack_send_status', 'cleanup_last_result', 'ep1_prime', 'ep1_ready',
-    'epcr1', 'ep1_completion', 'ep1_flush',
+    'epcr1', 'ep1_completion', 'ep1_flush', 'tx_completion_status',
+    'tx_completion_token', 'tx_completion_match_flags',
 }
 INTEGER_FIELDS = {
     'abi', 'sequence', 'phase_id', 'last_control_type', 'received_controls',
     'hello_attempts', 'hello_ack_send_attempts', 'cleanup_count',
     'usb_configured', 'usb_dtr', 'connection_epoch', 'tx_ready',
     'rx_bytes_buffered', 'rx_head', 'rx_tail', 'rx_bad', 'control_errors',
-    'fatal_errors', 'transport_errors',
+    'fatal_errors', 'transport_errors', 'tx_completion_count',
+    'tx_completion_residual', 'tx_completion_requested', 'tx_completion_expected',
 }
 
 
@@ -66,7 +68,7 @@ def parse_snapshot(stdout: str) -> dict:
         if not 0 <= value <= 0xFFFFFFFF:
             raise ValueError('G6_REKEY_DIAG field is outside uint32: ' + name)
         parsed[name] = value
-    if parsed['abi'] != 1 or parsed['phase_id'] >= len(PHASES):
+    if parsed['abi'] != 2 or parsed['phase_id'] >= len(PHASES):
         raise ValueError('G6_REKEY_DIAG ABI or phase ID is invalid')
     if parsed['phase'] != list(('WAIT_HELLO', 'WAIT_KEM', 'WAIT_FINISHED',
                                 'WAIT_START', 'STREAM', 'FAULT'))[parsed['phase_id']]:
@@ -76,6 +78,13 @@ def parse_snapshot(stdout: str) -> dict:
             raise ValueError('G6_REKEY_DIAG boolean is outside range: ' + name)
     if any(parsed[name] > 2047 for name in ('rx_bytes_buffered', 'rx_head', 'rx_tail')):
         raise ValueError('G6_REKEY_DIAG receive ring value is outside bounds')
+    if parsed['tx_completion_status'] not in (0, 3, 4, 5, 0xFFFFFFFF) or \
+            parsed['tx_completion_match_flags'] > 31:
+        raise ValueError('G6_REKEY_DIAG TX completion status is outside bounds')
+    for name in ('tx_completion_residual', 'tx_completion_requested',
+                 'tx_completion_expected'):
+        if parsed[name] != 0xFFFFFFFF and parsed[name] > 16384:
+            raise ValueError('G6_REKEY_DIAG TX length is outside bounds: ' + name)
     return parsed
 
 
@@ -91,7 +100,7 @@ def load_build_identity(workspace: Path) -> tuple[dict, int, int]:
         raise ValueError('Build has no owned G6 rekey diagnostic symbol')
     address = int(owned['address'], 0) if isinstance(owned['address'], str) else int(owned['address'])
     size = int(owned['size'])
-    if size != 116 or address < 0x00100000 or address % 64 or address + size > 0x40000000:
+    if size != 144 or address < 0x00100000 or address % 64 or address + size > 0x40000000:
         raise ValueError('Build manifest has an invalid G6 rekey diagnostic range')
     identity = {
         'manifest_sha256': digest(manifest_path),
@@ -131,7 +140,7 @@ def capture(workspace: Path, tool_root: Path, output_prefix: Path) -> dict:
         raise RuntimeError(f'XSDB diagnostic read failed with exit {result.returncode}')
     snapshot = parse_snapshot(result.stdout)
     record = {
-        'schema': 'eyepqc-g6-rekey-diagnostic-v1',
+        'schema': 'eyepqc-g6-rekey-diagnostic-v2',
         'captured_utc': datetime.now(timezone.utc).isoformat(),
         'build': identity,
         'address': address,

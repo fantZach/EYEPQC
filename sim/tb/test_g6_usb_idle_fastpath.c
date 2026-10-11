@@ -17,6 +17,12 @@ static void *low_dma_fixture;
 static uint8_t test_tx[G6_SECURE_TX_CAPACITY] __attribute__((aligned(64)));
 static unsigned rebuild_calls;
 static unsigned endpoint_faulted;
+static int simulate_send_status;
+static int simulate_completion;
+static int simulate_disconnect_after_completion;
+static const u8 *simulate_callback_data;
+static u32 simulate_completion_token;
+static u32 simulate_requested_bytes;
 
 int XUsbPs_EpPrime(XUsbPs *instance, u8 ep, u8 direction)
 {
@@ -25,7 +31,22 @@ int XUsbPs_EpPrime(XUsbPs *instance, u8 ep, u8 direction)
 
 int XUsbPs_EpBufferSend(XUsbPs *instance, u8 ep, const u8 *buffer, u32 length)
 {
-    (void)instance; (void)ep; (void)buffer; (void)length; return XST_SUCCESS;
+    if (simulate_send_status != XST_SUCCESS) return simulate_send_status;
+    if (simulate_completion && ep == 1U) {
+        XUsbPs_EpIn *in = &instance->DeviceConfig.Ep[ep].In;
+        XUsbPs_dTD *td = in->dTDHead;
+        XUsbPs_WritedTD(td, XUSBPS_dTDUSERDATA, (u32)(UINTPTR)buffer);
+        XUsbPs_WritedTD(td, XUSBPS_dTDTOKEN, simulate_completion_token);
+        in->RequestedBytes = simulate_requested_bytes == UINT32_MAX
+            ? length : simulate_requested_bytes;
+        ep1_in(instance, ep, XUSBPS_EP_EVENT_DATA_TX,
+               (void *)(simulate_callback_data ? simulate_callback_data : buffer));
+        if (simulate_disconnect_after_completion) {
+            dtr = 0;
+            ++connection_epoch;
+        }
+    }
+    return XST_SUCCESS;
 }
 
 int XUsbPs_EpBufferReceive(XUsbPs *instance, u8 ep, u8 **buffer, u32 *length,
@@ -119,6 +140,24 @@ static void reset_fixture(void)
         XUsbPs_dTDSetNLP(&descriptors[i],
             (u32)(uintptr_t)&descriptors[(i + 1U) % 4U]);
     configured = dtr = tx_ready = 1;
+    connection_epoch = 0U;
+    tx_pending = 0;
+    tx_pending_buffer = NULL;
+    tx_pending_td = NULL;
+    tx_pending_size = tx_pending_epoch = 0U;
+    tx_completion_count = 0U;
+    tx_completion_status = USB_TX_RESULT_NOT_COMPLETED;
+    tx_completion_token = USB_TX_RESULT_NOT_COMPLETED;
+    tx_completion_residual = USB_TX_RESULT_NOT_COMPLETED;
+    tx_completion_requested = USB_TX_RESULT_NOT_COMPLETED;
+    tx_completion_expected = USB_TX_RESULT_NOT_COMPLETED;
+    tx_completion_match_flags = 0U;
+    simulate_send_status = XST_SUCCESS;
+    simulate_completion = 0;
+    simulate_disconnect_after_completion = 0;
+    simulate_callback_data = NULL;
+    simulate_completion_token = 0U;
+    simulate_requested_bytes = UINT32_MAX;
     registers[XUSBPS_EPCR1_OFFSET / 4U] = XUSBPS_EPCR_TXE_MASK;
     rebuild_calls = endpoint_faulted = 0U;
 }
@@ -260,17 +299,81 @@ static int test_idle_ownership_rejections_fall_back(void)
     return 0;
 }
 
+static int test_tx_completion_requires_matching_successful_descriptor(void)
+{
+    reset_fixture();
+    simulate_completion = 1;
+    if (usb_cdc_send(test_tx, 64U) != 0 || !tx_ready || tx_pending ||
+        tx_completion_status != 0U || tx_completion_count != 1U ||
+        tx_completion_residual != 0U || tx_completion_requested != 64U ||
+        tx_completion_expected != 64U || tx_completion_match_flags != 31U)
+        return 1;
+
+    const u32 failed_tokens[] = {
+        XUSBPS_dTDTOKEN_HALT_MASK,
+        XUSBPS_dTDTOKEN_XERR_MASK,
+        XUSBPS_dTDTOKEN_BUFERR_MASK,
+        3U << 16U,
+    };
+    for (unsigned i = 0; i < sizeof failed_tokens / sizeof failed_tokens[0]; ++i) {
+        reset_fixture();
+        simulate_completion = 1;
+        simulate_completion_token = failed_tokens[i];
+        if (usb_cdc_send(test_tx, 64U) != USB_TX_RESULT_TRANSFER_ERROR ||
+            !tx_ready || tx_pending || tx_completion_status != USB_TX_RESULT_TRANSFER_ERROR)
+            return (int)(10U + i);
+    }
+
+    /* An active dTD or a mismatched callback pointer leaves ownership unknown.
+     * The send returns as disconnected, but cleanup must prove quiescence before release. */
+    reset_fixture();
+    simulate_completion = 1;
+    simulate_completion_token = XUSBPS_dTDTOKEN_ACTIVE_MASK;
+    simulate_disconnect_after_completion = 1;
+    if (usb_cdc_send(test_tx, 64U) != 1 || tx_ready || !tx_pending ||
+        tx_completion_status != USB_TX_RESULT_OWNERSHIP_UNCERTAIN)
+        return 20;
+    int cleanup_status = usb_cdc_secure_cleanup_tx(test_tx, sizeof test_tx);
+    if ((!cleanup_status && (!tx_ready || tx_pending)) ||
+        (cleanup_status && (tx_ready || !tx_pending))) return 21;
+
+    reset_fixture();
+    simulate_completion = 1;
+    simulate_callback_data = test_tx + 1;
+    simulate_disconnect_after_completion = 1;
+    if (usb_cdc_send(test_tx, 64U) != 1 || tx_ready || !tx_pending ||
+        tx_completion_status != USB_TX_RESULT_OWNERSHIP_UNCERTAIN ||
+        tx_completion_match_flags != 30U)
+        return 22;
+    cleanup_status = usb_cdc_secure_cleanup_tx(test_tx, sizeof test_tx);
+    if ((!cleanup_status && (!tx_ready || tx_pending)) ||
+        (cleanup_status && (tx_ready || !tx_pending))) return 23;
+
+    /* Queue failure also keeps the buffer locked until cleanup proves that the
+     * SDK did not leave a descriptor owning it. */
+    reset_fixture();
+    simulate_send_status = XST_FAILURE;
+    if (usb_cdc_send(test_tx, 64U) != 3 || tx_ready || !tx_pending ||
+        tx_completion_status != 3U)
+        return 24;
+    cleanup_status = usb_cdc_secure_cleanup_tx(test_tx, sizeof test_tx);
+    if ((!cleanup_status && (!tx_ready || tx_pending)) ||
+        (cleanup_status && (tx_ready || !tx_pending))) return 25;
+    return 0;
+}
+
 int main(void)
 {
     int idle = test_idle_wipe_preserves_pipe();
     int fallback = test_active_or_nonidle_uses_quiesce_path();
     int corrupt = test_corrupt_ring_fails_closed_before_wipe();
     int ownership = test_idle_ownership_rejections_fall_back();
-    if (idle || fallback || corrupt || ownership) {
-        fprintf(stderr, "g6_usb_idle_fastpath_failed=%d,%d,%d,%d\n",
-                idle, fallback, corrupt, ownership);
+    int tx_completion = test_tx_completion_requires_matching_successful_descriptor();
+    if (idle || fallback || corrupt || ownership || tx_completion) {
+        fprintf(stderr, "g6_usb_idle_fastpath_failed=%d,%d,%d,%d tx_completion=%d\n",
+                idle, fallback, corrupt, ownership, tx_completion);
         return 1;
     }
-    puts("actual_probe_idle_wipe_preserves_pipe=PASS active_fallback=PASS corrupt_fail_closed=PASS completion_qh_fault_fallback=PASS");
+    puts("actual_probe_idle_wipe_preserves_pipe=PASS active_fallback=PASS corrupt_fail_closed=PASS completion_qh_fault_fallback=PASS tx_completion_ownership=PASS");
     return 0;
 }

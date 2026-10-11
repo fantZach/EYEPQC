@@ -57,6 +57,7 @@ class G6UsbIdleFastpathTests(unittest.TestCase):
             ran = subprocess.run([str(executable)], capture_output=True, text=True, check=False)
             self.assertEqual(ran.returncode, 0, msg=f"harness failed:\n{ran.stdout}\n{ran.stderr}")
             self.assertIn("actual_probe_idle_wipe_preserves_pipe=PASS", ran.stdout)
+            self.assertIn("tx_completion_ownership=PASS", ran.stdout)
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ proc parse_u32 {name value} {
 
 proc validate_range {address size} {
     if {$address < 0x00100000 || $address >= 0x40000000 ||
-        $size != 116 || ($address % 64) != 0 ||
+        $size != 144 || ($address % 64) != 0 ||
         ($address + $size) > 0x40000000} {
         error "Invalid DDR range or G6 rekey diagnostic size"
     }
@@ -55,19 +55,26 @@ if {[catch {
     set connected 1
     targets -set -filter {name == "APU"}
 
-    # G6_REKEY_DIAG_MAGIC, version 1, 29-word / 116-byte ABI.
+    # G6_REKEY_DIAG_MAGIC, version 2, 36-word / 144-byte ABI.
     # The double sequence check rejects a torn snapshot while firmware updates.
-    set before [mrd_u32 $diag_addr 29]
+    set before [mrd_u32 $diag_addr 36]
     set magic [lindex $before 0]
     set version [lindex $before 1]
     set size_bytes [lindex $before 2]
     set sequence [lindex $before 3]
-    set sequence_end [lindex $before 28]
-    set after [mrd_u32 $diag_addr 29]
+    set tx_completion_count [lindex $before 28]
+    set tx_completion_status [lindex $before 29]
+    set tx_completion_token [lindex $before 30]
+    set tx_completion_residual [lindex $before 31]
+    set tx_completion_requested [lindex $before 32]
+    set tx_completion_expected [lindex $before 33]
+    set tx_completion_match_flags [lindex $before 34]
+    set sequence_end [lindex $before 35]
+    set after [mrd_u32 $diag_addr 36]
     set after_sequence [lindex $after 3]
-    set after_sequence_end [lindex $after 28]
+    set after_sequence_end [lindex $after 35]
 
-    if {$magic != 0x47365244 || $version != 1 || $size_bytes != 116} {
+    if {$magic != 0x47365244 || $version != 2 || $size_bytes != 144} {
         error "G6 rekey diagnostic magic/version/size mismatch"
     }
     if {$sequence != $sequence_end || ($sequence & 1) != 0 ||
@@ -109,15 +116,24 @@ if {[catch {
     if {$rx_bytes_buffered > 2047 || $rx_head > 2047 || $rx_tail > 2047} {
         error "G6 rekey diagnostic RX ring field is outside bounds"
     }
+    if {$tx_completion_status ni {0 3 4 5 4294967295} ||
+        $tx_completion_match_flags > 31 ||
+        ($tx_completion_residual != 4294967295 && $tx_completion_residual > 16384) ||
+        ($tx_completion_requested != 4294967295 && $tx_completion_requested > 16384) ||
+        ($tx_completion_expected != 4294967295 && $tx_completion_expected > 16384)} {
+        error "G6 rekey diagnostic TX completion field is outside bounds"
+    }
 
-    puts [format "G6_REKEY_DIAG abi=%u sequence=%u phase=%s phase_id=%u last_control_type=%u received_controls=%u hello_attempts=%u hello_ack_send_attempts=%u hello_ack_send_status=%08x cleanup_count=%u cleanup_last_result=%08x usb_configured=%u usb_dtr=%u connection_epoch=%u tx_ready=%u rx_bytes_buffered=%u rx_head=%u rx_tail=%u rx_bad=%u ep1_prime=%08x ep1_ready=%08x epcr1=%08x ep1_completion=%08x ep1_flush=%08x control_errors=%u fatal_errors=%u transport_errors=%u scope=PS_AP0_DDR_diagnostic_only payload_or_keys=not_read" \
+    puts [format "G6_REKEY_DIAG abi=%u sequence=%u phase=%s phase_id=%u last_control_type=%u received_controls=%u hello_attempts=%u hello_ack_send_attempts=%u hello_ack_send_status=%08x cleanup_count=%u cleanup_last_result=%08x usb_configured=%u usb_dtr=%u connection_epoch=%u tx_ready=%u rx_bytes_buffered=%u rx_head=%u rx_tail=%u rx_bad=%u ep1_prime=%08x ep1_ready=%08x epcr1=%08x ep1_completion=%08x ep1_flush=%08x control_errors=%u fatal_errors=%u transport_errors=%u tx_completion_count=%u tx_completion_status=%08x tx_completion_token=%08x tx_completion_residual=%u tx_completion_requested=%u tx_completion_expected=%u tx_completion_match_flags=%08x scope=PS_AP0_DDR_diagnostic_only payload_or_keys=not_read" \
         $version $sequence $phase_name $phase $last_control_type \
         $received_control_count $hello_attempt_count $hello_ack_send_attempts \
         $hello_ack_send_status $cleanup_count $cleanup_last_result \
         $usb_configured $usb_dtr $connection_epoch $tx_ready \
         $rx_bytes_buffered $rx_head $rx_tail $rx_bad $ep1_prime $ep1_ready \
         $epcr1 $ep1_completion $ep1_flush $control_errors $fatal_errors \
-        $transport_errors]
+        $transport_errors $tx_completion_count $tx_completion_status \
+        $tx_completion_token $tx_completion_residual $tx_completion_requested \
+        $tx_completion_expected $tx_completion_match_flags]
 
     disconnect
     set connected 0

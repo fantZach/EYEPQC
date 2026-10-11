@@ -76,7 +76,7 @@ function Get-BuildIdentity {
         $diagOwned=$diagProperty.Value
         $diagAddress=[uint64]$diagOwned.address; $diagSize=[uint32]$diagOwned.size
         if ($diagAddress -lt 0x00100000 -or $diagAddress -ge 0x40000000 -or
-            ($diagAddress % 64) -ne 0 -or $diagSize -ne 116) {
+            ($diagAddress % 64) -ne 0 -or $diagSize -ne 144) {
             throw 'Manifest has an invalid G6 rekey diagnostic DDR range.'
         }
     }
@@ -84,7 +84,7 @@ function Get-BuildIdentity {
         rekey_diag_address=$diagAddress; rekey_diag_size=$diagSize }
 }
 function Read-RekeyDiagnostic($Identity, [string]$OutputPrefix) {
-    if (!$Identity.rekey_diag_address -or $Identity.rekey_diag_size -ne 116) {
+    if (!$Identity.rekey_diag_address -or $Identity.rekey_diag_size -ne 144) {
         throw 'This build has no owned G6 rekey diagnostic symbol; use the receiver-exit diagnostic candidate.'
     }
     if (!(Test-Path -LiteralPath $diagScript)) { throw "G6 diagnostic reader is missing: $diagScript" }
