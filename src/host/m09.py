@@ -9,7 +9,7 @@ from pathlib import Path
 import subprocess
 import struct
 
-from transient_file import staged_file
+from transient_file import read_mutable_file, staged_file
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "board/output/m09"
@@ -171,13 +171,17 @@ def main():
                 shared[:] = bytes(len(shared))
         print("CT_SHA256", hashlib.sha256(ciphertext).hexdigest())
     else:
-        private = bytearray((OUT / "private.bin").read_bytes())
+        private = read_mutable_file(OUT / "private.bin", SK)
         result = None
+        expected = None
         try:
             result = kem.decaps(private, (OUT / "ciphertext.bin").read_bytes())
-            print("MATCH", result == (OUT / "expected_shared.bin").read_bytes())
+            expected = read_mutable_file(OUT / "expected_shared.bin", SS)
+            print("MATCH", result == expected)
         finally:
             private[:] = bytes(len(private))
+            if expected is not None:
+                expected[:] = bytes(len(expected))
             if result is not None:
                 result[:] = bytes(len(result))
 
@@ -198,7 +202,7 @@ def board(workspace, tool_root):
         if item["size"] != size or address % 64 or not 0x100000 <= address <= 0x40000000 - size:
             raise ValueError("Invalid ELF-owned DDR symbol: " + name)
     pk = (OUT / "public.bin").read_bytes()
-    sk = bytearray((OUT / "private.bin").read_bytes())
+    sk = read_mutable_file(OUT / "private.bin", SK)
     expected = None
     loaded = False
 
@@ -219,7 +223,7 @@ def board(workspace, tool_root):
             log_file.write_text(result.stdout + result.stderr)
             if result.returncode or "M09_JOB_DONE" not in result.stdout:
                 raise RuntimeError(f"JTAG {label} failed; see {log_file}")
-            reply = bytearray(reply_file.read_bytes())
+            reply = read_mutable_file(reply_file, 128)
             try:
                 fields = struct.unpack_from("<8I3Q", reply)
                 if (fields[0], fields[1], fields[2], fields[3], fields[4]) != (
@@ -234,7 +238,7 @@ def board(workspace, tool_root):
 
     try:
         ciphertext = (OUT / "ciphertext.bin").read_bytes()
-        expected = bytearray((OUT / "expected_shared.bin").read_bytes())
+        expected = read_mutable_file(OUT / "expected_shared.bin", SS)
         pin = (OUT / "public.sha256").read_text().strip()
         if (len(pk), len(sk), len(ciphertext), len(expected)) != (PK, SK, CT, SS):
             raise ValueError("Static key material has invalid length")

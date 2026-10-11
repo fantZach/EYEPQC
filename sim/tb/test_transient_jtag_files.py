@@ -15,10 +15,25 @@ sys.path.insert(0, str(ROOT / "src/host"))
 import m09
 import m10_board
 from handshake import wipe_secret
-from transient_file import staged_file
+from transient_file import read_mutable_file, staged_file
 
 
 class TransientJtagFileTests(unittest.TestCase):
+    def test_sensitive_file_reads_are_bounded_and_wipeable(self):
+        with tempfile.TemporaryDirectory(prefix="eyepqc-sensitive-read-") as temp:
+            path = Path(temp) / "private.bin"
+            secret = bytes((index % 251 for index in range(m09.SK)))
+            path.write_bytes(secret)
+
+            loaded = read_mutable_file(path, m09.SK)
+            self.assertIsInstance(loaded, bytearray)
+            self.assertEqual(loaded, secret)
+            loaded[:] = bytes(len(loaded))
+            self.assertFalse(any(loaded))
+
+            with self.assertRaisesRegex(ValueError, "size limit"):
+                read_mutable_file(path, m09.SK - 1)
+
     def test_test_keyset_publishes_private_file_last_and_refuses_overwrite(self):
         with tempfile.TemporaryDirectory(prefix="eyepqc-test-keyset-") as temp:
             folder = Path(temp)

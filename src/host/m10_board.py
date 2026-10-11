@@ -11,7 +11,7 @@ import subprocess
 from handshake import HostSession, wipe_secret
 from m09 import Kem, LIB, OUT as M09_OUT, PK, SK
 from protocol import MessageType
-from transient_file import staged_file
+from transient_file import read_mutable_file, staged_file
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "board/output/m10"
@@ -70,7 +70,7 @@ def exchange(workspace, tool_root, owned, label, command, payload=b"", *, boot=F
         log_file.write_text(result.stdout + result.stderr)
         if result.returncode or "M10_JOB_DONE" not in result.stdout:
             raise RuntimeError(f"JTAG {label} failed; see {log_file}")
-        reply = bytearray(reply_file.read_bytes())
+        reply = read_mutable_file(reply_file, JOB.size)
         try:
             header = struct.unpack_from("<8I", reply)
             if header[0] != 0x30314d45 or header[1] != (3 if expected_status else 2) or (
@@ -90,7 +90,7 @@ def board(workspace, tool_root):
     if not LIB.is_file():
         raise FileNotFoundError("Run python src/host/m09.py build first")
     pk = (M09_OUT / "public.bin").read_bytes()
-    sk = bytearray((M09_OUT / "private.bin").read_bytes())
+    sk = read_mutable_file(M09_OUT / "private.bin", SK)
     pin = None
     host = None
     loaded = False

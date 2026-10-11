@@ -7,7 +7,39 @@ storage.
 from contextlib import contextmanager
 import os
 from pathlib import Path
+import stat
 import tempfile
+
+
+def read_mutable_file(path, max_size=16 * 1024 * 1024):
+    """Read a bounded regular file directly into a wipeable bytearray."""
+    path = Path(path)
+    data = bytearray()
+    try:
+        with path.open("rb") as stream:
+            metadata = os.fstat(stream.fileno())
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError("sensitive input must be a regular file")
+            size = metadata.st_size
+            if size > max_size:
+                raise ValueError("sensitive input exceeds size limit")
+            data = bytearray(size)
+            view = memoryview(data)
+            offset = 0
+            try:
+                while offset < size:
+                    count = stream.readinto(view[offset:])
+                    if not count:
+                        raise OSError("sensitive input changed while being read")
+                    offset += count
+            finally:
+                view.release()
+            if os.fstat(stream.fileno()).st_size != size:
+                raise OSError("sensitive input changed while being read")
+        return data
+    except BaseException:
+        data[:] = bytes(len(data))
+        raise
 
 
 def _wipe_and_unlink(path):
