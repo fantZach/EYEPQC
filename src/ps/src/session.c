@@ -198,18 +198,27 @@ int eye_session_board_finished(struct eye_session *s, uint8_t out[44])
     static const uint8_t label[] = "board finished";
     uint8_t tag[32];
     int status;
-    if (!s) return EYE_SESSION_INPUT;
+    if (!s) {
+        if (out) wipe(out, 44);
+        return EYE_SESSION_INPUT;
+    }
     if (!out) {
         eye_session_error(s);
         return EYE_SESSION_INPUT;
     }
-    if (s->state != EYE_STATE_CONFIRM || s->board_finished_sent) return EYE_SESSION_STATE;
+    if (s->state != EYE_STATE_CONFIRM || s->board_finished_sent) {
+        wipe(out, 44);
+        return EYE_SESSION_STATE;
+    }
     status = finished(tag, s, label, sizeof label - 1);
     if (!status && eye_control_encode(out, 44, EYE_FINISHED_BOARD, tag, 32))
         status = EYE_SESSION_INPUT;
     wipe(tag, sizeof tag);
     if (!status) s->board_finished_sent = 1;
-    else eye_session_error(s);
+    else {
+        wipe(out, 44);
+        eye_session_error(s);
+    }
     return status;
 }
 
@@ -280,17 +289,25 @@ int eye_session_command(struct eye_session *s, const uint8_t message[52])
 
 int eye_session_next_nonce(struct eye_session *s, uint8_t out[12])
 {
-    if (!s) return EYE_SESSION_INPUT;
+    if (!s) {
+        if (out) wipe(out, 12);
+        return EYE_SESSION_INPUT;
+    }
     if (!out) {
         eye_session_error(s);
         return EYE_SESSION_INPUT;
     }
-    if (s->state != EYE_STATE_STREAMING) return EYE_SESSION_STATE;
+    if (s->state != EYE_STATE_STREAMING) {
+        wipe(out, 12);
+        return EYE_SESSION_STATE;
+    }
     if (s->packet_sequence >= ROTATE_AT) {
+        wipe(out, 12);
         eye_session_rekey(s);
         return EYE_SESSION_ROTATE;
     }
     if (eye_nonce_encode(out, 12, s->nonce_prefix, s->packet_sequence)) {
+        wipe(out, 12);
         eye_session_error(s);
         return EYE_SESSION_INPUT;
     }

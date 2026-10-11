@@ -189,6 +189,26 @@ class SessionFailClosedTests(unittest.TestCase):
         self.assertEqual(self.lib.eye_session_next_nonce(ct.byref(session), None), -1)
         self.assert_session_retired(session)
 
+    def test_finished_and_nonce_output_buffers_are_zeroed_on_error(self):
+        session = self.make_active_session()
+        finished = self.filled(44)
+        self.assertEqual(
+            self.lib.eye_session_board_finished(ct.byref(session), finished), -2)
+        self.assertEqual(bytes(finished), bytes(44))
+
+        session = self.make_active_session()
+        nonce = self.filled(12)
+        session.state = 2  # EYE_STATE_CONFIRM, not STREAMING.
+        self.assertEqual(self.lib.eye_session_next_nonce(ct.byref(session), nonce), -2)
+        self.assertEqual(bytes(nonce), bytes(12))
+
+        session = self.make_active_session()
+        nonce = self.filled(12)
+        session.packet_sequence = (1 << 64) - 1 - 65535
+        self.assertEqual(self.lib.eye_session_next_nonce(ct.byref(session), nonce), -4)
+        self.assertEqual(bytes(nonce), bytes(12))
+        self.assertEqual(session.state, 4)  # EYE_STATE_REKEY
+
 
 if __name__ == "__main__":
     unittest.main()

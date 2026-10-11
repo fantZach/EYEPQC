@@ -38,9 +38,11 @@ int eye_session_init(struct eye_session *s, const uint8_t pk[800]);
 int eye_session_begin(struct eye_session *s, const uint8_t shared[32],
                       const uint8_t hello[48], const uint8_t ack[48],
                       const uint8_t kem[780]);
+/* The Finished record output is cleared on error when a destination is supplied. */
 int eye_session_board_finished(struct eye_session *s, uint8_t out[44]);
 int eye_session_verify_host_finished(struct eye_session *s, const uint8_t message[44]);
 int eye_session_command(struct eye_session *s, const uint8_t message[52]);
+/* Rejected or exhausted nonce requests clear the output when supplied. */
 int eye_session_next_nonce(struct eye_session *s, uint8_t out[12]);
 /* Call only AFTER AES-GCM authentication succeeds. */
 int eye_session_accept_authenticated_packet(struct eye_session *s,
