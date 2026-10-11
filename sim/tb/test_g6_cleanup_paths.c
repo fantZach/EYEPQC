@@ -295,6 +295,12 @@ static int test_duplicate_hello_replays_cached_ack(void)
     if (diag_hello_attempt_count != 2U || diag_hello_ack_send_attempts != 2U ||
         diag_hello_ack_send_status != 0U) return 4;
 #endif
+    body[35] ^= 1U;
+    if (eye_control_encode(hello_message, sizeof hello_message,
+                           EYE_HELLO, body, sizeof body) ||
+        handle_control(hello_message, sizeof hello_message) == 0 ||
+        phase != WAIT_KEM || usb_send_calls != 2U)
+        return 5;
     return 0;
 }
 

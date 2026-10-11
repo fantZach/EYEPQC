@@ -1,6 +1,6 @@
 # G7 candidate012 TX ownership 实板诊断
 
-日期：2026-10-11。结论：candidate012 r3 的 receiver-exit 20 轮批次累计有 13 个轮次通过，但 trial 7 和 trial 14 均出现 HELLO_ACK 超时，G7 未通过；物理 USB 拔插批次未开始。新增的发送所有权诊断确认 trial 7 try01 的 51 字节 HELLO_ACK 对应 EP1 IN dTD 已报告完成；Windows 主机进程仍记录 40 次读取、0 字节。trial 7 try04 随后通过，trial 8–13 也通过；trial 14 主机打开 COM16 后 39 次读取仍为 0 字节。同期 USB ETW 完整采集但未包含载荷，不能证明 ACK 实际到达 CDC 应用层，根因仍未确认。candidate013 已加入同一 HELLO 重试和缓存 ACK 重放的离线修正并完成构建与预检，但尚未下载或实板验证。
+日期：2026-10-11。结论：candidate012 r3 的 receiver-exit 20 轮批次累计有 13 个轮次通过，但 trial 7 和 trial 14 均出现 HELLO_ACK 超时，G7 未通过；物理 USB 拔插批次未开始。新增的发送所有权诊断确认 trial 7 try01 的 51 字节 HELLO_ACK 对应 EP1 IN dTD 已报告完成；Windows 主机进程仍记录 40 次读取、0 字节。trial 7 try04 随后通过，trial 8–13 也通过；trial 14 主机打开 COM16 后 39 次读取仍为 0 字节。同期 USB ETW 完整采集但未包含载荷，不能证明 ACK 实际到达 CDC 应用层，根因仍未确认。candidate014 已加入同一 HELLO 重试和缓存 ACK 重放的离线修正并完成构建与预检，但尚未下载或实板验证。
 
 ## 构建与基线
 
@@ -39,7 +39,7 @@
 
 - candidate012 r3 的 20 轮 receiver-exit 批次停在 13/20 个唯一轮次通过：trial 1–6、7 try04、8–13 通过；trial 7 try01 与 trial 14 try01 的 recovery handshake 均超时。原失败记录保留在忽略目录 `report/g7_runs/g7_batch_receiver_exit_20261011_111918_837_220dcd2d/`，不能把 13/20 写成 G7 通过。
 - 普通无 JTAG CDC 重连与视频基线已通过，但不能替代 receiver-exit 门禁。trial 14 的主机阶段为 COM16 枚举、串口打开、DTR 拉高，随后 HELLO_ACK 等待 39 次读取、RX 0 字节；ETW 记录无事件丢失，但不含 USB 数据包/字节长度，不能区分 ACK 未到设备、控制器完成与 CDC 应用投递之间的边界。
-- candidate013 的离线修正、ARM 构建、197 项哈希预检和 dry-run 已通过；其固件哈希不同于 candidate012，所以 candidate012 的 13 个通过轮不能计入 candidate013。candidate013 仍需新的板上基线、单轮、20 轮 receiver-exit，再单独进行物理 USB 拔插门禁。
+- candidate014 的离线修正、ARM 构建、197 项哈希预检和 dry-run 已通过；其固件哈希不同于 candidate012，所以 candidate012 的 13 个通过轮不能计入 candidate014。candidate014 仍需新的板上基线、单轮、20 轮 receiver-exit，再单独进行物理 USB 拔插门禁。
 - SD/Flash/eFuse 未写入；candidate012 仅临时 JTAG 下载。不得把短时基线或单次 dTD 完成上升为 G7 验收。
 
 ## Windows USB ETW 采集准备（2026-10-11）
@@ -57,7 +57,7 @@
 - Trial 1–6 首次通过；trial 7 try01 在恢复握手阶段超时，主机 40 次读取、0 字节。AP0 前后快照显示 HELLO 与 ACK 计数各增加 1；ACK 长度 51/51、残余 0、token `0x8000`、匹配标志 `0x1f`、错误计数为 0，但主机未读到字节。try04 通过，随后 trial 8–13 通过。
 - Trial 14 try01 在启动中断接收端时退出：COM16 枚举、串口打开及 DTR 拉高均完成；HELLO_ACK 等待阶段 39 次读取、0 字节，`decoded_control=0`，最终为 `G6 control response timeout`。该失败没有板端 AP0 后快照，因此设备侧 ACK 状态未知。
 - Trial 14 ETW 文件为本机忽略产物 `build/g7_usb_etw/g7_usb_etw_20261011_113055_851_000001.etl`，23,986,176 字节；USBXHCI/UCX/USBHUB3 与 Kernel-IoTrace 已启用，ETL 头部 `EventsLost=0`、`BuffersLost=0`。在失败时窗内观察到主机 USB bulk/interrupt 请求活动和成功 NTSTATUS 完成，但此 trace 不含 USB 数据载荷、逐传输实际字节长度，且事件指针尚未可靠映射到 CDC endpoint；不能据此证明 ACK 已由主机串口应用接收。
-- 原 runner 以 `trial_*_try*.json` 文件数生成 retry 编号，导致 trial 7 的 `_rekey_before/_after.json` 诊断 sidecar 使下一次编号跳到 try04，尽管 try02/try03 没有实际硬件尝试。此脚本缺陷已在 candidate013 源码中修正并由离线回归测试覆盖。
+- 原 runner 以 `trial_*_try*.json` 文件数生成 retry 编号，导致 trial 7 的 `_rekey_before/_after.json` 诊断 sidecar 使下一次编号跳到 try04，尽管 try02/try03 没有实际硬件尝试。此脚本缺陷已在 candidate014 源码中修正并由离线回归测试覆盖。
 
 ## candidate012 普通 CDC 重连基线（10:29）
 

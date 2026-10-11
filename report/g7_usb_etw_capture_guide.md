@@ -17,7 +17,7 @@
 .\prj\run_g7_single_etw.ps1
 ```
 
-脚本先验证 candidate013 HELLO_ACK retry 的文件哈希，再通过易失性 JTAG 下载并建立 3 秒认证视频基线；确认基线同构建、JTAG 完成且至少有 2 帧后，启动 ETW 并只执行一次 receiver-exit runner，最后自动停止采集。试验期间不重新下载固件。基线、runner stdout/stderr、ETL 和 launcher 清单均留在 Git 忽略的本地目录。运行前不要同时打开其他摄像头接收进程，也不要在脚本完成前断电或拔线。
+脚本先验证 candidate014 HELLO_ACK retry 的文件哈希，再通过易失性 JTAG 下载并建立 3 秒认证视频基线；确认基线同构建、JTAG 完成且至少有 2 帧后，启动 ETW 并只执行一次 receiver-exit runner，最后自动停止采集。试验期间不重新下载固件。基线、runner stdout/stderr、ETL 和 launcher 清单均留在 Git 忽略的本地目录。运行前不要同时打开其他摄像头接收进程，也不要在脚本完成前断电或拔线。
 
 可先无副作用查看计划：
 
@@ -37,10 +37,10 @@
 
    脚本要求恰好一个状态正常的 `03FD:7020` CDC 设备，并在输出里显示 ETL 路径。若检查失败或设备数不符，不会启动采集。
 
-2. 在另一个普通 PowerShell 窗口，从项目根目录运行一次 candidate013 receiver-exit 测试：
+2. 在另一个普通 PowerShell 窗口，从项目根目录运行一次 candidate014 receiver-exit 测试：
 
    ```powershell
-   .\run_g7_batch.ps1 -Mode ReceiverExit -Attempts 1 -RecoverySeconds 2 -FaultSeconds 30 -WaitCdcSeconds 20 -Workspace build/vitis/g6_secure_cleanup_20261011_candidate013_hello_ack_retry -HostSourceRoot .
+   .\run_g7_batch.ps1 -Mode ReceiverExit -Attempts 1 -RecoverySeconds 2 -FaultSeconds 30 -WaitCdcSeconds 20 -Workspace build/vitis/g6_secure_cleanup_20261011_candidate014_safe_hello_ack_retry -HostSourceRoot .
    ```
 
    只跑一轮，不启动长批次。runner 在试验期间不重载 JTAG；它会记录 build identity、主机读取和板端 AP0 元数据。

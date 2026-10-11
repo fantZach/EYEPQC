@@ -197,6 +197,12 @@ def read_hello_ack(ser, decoder, hello, cancelled=None, debug_stage=False,
             return read_control(ser, decoder, cancelled, debug_stage,
                                 timeout=attempt_timeout)
         except TimeoutError:
+            if decoder.buffer:
+                if debug_stage:
+                    print("G6_HOST_DIAG stage=hello_ack_retry_suppressed "
+                          f"reason=partial_record buffer_bytes={len(decoder.buffer)}",
+                          flush=True)
+                raise
             if attempt >= max_retries:
                 raise
             if debug_stage:
