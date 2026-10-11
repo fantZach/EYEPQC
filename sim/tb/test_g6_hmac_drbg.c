@@ -40,6 +40,43 @@ static int test_nist_sha256_vector(void)
     return 0;
 }
 
+static int test_nist_additional_input_vector(void)
+{
+    static const char first_hex[] =
+        "1478F29E94B02CB40D3AAB86245557CE13A8CA2FDB657D98EFC192346B9FAC33"
+        "EA58ADA2CCA432CCDEFBCDAA8B82F553EF966134E2CD139F15F01CAD568565A8";
+    static const char second_hex[] =
+        "497C7A16E88A6411F8FCE10EF56763C61025801D8F51A74352D682CC23A0A8E6"
+        "73CAE032289390647DC683B7342885D6B76AB1DA696D3E97E22DFFDDFFFD8DF0";
+    struct eye_hmac_drbg state;
+    uint8_t entropy[55], nonce[8], personalization[55];
+    uint8_t additional1[55], additional2[55], expected[64], output[64];
+
+    for (unsigned i = 0; i < sizeof entropy; ++i) {
+        entropy[i] = (uint8_t)i;
+        personalization[i] = (uint8_t)(0x40U + i);
+        additional1[i] = (uint8_t)(0x60U + i);
+        additional2[i] = (uint8_t)(0xa0U + i);
+    }
+    for (unsigned i = 0; i < sizeof nonce; ++i) nonce[i] = (uint8_t)(0x20U + i);
+
+    if (from_hex(expected, sizeof expected, first_hex) != 64 ||
+        eye_hmac_drbg_instantiate(&state, 128U, entropy, sizeof entropy,
+                                  nonce, sizeof nonce, personalization,
+                                  sizeof personalization) ||
+        eye_hmac_drbg_generate(&state, output, sizeof output,
+                               additional1, sizeof additional1) ||
+        memcmp(output, expected, sizeof output)) return 1;
+    if (from_hex(expected, sizeof expected, second_hex) != 64 ||
+        eye_hmac_drbg_generate(&state, output, sizeof output,
+                               additional2, sizeof additional2) ||
+        memcmp(output, expected, sizeof output)) return 2;
+    eye_hmac_drbg_uninstantiate(&state);
+    for (unsigned i = 0; i < sizeof state; ++i)
+        if (((const uint8_t *)&state)[i]) return 3;
+    return 0;
+}
+
 static int test_bounds_and_reseed_gate(void)
 {
     struct eye_hmac_drbg state, snapshot;
@@ -77,11 +114,12 @@ static int test_bounds_and_reseed_gate(void)
 int main(void)
 {
     int status = test_nist_sha256_vector();
+    if (!status) status = test_nist_additional_input_vector();
     if (!status) status = test_bounds_and_reseed_gate();
     if (status) {
         fprintf(stderr, "G6_HMAC_DRBG_FAIL=%d\n", status);
         return 1;
     }
-    puts("G6_HMAC_DRBG_PASS nist_sha256=2 reseed_gate=1 bounds=1");
+    puts("G6_HMAC_DRBG_PASS nist_outputs=4 additional_input=2 personalization=1 reseed_gate=1");
     return 0;
 }

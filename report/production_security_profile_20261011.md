@@ -14,7 +14,7 @@
 
 本轮对 `src/rtl`、`src/ps`、`board`、`prj`、`doc` 搜索 TRNG、XADC、PUF、熵采集等实现标记，没有找到项目内熵源 IP 或 PS 驱动。该搜索只说明当前仓库未见对应实现，不证明板卡芯片或外接电路不存在可用源；生产熵仍待按实际板型识别与测量。
 
-NIST [HMAC_DRBG-SHA-256 示例向量](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/HMAC_DRBG.pdf)中的连续两组 64 字节输出纳入原生 C 回归，用于核对实例化、Generate 与状态更新。该向量只验证确定性算法实现，不证明熵源、CAVP/FIPS 认证或目标板行为。
+NIST [HMAC_DRBG-SHA-256 示例向量](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/HMAC_DRBG.pdf)中的两种情形共四组 64 字节连续输出纳入原生 C 回归：无附加输入；带 personalization 的两轮 Generate，使用两组非空 additional_input。这样也覆盖了生产代码把主机 nonce 混入 DRBG 状态的路径。向量只验证确定性算法实现，不证明熵源、CAVP/FIPS 认证或目标板行为。
 
 ## 验证
 
@@ -24,7 +24,7 @@ NIST [HMAC_DRBG-SHA-256 示例向量](https://csrc.nist.gov/CSRC/media/Projects/
 
 另以同一 XSA 和当前构建脚本编译开发 profile：`build/vitis/g6_dev_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `f80f9fd014d0ee6d329b8149c7a12cb62e881801eb10858e722d807f236dff1c`。开发 ELF 保留 mailbox 和旧开发随机状态，未编译/链接 DRBG 源；生产 ELF 则相反。两个 manifest 分别标记 `development_jtag_mailbox` 与 `external_provider_unvalidated`。两个构建的 `g6_usb.c`/DRBG 源码哈希均匹配；该对照验证 DRBG 仅进入显式生产配置。
 
-最终代码全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **127 tests / OK**，耗时 271.962 秒；包含 M04/M05 XSim 与 DRBG/生产 profile harness。强度参数、熵/nonce 最小输入、熵/重播种失败 fail-closed 和两组 NIST 输出向量均在这批回归中。随后报告、review-bundle policy 与 build-profile 隔离更新的 8 项定向测试通过；开发态与生产态 ARM 构建均成功，`py_compile`、`git diff --check` 通过。
+最终代码全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **127 tests / OK**，耗时 271.962 秒；包含 M04/M05 XSim 与 DRBG/生产 profile harness。该全量结果覆盖当时的 strength 参数、熵/nonce 最小输入、熵/重播种失败 fail-closed 和无附加输入向量。随后增加 additional_input/personalization NIST 用例，定向 DRBG 与生产 profile 测试 **2/2** 通过；报告、review-bundle policy 与 build-profile 隔离的定向 **8 项**测试、开发态/生产态 ARM 构建、`py_compile` 与 `git diff --check` 也通过。
 
 ## 仍未完成
 
