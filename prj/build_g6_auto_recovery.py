@@ -273,7 +273,8 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
         if not source.is_file():
             raise RuntimeError('Build source missing: ' + str(source))
     flags = [*CPU_FLAGS, '-std=c11', '-O3', '-g', '-Wall', '-Wextra', '-Werror',
-             '-DG4_USB', '-DUSB_LIBRARY', '-DG6_USB', '-DG6_SECURE_CLEANUP']
+             '-DG4_USB', '-DUSB_LIBRARY', '-DG6_USB', '-DG6_SECURE_CLEANUP',
+             '-DG6_AUTO_RECOVERY']
     include_flags = [arg for path in include for arg in ('-I', str(path))]
     objects, commands = [], []
     patched_endpoint_object = None

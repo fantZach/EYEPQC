@@ -1,11 +1,14 @@
 /* Candidate-only USB probe wrapper to clear buffered pre-recovery control messages. */
 #include "usb_probe.c"
 #include "g6_secure_cleanup.h"
+#ifdef G6_AUTO_RECOVERY
 #include "g6_rekey_diag.h"
+#endif
 #include "usb_bounded_sdk_policy.h"
 
 #define G6_USB_TX_QUIESCE_POLL_LIMIT 256U
 
+#ifdef G6_AUTO_RECOVERY
 void usb_cdc_g6_diag_fill(volatile struct g6_rekey_diag *diag)
 {
     const uint32_t ep1_in_mask = 1U << 17U;
@@ -41,6 +44,7 @@ void usb_cdc_g6_diag_fill(volatile struct g6_rekey_diag *diag)
     diag->ep1_completion = diag->ep1_flush = 0U;
 #endif
 }
+#endif
 
 static uint32_t usb_irq_save_disable(void)
 {
@@ -251,6 +255,7 @@ int usb_cdc_secure_cleanup_tx(uint8_t *buffer, unsigned capacity)
 #endif
 }
 
+#ifdef G6_AUTO_RECOVERY
 int usb_cdc_clear_control_queue(void)
 {
 #ifdef G6_USB
@@ -272,3 +277,4 @@ int usb_cdc_clear_control_queue(void)
     return 1;
 #endif
 }
+#endif

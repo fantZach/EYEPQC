@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import zipfile
 import xml.etree.ElementTree as ET
 from arm_startup import verify_startup
@@ -130,6 +131,41 @@ def symbols(nm, elf):
             if len(f := line.split()) == 4}
 
 
+def prepare_production_cleanup_usb(workspace, gcc):
+    """Generate the isolated bounded USBPS overlay used by production cleanup."""
+    vendor = gcc.parents[5] / 'data/embeddedsw/XilinxProcessorIPLib/drivers/usbps_v2_11/examples'
+    sdk_root = vendor.parent
+    run([sys.executable, ROOT / 'prj/prepare_usb_bounded_sdk.py',
+         '--source-root', sdk_root, '--out', workspace], ROOT,
+        workspace / 'usb_bounded_sdk_generate.log')
+
+    overlay = workspace / 'usb_bounded_sdk/src'
+    generated_probe = workspace / 'usb_probe_bounded_generated.c'
+    wrapper_source = ROOT / 'prj/usb_probe_auto_recovery.c'
+    wrapper = wrapper_source.read_text(encoding='utf-8')
+    include = '#include "usb_probe.c"'
+    if wrapper.count(include) != 1:
+        raise RuntimeError('Secure USB cleanup wrapper include changed')
+    wrapper = wrapper.replace(include,
+                              generated_probe.read_text(encoding='utf-8'), 1)
+    wrapper_unit = workspace / 'usb_probe_secure_cleanup_bounded_generated.c'
+    wrapper_unit.write_text(wrapper, encoding='utf-8', newline='\n')
+
+    generated = [overlay / name for name in
+                 ('xusbps_endpoint.c', 'xusbps_ch9.c', 'xusbps_intr.c')]
+    generated += [generated_probe, wrapper_unit]
+    if any(not path.is_file() for path in generated):
+        raise RuntimeError('Production USB cleanup overlay generation was incomplete')
+    external_sources = {
+        'src/xusbps_endpoint.c': digest(sdk_root / 'src/xusbps_endpoint.c'),
+        'examples/xusbps_ch9.c': digest(sdk_root / 'examples/xusbps_ch9.c'),
+        'src/xusbps_intr.c': digest(sdk_root / 'src/xusbps_intr.c'),
+        **{path.relative_to(workspace).as_posix(): digest(path) for path in generated},
+        'usb_bounded_sdk/manifest.json': digest(workspace / 'usb_bounded_sdk/manifest.json'),
+    }
+    return generated, external_sources, overlay
+
+
 def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
     app = workspace / name
     build = app / 'build'
@@ -140,14 +176,23 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
     if name == 'g6_usb':
         defines.append('G6_USB')
         if production_provider is not None:
-            defines.append('G6_PRODUCTION')
+            defines.extend(['G6_PRODUCTION', 'G6_SECURE_CLEANUP'])
     sources = [ROOT / 'src/ps/src/g3_camera.c']
     include = [cpu / 'include', ROOT / 'src/ps/include']
+    cleanup_external_sources = {}
+    secure_cleanup_usb_sources = []
+    secure_cleanup_overlay = None
     if name != 'g3_camera':
         # HSI generates driver sources; official examples stay in the install.
         vendor = gcc.parents[5] / 'data/embeddedsw/XilinxProcessorIPLib/drivers/usbps_v2_11/examples'
-        sources += [ROOT / 'src/ps/src' / ('g6_usb.c' if name == 'g6_usb' else 'g4_usb.c'),
-                    ROOT / 'prj/usb_probe.c', vendor / 'xusbps_ch9.c']
+        sources.append(ROOT / 'src/ps/src' / ('g6_usb.c' if name == 'g6_usb' else 'g4_usb.c'))
+        if name == 'g6_usb' and production_provider is not None:
+            secure_cleanup_usb_sources, cleanup_external_sources, secure_cleanup_overlay = \
+                prepare_production_cleanup_usb(workspace, gcc)
+            sources += [secure_cleanup_usb_sources[-1], *secure_cleanup_usb_sources[:3]]
+            include += [secure_cleanup_overlay, ROOT / 'prj', vendor]
+        else:
+            sources += [ROOT / 'prj/usb_probe.c', vendor / 'xusbps_ch9.c']
         include += [vendor]
     if name == 'g6_usb':
         sources += [ROOT / 'src/ps/src' / f for f in
@@ -166,6 +211,11 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
         inputs += list((ROOT / 'src/ps/include').glob('*.h'))
         inputs += list((ROOT / 'src/third_party/mlkem').rglob('*'))
         inputs += list((ROOT / 'src/third_party/tinycrypt/lib/include').rglob('*.h'))
+        if production_provider is not None:
+            inputs += [ROOT / 'prj/usb_probe_auto_recovery.c',
+                       ROOT / 'prj/usb_probe.c',
+                       ROOT / 'prj/prepare_usb_bounded_sdk.py',
+                       ROOT / 'src/ps/diag/usb_bounded_sdk_policy.h']
     hashes = {p.relative_to(ROOT).as_posix(): digest(p) for p in inputs if p.is_file()}
     provider_hash = digest(production_provider) if production_provider is not None else None
     flags = [*CPU_FLAGS, '-std=c11', '-O3', '-g', '-Wall', '-Wextra', '-Werror',
@@ -198,6 +248,8 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
                         g6_capture_errors=4, g6_transport_errors=4,
                         g6_fatal_errors=4, g6_disconnects=4,
                         g6_fault_inject=4, g6_injected_capture_errors=4)
+        if production_provider is not None:
+            expected['g6_secure_cleanup_diag'] = 120
     owned = {}
     for key, size in expected.items():
         address, actual = abi.get(key, (0, 0))
@@ -215,12 +267,25 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
             raise RuntimeError('Source changed during compilation: ' + relative)
     if production_provider is not None and digest(production_provider) != provider_hash:
         raise RuntimeError('Production provider changed during compilation')
+    if secure_cleanup_usb_sources:
+        map_text = (build / 'g6_usb.map').read_text(encoding='utf-8', errors='replace')
+        for source in secure_cleanup_usb_sources[:3]:
+            object_path = build / f'{sources.index(source)}_{source.stem}.o'
+            if str(object_path) not in map_text:
+                raise RuntimeError('Link map omits bounded USB cleanup source: ' + str(source))
+        if ('libxil.a(usbps_v2_11_xusbps_endpoint.o)' in map_text or
+                'libxil.a(usbps_v2_11_xusbps_intr.o)' in map_text):
+            raise RuntimeError('Unpatched USBPS endpoint/interrupt object linked into production profile')
     manifest = dict(xsa=str(xsa), xsa_sha256=digest(xsa), application=name,
                     bsp_sha256=digest(cpu / 'lib/libxil.a'),
                     sources=hashes,
                     owned=owned, board_validated=False,
                     artifacts={p.relative_to(workspace).as_posix(): digest(p) for p in
                                (elf, build / (name + '.map'), app / '_ide/bitstream/m01.bit', app / '_ide/psinit/ps7_init.tcl')})
+    if cleanup_external_sources:
+        manifest['external_sources'] = cleanup_external_sources
+        manifest['external_sources_root'] = 'tool-root'
+        manifest['production_secure_cleanup'] = 'bounded_usbps_overlay_and_dma_gcm_frame_tx_callbacks'
     if name == 'g6_usb':
         manifest['security_profile'] = ('external_provider_unvalidated' if production_provider is not None
                                         else 'development_jtag_mailbox')
@@ -297,6 +362,9 @@ def main():
                          for p in workspace.glob('*/build/link_command.json')})
     if provider_for_build is not None:
         build_inputs[provider_for_build.relative_to(workspace).as_posix()] = digest(provider_for_build)
+    for name, manifest in manifests.items():
+        for external_path, external_hash in manifest.get('external_sources', {}).items():
+            build_inputs[f'{name}/external_sources/{external_path}'] = external_hash
     (workspace / 'software_build.json').write_text(json.dumps(dict(
         xsa_sha256=xsa_hash, tool_root=str(tools), applications=list(manifests),
         generated_inputs=build_inputs,

@@ -5,6 +5,7 @@
 
 #include "session.h"
 #include "protocol.h"
+#include "g6_secure_cleanup.h"
 
 #define main g6_usb_firmware_main
 #include "../../src/ps/src/g6_usb.c"
@@ -22,6 +23,16 @@ static unsigned decapsulation_calls;
 static unsigned usb_send_calls;
 static uint8_t last_send[1040];
 static unsigned last_send_length;
+volatile struct g6_secure_cleanup_diag g6_secure_cleanup_diag = {
+    .magic = G6_SECURE_CLEANUP_MAGIC
+};
+static unsigned cleanup_stop_calls;
+static unsigned cleanup_wipe_calls;
+static unsigned cleanup_usb_calls;
+static unsigned cleanup_order;
+static int cleanup_stop_status;
+static int cleanup_wipe_status;
+static int cleanup_usb_status;
 
 int g6_production_security_init(void)
 {
@@ -95,6 +106,30 @@ int g3_usb_capture(const uint8_t **data, unsigned *size)
     return 1;
 }
 int g3_usb_resume(void) { return 0; }
+int g3_usb_cleanup_stop_dma_and_clear_gcm(void)
+{
+    if (cleanup_order++ != 0U) return 91;
+    ++cleanup_stop_calls;
+    return cleanup_stop_status;
+}
+int g3_usb_cleanup_wipe_frame_and_sealed(void)
+{
+    if (cleanup_order++ != 1U) return 92;
+    ++cleanup_wipe_calls;
+    return cleanup_wipe_status;
+}
+int usb_cdc_secure_cleanup_tx(uint8_t *buffer, unsigned capacity)
+{
+    if (cleanup_order++ != 2U || capacity != G6_SECURE_TX_CAPACITY) return 93;
+    ++cleanup_usb_calls;
+    memset(buffer, 0, capacity);
+    return cleanup_usb_status;
+}
+void Xil_DCacheFlushRange(UINTPTR address, unsigned length)
+{
+    (void)address;
+    (void)length;
+}
 int g3_usb_encrypt(const uint8_t *plain, unsigned size, const uint8_t aad[40],
                    const uint8_t key[16], uint32_t epoch, uint64_t sequence,
                    const uint8_t **sealed)
@@ -118,6 +153,11 @@ static void reset_provider(void)
     provider_key_value = 0x5aU;
     provider_init_calls = provider_shutdown_calls = provider_read_calls = 0U;
     provider_entropy_calls = decapsulation_calls = usb_send_calls = 0U;
+    cleanup_stop_calls = cleanup_wipe_calls = cleanup_usb_calls = 0U;
+    cleanup_order = 0U;
+    cleanup_stop_status = cleanup_wipe_status = cleanup_usb_status = 0;
+    memset((void *)&g6_secure_cleanup_diag, 0, sizeof g6_secure_cleanup_diag);
+    g6_secure_cleanup_diag.magic = G6_SECURE_CLEANUP_MAGIC;
     last_send_length = 0U;
     memset(last_send, 0, sizeof last_send);
     memset(&session, 0, sizeof session);
@@ -178,7 +218,56 @@ static int test_random_failure_sends_no_ack(void)
         if (output[i] != 0U) return 3;
     if (handle_control(message, sizeof message) == 0 || phase != FAULT ||
         usb_send_calls != 0U || provider_shutdown_calls != 1U ||
-        production_drbg.instantiated)
+        production_drbg.instantiated || cleanup_stop_calls != 1U ||
+        cleanup_wipe_calls != 1U || cleanup_usb_calls != 1U || cleanup_order != 3U ||
+        g6_secure_cleanup_diag.stage != G6_CLEANUP_COMPLETE)
+        return 4;
+    return 0;
+}
+
+static int test_cleanup_failure_stays_fail_closed(void)
+{
+    reset_provider();
+    if (initialize_production_security()) return 1;
+    cleanup_wipe_status = 1;
+    fail_closed();
+    if (phase != FAULT || provider_shutdown_calls != 1U ||
+        production_drbg.instantiated || cleanup_stop_calls != 1U ||
+        cleanup_wipe_calls != 1U || cleanup_usb_calls != 0U ||
+        g6_secure_cleanup_diag.stage != G6_CLEANUP_FAILED ||
+        g6_secure_cleanup_diag.failed_stage != G6_CLEANUP_FRAME_AND_SEALED)
+        return 2;
+    return 0;
+}
+
+static int test_disconnect_uses_secure_cleanup_without_auto_recovery(void)
+{
+    reset_provider();
+    g6_disconnects = 0U;
+    g6_transport_errors = 0U;
+    if (initialize_production_security()) return 1;
+    phase = STREAM;
+    session.state = EYE_STATE_STREAMING;
+    if (retire_disconnected_session(7U, 8U, 0U, 9U) != 0 ||
+        phase != WAIT_HELLO || g6_disconnects != 1U || g6_transport_errors != 0U ||
+        cleanup_stop_calls != 1U || cleanup_wipe_calls != 1U ||
+        cleanup_usb_calls != 1U || cleanup_order != 3U ||
+        g6_secure_cleanup_diag.stage != G6_CLEANUP_COMPLETE)
+        return 2;
+
+    reset_provider();
+    g6_disconnects = 0U;
+    g6_transport_errors = 0U;
+    if (initialize_production_security()) return 3;
+    phase = STREAM;
+    session.state = EYE_STATE_STREAMING;
+    cleanup_usb_status = 1;
+    if (retire_disconnected_session(7U, 8U, 0U, 9U) != 1 ||
+        phase != FAULT || g6_disconnects != 0U || g6_transport_errors != 1U ||
+        cleanup_stop_calls != 1U || cleanup_wipe_calls != 1U ||
+        cleanup_usb_calls != 1U || cleanup_order != 3U ||
+        g6_secure_cleanup_diag.stage != G6_CLEANUP_FAILED ||
+        g6_secure_cleanup_diag.failed_stage != G6_CLEANUP_USB_TX_QUIESCE)
         return 4;
     return 0;
 }
@@ -217,11 +306,13 @@ int main(void)
 {
     int status = test_missing_provider_fails_closed();
     if (!status) status = test_random_failure_sends_no_ack();
+    if (!status) status = test_cleanup_failure_stays_fail_closed();
+    if (!status) status = test_disconnect_uses_secure_cleanup_without_auto_recovery();
     if (!status) status = test_pinned_key_and_provider_random();
     if (status) {
         fprintf(stderr, "g6_production_profile_failed=%d\n", status);
         return 1;
     }
-    puts("G6_PRODUCTION_PROFILE_PASS entropy_fail_closed=1 reseed_failure_no_ack=1 key_identity_pinned=1");
+    puts("G6_PRODUCTION_PROFILE_PASS entropy_fail_closed=1 reseed_failure_no_ack=1 cleanup_order=1 cleanup_failure_fail_closed=1 disconnect_cleanup_without_recovery=1 key_identity_pinned=1");
     return 0;
 }

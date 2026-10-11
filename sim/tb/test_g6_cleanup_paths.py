@@ -77,7 +77,7 @@ class G6CleanupPathHarnessTests(unittest.TestCase):
                     for include in INCLUDES:
                         command.extend(["-I", str(include)])
                     if candidate:
-                        command.append("-DG6_SECURE_CLEANUP")
+                        command.extend(["-DG6_SECURE_CLEANUP", "-DG6_AUTO_RECOVERY"])
                     command.extend(str(source) for source in SOURCES)
                     command.extend(["-o", str(executable)])
                     built = subprocess.run(

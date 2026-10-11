@@ -1,6 +1,6 @@
 # G6 生产安全 profile 隔离进展
 
-更新：2026-10-11。本次只做源码、构建脚本和电脑端测试；未连接板卡、未改 SD/Flash/eFuse。**生产安全仍未通过。**本实现将开发态装载与生产服务接口分开，尚未提供或验证目标板的熵源、密钥存储或可信启动实现。
+更新：2026-10-11。本次只做源码、构建脚本和电脑端测试；未连接板卡、未改 SD/Flash/eFuse。**生产安全仍未通过。**开发态装载与生产服务接口已隔离，生产候选现已编入受限清理路径；真实熵源、密钥存储、可信启动和板端清零读回仍缺失。
 
 ## 本次实现
 
@@ -12,7 +12,7 @@
 
 对 CPU 本地密钥清理做了源码边界复核：`production_decapsulate()` 在返回前清除栈上的 ML-KEM 私钥副本与公钥哈希，调用方清除共享密钥；便携式 ML-KEM 的解封装中间缓冲通过 `MLK_FREE` 调用 `mlk_zeroize()` 清理。这是源码与构建配置层面的证据，仍需目标板对 PS/DDR/DMA/PL/GCM 状态做停机、cache 处理和清零读回。
 
-另发现当前 `prj/build_software.py --g6-production-provider` 只定义 `G6_PRODUCTION`，**生产 ELF 未编入 `G6_SECURE_CLEANUP`**。该宏目前还耦合 G6 自动恢复分支和有界 USBPS SDK overlay；候选恢复固件中的清理实现不能算作生产 ELF 的清理验收。下一步纯软件工作是把安全清理与自动恢复解耦，或为生产构建显式接入经过哈希固定的清理 USBPS overlay，并补齐生产 profile harness 与 ARM 链接检查。当前生产安全仍未通过。
+此前构建审计发现 `--g6-production-provider` 未定义 `G6_SECURE_CLEANUP`，且该宏与自动恢复诊断耦合。本轮已拆分 `G6_SECURE_CLEANUP` / `G6_AUTO_RECOVERY`：生产 profile 只开启安全清理，不带自动恢复状态；G6 自动恢复候选仍显式开启两个宏，保留原路径。生产 builder 生成有界 USBPS overlay，将其纳入编译，并记录 SDK 原件、overlay、生成 probe 和 manifest 的 SHA-256。ARM link map 确认使用 overlay 的 endpoint/CH9/interrupt 对象，且未链接 stock endpoint/interrupt 库成员；ELF 含 `g6_secure_cleanup_diag`（120 字节）、`secure_cleanup`、`secure_tx_quiesce`、`secure_tx_wipe`、`secure_tx_rebuild` 与 `usb_cdc_secure_cleanup_tx`。另将安全清理扩展到生产 profile 的 USB 断连退会话路径；清理完成才回到等待新会话，任一阶段失败都会 fail closed。实际生产 profile 的离线链接与 harness 证据不等于板端所有权或清零读回验收。
 
 `src/ps/src/g6_hmac_drbg.c` 实现 [NIST SP 800-90A Rev. 1 §10.1.2](https://csrc.nist.gov/pubs/sp/800/90/a/r1/final) 的 HMAC_DRBG-SHA-256，启动明确请求 256-bit security strength，并按 strength 检查 entropy_input/nonce 最小长度；另限定输入长度、最大请求长度和 1024 次重播种间隔。失败输出会清零，熵/provider 或密码运算失败时清除 DRBG 状态。生产接口启动时取 32 字节 entropy_input 和 16 字节 nonce；重播种时取 32 字节 entropy_input 与 16 字节 additional input。接口定义不是熵评估：provider 必须用实际源证明所需熵量、健康检查和故障锁止。仓库没有实际 provider 源码；任意 provider 也不会自动获得可信、认证或量产状态。
 
@@ -26,9 +26,11 @@ NIST [HMAC_DRBG-SHA-256 示例向量](https://csrc.nist.gov/CSRC/media/Projects/
 
 2026-10-11 最终版用临时 fail-closed provider 完成 XC7Z020 ARM 交叉编译与链接：`build/vitis/g6_prod_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `fe3511229c4725abfb214784ea013b03c71dec512fe37eefa598742748e22a7b`；输入 XSA SHA-256 `46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024`。manifest 标为 `external_provider_unvalidated`、`board_validated=false`，DRBG 和 G6 源码哈希均匹配当前工作树。ELF 含 DRBG instantiate/generate/reseed 入口；精确符号检查确认开发 mailbox、host seed、计数器和静态私钥数据符号为零。临时 provider 的初始化、密钥、熵接口全部返回失败；此产物只证明最终源码可交叉编译/链接，不含可用熵源或密钥服务。
 
+最新安全清理候选使用同一 XSA 和 fail-closed provider：`build/vitis/g6_prod_secure_cleanup_candidate4_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `a0cbf4a5ba852ee4f55fb8255affdcd545df95160f990403f1ee0f06c4f45988`。manifest 的 `production_secure_cleanup=bounded_usbps_overlay_and_dma_gcm_frame_tx_callbacks`、`security_profile=external_provider_unvalidated`、`board_validated=false`；`g6_usb.c` 与 DRBG 输入哈希匹配当前源码。编译参数有 `G6_PRODUCTION` 和 `G6_SECURE_CLEANUP`，没有 `G6_AUTO_RECOVERY`；ELF 有 DRBG instantiate/generate/reseed 与 secure-cleanup 符号，未见开发 mailbox/host-seed 符号。provider 的初始化、熵和私钥读取均故意返回失败，因此它不可用于启动视频，也不是生产 provider。
+
 另以同一 XSA 和当前构建脚本编译开发 profile：`build/vitis/g6_dev_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `f80f9fd014d0ee6d329b8149c7a12cb62e881801eb10858e722d807f236dff1c`。开发 ELF 保留 mailbox 和旧开发随机状态，未编译/链接 DRBG 源；生产 ELF 则相反。两个 manifest 分别标记 `development_jtag_mailbox` 与 `external_provider_unvalidated`。两个构建的 `g6_usb.c`/DRBG 源码哈希均匹配；该对照验证 DRBG 仅进入显式生产配置。
 
-最终代码全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **127 tests / OK**，耗时 268.491 秒；本次显式设置 Vivado 2026.1 的 `VIVADO_ROOT=E:\fpg\2026.1\Vivado` 并包含 M04/M05 原生 XSim、DRBG 与生产 profile harness。全量结果覆盖最新五组 NIST 输出、成功重播种、strength 输入门禁及失败关闭测试。报告、review-bundle policy 与 build-profile 隔离的定向 **8 项**测试、开发态/生产态 ARM 构建、`py_compile` 与 `git diff --check` 也通过。电脑端全量回归不代表熵源、密钥服务或板端安全验收。
+最新源代码的全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **127 tests / OK**，耗时 268.155 秒；含 M04/M05 原生 XSim、M08 GCM、成功重播种向量、生产 profile 和生产断连清理 harness。清理相关定向回归 **11 项**也通过。编译器级验证完成生产 ARM ELF 构建、宏与符号检查、link map 的 overlay/stock 对象排除检查，`py_compile` 与 `git diff --check` 通过。电脑端全量回归不代表熵源、密钥服务或板端安全验收。
 
 ## 仍未完成
 

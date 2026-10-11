@@ -52,10 +52,14 @@ class G6ProductionProfileTests(unittest.TestCase):
                 "#define COUNTS_PER_SECOND 1000000ULL\n"
                 "static inline void XTime_GetTime(XTime *ticks) { *ticks = 0; }\n",
                 encoding="ascii")
+            (stubs / "xil_cache.h").write_text(
+                "#include <stdint.h>\ntypedef uintptr_t UINTPTR;\n"
+                "void Xil_DCacheFlushRange(UINTPTR address, unsigned length);\n",
+                encoding="ascii")
             executable = temp_path / "g6_production_profile.exe"
             command = [compiler, "-std=c11", "-O0", "-Wall", "-Wextra",
                        "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
-                       "-DG6_PRODUCTION", "-I", str(stubs)]
+                       "-DG6_PRODUCTION", "-DG6_SECURE_CLEANUP", "-I", str(stubs)]
             for include in INCLUDES:
                 command.extend(["-I", str(include)])
             command.extend(str(source) for source in SOURCES)

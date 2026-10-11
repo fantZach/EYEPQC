@@ -85,7 +85,7 @@ static void setup_case(enum phase initial_phase, enum eye_session_state state)
     usb_send_calls = 0U;
     memset(usb_last_send, 0, sizeof usb_last_send);
     usb_last_send_size = 0U;
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
     diag_hello_attempt_count = 0U;
     diag_hello_ack_send_attempts = 0U;
     diag_hello_ack_send_status = UINT32_MAX;
@@ -95,7 +95,7 @@ static void setup_case(enum phase initial_phase, enum eye_session_state state)
     g6_control_errors = 30U;
     g6_disconnects = 40U;
     g6_transport_errors = 0U;
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
     memset((void *)&g6_transport_failure_diag, 0,
            sizeof g6_transport_failure_diag);
 #endif
@@ -291,7 +291,7 @@ static int test_duplicate_hello_replays_cached_ack(void)
         g6_control_errors != 30U ||
         g6_fatal_errors != 20U || g6_status != 10U)
         return 3;
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
     if (diag_hello_attempt_count != 2U || diag_hello_ack_send_attempts != 2U ||
         diag_hello_ack_send_status != 0U) return 4;
 #endif

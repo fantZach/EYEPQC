@@ -13,7 +13,7 @@
 #include "protocol.h"
 #include "g6_control_dispatch.h"
 #include "g6_secure_cleanup.h"
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
 #include "g6_auto_recovery.h"
 #include "g6_rekey_diag.h"
 #endif
@@ -42,6 +42,8 @@ void g3_usb_zeroize(void);
 #ifdef G6_SECURE_CLEANUP
 int g3_usb_cleanup_stop_dma_and_clear_gcm(void);
 int g3_usb_cleanup_wipe_frame_and_sealed(void);
+#endif
+#ifdef G6_AUTO_RECOVERY
 int g6_candidate_recover_camera(void);
 #endif
 int g3_usb_encrypt(const uint8_t *plain, unsigned size, const uint8_t aad[40],
@@ -71,7 +73,7 @@ volatile uint32_t g6_fatal_errors __attribute__((aligned(64)));
 volatile uint32_t g6_disconnects __attribute__((aligned(64)));
 volatile uint32_t g6_fault_inject __attribute__((aligned(64)));
 volatile uint32_t g6_injected_capture_errors __attribute__((aligned(64)));
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
 volatile uint32_t g6_auto_recovery_request __attribute__((aligned(64)));
 volatile struct g6_transport_failure_diag g6_transport_failure_diag
     __attribute__((aligned(64)));
@@ -95,7 +97,7 @@ static uint32_t frame_id;
 enum phase { WAIT_HELLO, WAIT_KEM, WAIT_FINISHED, WAIT_START, STREAM, FAULT };
 static enum phase phase;
 
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
 volatile struct g6_rekey_diag g6_rekey_diagnostic __attribute__((aligned(64))) = {
     .magic = G6_REKEY_DIAG_MAGIC,
     .version = G6_REKEY_DIAG_VERSION,
@@ -183,12 +185,15 @@ static const struct g6_secure_cleanup_ops cleanup_ops = {
     cleanup_usb_tx
 };
 static int secure_cleanup(void) {
+#ifdef G6_AUTO_RECOVERY
     ++diag_cleanup_count;
     diag_cleanup_last_result = UINT32_MAX;
     publish_rekey_diag();
+#endif
     int status = g6_secure_cleanup_run(NULL, &cleanup_ops, &g6_secure_cleanup_diag);
+#ifdef G6_AUTO_RECOVERY
     diag_cleanup_last_result = (uint32_t)status;
-#ifdef G6_SECURE_CLEANUP
+#endif
     Xil_DCacheFlushRange((UINTPTR)&g6_secure_cleanup_diag,
                          sizeof g6_secure_cleanup_diag);
 #if defined(__arm__)
@@ -196,8 +201,9 @@ static int secure_cleanup(void) {
 #else
     __asm__ volatile("" ::: "memory");
 #endif
-#endif
+#ifdef G6_AUTO_RECOVERY
     publish_rekey_diag();
+#endif
     return status;
 }
 #endif
@@ -296,7 +302,7 @@ static void mark_fault(void) {
     phase = FAULT;
     ++g6_fatal_errors;
     ++g6_status;
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
     publish_rekey_diag();
 #endif
 }
@@ -312,14 +318,24 @@ static int retire_disconnected_session(unsigned send_status,
                                        unsigned resume_status,
                                        unsigned ready_at_failure,
                                        uint32_t epoch_at_failure) {
-#ifdef G6_SECURE_CLEANUP
+#ifndef G6_AUTO_RECOVERY
+    (void)send_status;
+    (void)resume_status;
+    (void)ready_at_failure;
+    (void)epoch_at_failure;
+#endif
+#ifdef G6_AUTO_RECOVERY
     g6_transport_failure_diag.send_status = send_status;
     g6_transport_failure_diag.resume_status = resume_status;
     g6_transport_failure_diag.phase = (uint32_t)phase;
     g6_transport_failure_diag.usb_ready = ready_at_failure;
     g6_transport_failure_diag.connection_epoch = epoch_at_failure;
+#endif
+#ifdef G6_SECURE_CLEANUP
     if (secure_cleanup()) {
+#ifdef G6_AUTO_RECOVERY
         g6_transport_failure_diag.transport_error_count = g6_transport_errors + 1U;
+#endif
         ++g6_transport_errors;
         mark_fault();
         return 1;
@@ -329,17 +345,13 @@ static int retire_disconnected_session(unsigned send_status,
         phase = WAIT_HELLO;
     }
 #else
-    (void)send_status;
-    (void)resume_status;
-    (void)ready_at_failure;
-    (void)epoch_at_failure;
     g3_usb_zeroize();
     eye_session_error(&session);
     clear_handshake_cache();
     phase = WAIT_HELLO;
 #endif
     ++g6_disconnects;
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
     g6_transport_failure_diag.transport_error_count = g6_transport_errors;
     publish_rekey_diag();
 #endif
@@ -350,11 +362,11 @@ static int handle_control(const uint8_t *message, unsigned length) {
     const uint8_t *body;
     uint32_t body_length;
     if (eye_control_decode(&type, &body, &body_length, message, length)) return 1;
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
     diag_last_control_type = type;
 #endif
     if (phase == WAIT_HELLO && type == EYE_HELLO && length == 48) {
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
         ++diag_hello_attempt_count;
         ++diag_hello_ack_send_attempts;
         diag_hello_ack_send_status = UINT32_MAX;
@@ -364,7 +376,7 @@ static int handle_control(const uint8_t *message, unsigned length) {
         int status = board_random(body_ack + 4, body + 4);
         if (!status) status = eye_control_encode(ack, sizeof ack, EYE_HELLO_ACK, body_ack, 36);
         if (!status) status = send_control(ack, sizeof ack);
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
         diag_hello_ack_send_status = (uint32_t)status;
 #endif
         wipe(body_ack, sizeof body_ack);
@@ -372,27 +384,27 @@ static int handle_control(const uint8_t *message, unsigned length) {
 #ifdef G6_PRODUCTION
             fail_closed();
 #endif
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
             publish_rekey_diag();
 #endif
             return 1;
         }
         phase = WAIT_KEM;
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
         publish_rekey_diag();
 #endif
         return 0;
     }
     if (phase == WAIT_KEM && type == EYE_HELLO && length == sizeof hello &&
         memcmp(hello, message, sizeof hello) == 0) {
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
         ++diag_hello_attempt_count;
         ++diag_hello_ack_send_attempts;
         diag_hello_ack_send_status = UINT32_MAX;
         publish_rekey_diag();
 #endif
         int status = send_control(ack, sizeof ack);
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
         diag_hello_ack_send_status = (uint32_t)status;
         publish_rekey_diag();
 #endif
@@ -426,7 +438,7 @@ static int handle_control(const uint8_t *message, unsigned length) {
         if (eye_session_command(&session, message) || g3_usb_flush()) return 1;
         frame_id = 0;
         phase = STREAM;
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
         publish_rekey_diag();
 #endif
         return 0;
@@ -443,7 +455,7 @@ static int handle_control(const uint8_t *message, unsigned length) {
 #endif
         clear_handshake_cache();
         phase = WAIT_HELLO;
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
         publish_rekey_diag();
 #endif
         return 0;
@@ -456,11 +468,11 @@ static int take_control(void *context, uint8_t *out, unsigned capacity) {
 }
 static int process_control(void *context, const uint8_t *message, unsigned length) {
     (void)context;
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
     ++diag_received_control_count;
 #endif
     int status = handle_control(message, length);
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
     publish_rekey_diag();
 #endif
     return status;
@@ -581,7 +593,7 @@ int main(void) {
         if (status) {
             ++g6_capture_errors;
             ++g6_dropped;
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
             if (status == 16U) {
                 g6_auto_recovery_diag.state = 3U;
                 fail_closed();
@@ -621,14 +633,18 @@ int main(void) {
             fail_closed();
             continue;
 #endif
+#ifdef G6_PRODUCTION
+            fail_closed();
+#else
             if (++capture_errors > 10 || g3_usb_flush()) fail_closed();
+#endif
             continue;
         }
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
         g6_auto_recovery_diag.malformed_drop_count = 0U;
 #endif
         capture_errors = 0;
-#ifdef G6_SECURE_CLEANUP
+#ifdef G6_AUTO_RECOVERY
         uint32_t send_epoch = usb_cdc_connection_epoch();
         status = send_frame(jpeg, size);
         int resume_status = g3_usb_resume();
