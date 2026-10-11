@@ -10,7 +10,7 @@
 | 主要实现 | `src/rtl/`、`src/ps/`、`src/host/`、`src/third_party/` | 源码在仓库中；`build/` 被 `.gitignore` 排除，构建物不属于当前源码提交。 |
 | 仿真/复跑入口 | `run_demo.ps1`、`prj/`、`sim/`、`sim/vectors/`、`data/kat/`、`requirements.txt` | 保留脚本、版本/依赖说明和公开测试向量。复跑必须使用相同源码与工具版本；离线 PASS 不代表板卡验收。 |
 | 当前离线构建凭证 | `report/software_ready.md`；本机 `build/vitis/software_ready/software_verification.json`、`build_manifest.json` 与对应产物 | 报告记录的软件入口、哈希预检和软件检查可作为电脑端证据。机器文件位于忽略目录，离开本机/干净克隆即不存在；在证据归档时需从本机导出清单及选定文件并重算 hash。构建 manifest 保留 `board_validated=false`，不当作实板通过。 |
-| 最新 G7 板级诊断 | `report/g7_candidate012_tx_ownership_board_20261011.md` | candidate012 receiver-exit 单轮失败；同构建无 JTAG 普通 CDC 重连通过 141 帧、1,130 包、47.672 fps。该普通重连不是 G7 通过证据；receiver-exit 20 轮与 USB 物理拔插批次均未开始。旧 006d camera-reset/routing-stall 各 20/20 记录继续作为历史特定场景证据。 |
+| 最新 G7 板级诊断与软件候选 | `report/g7_candidate012_tx_ownership_board_20261011.md`、`report/g7_candidate014_safe_hello_ack_retry_offline_20261011.md` | candidate012 receiver-exit 20 轮批次停在 13/20，两次 HELLO_ACK 超时；candidate014 的安全重试、候选构建、预检与软件回归已完成，`board_validated=false`。普通 CDC 重连不是 G7 通过证据；candidate014 新板基线、ETW/AP0 单轮、20 次 receiver-exit 和后续 USB 物理拔插尚未完成。旧 006d camera-reset/routing-stall 各 20/20 只作为原构建历史证据。 |
 | G0 启动证据 | `report/g0_acceptance.md`、`report/acceptance_matrix_20261009.md` | 记录临时 JTAG 探测和局部 DDR/timer/LED 证据；SD 独立启动、物理复位、30 分钟冷启动未通过/未验收。原始 capture 在 `data/captures/`，受 `.gitignore` 排除，应先做隐私/身份审查再决定是否单独封存。 |
 | M02 冷启动和无摄像头 fail-closed | `report/m02_sensor_reset_board_20261011.md`、`report/m02_coldboot_cycles_20261011.json`、`report/m02_camera_absent_20261011.json` | 用户确认的 20 次整板断电/上电后 JTAG 配置 20/20，另有无摄像头 fail-closed 通过；没有写 SD/Flash。不能外推到 SD 独立启动或 DVP/JPEG 实拍。 |
 | Benchmark 与脱敏摘要 | `report/benchmark_summary_20261009.md`、`.json`、`report/parallel_B_20261009.md`、`report/parallel_C_20261009.md` | 使用摘要中的源状态、构建身份和 `null` 字段；历史构建、开发态功能、离线/实测分列。新增板级证据见 `report/keccak_board_benchmark_20261010.md/.json`：safeSW 1 轮、safeHW 3 轮及 3 次启动的 tcId 76 Decaps 对照通过；HW 平均约 1.172 ms，SW 约 1.079 ms，HW 慢约 8.6%，无加速收益。范围仅 tcId 76，不代表全部 84 个向量的板上验证；STATUS 清零读回不证明设备全域清零；未集成视频工程。 |
@@ -49,7 +49,7 @@ EYEPQC_submission_draft_20261010/
 ## 电脑端可先完成的归档工作
 
 1. 固定归档使用的源码 commit/工作树状态，并记录 Git commit、源码文件清单及 SHA-256；若归档包含未提交改动，逐项说明来源和状态，不把它们混成“发布版本”。
-2. 从 `report/` 选择当前有效的索引与报告，以 `acceptance_matrix_20261009.md`、`g7_candidate012_tx_ownership_board_20261011.md`、`keccak_sponge_x4_capture_fix_20261011.md` 和 M02 记录为主入口；按“源码/仿真、电脑构建、板上实测、待测”分别整理，保留失败和未测项。
+2. 从 `report/` 选择当前有效的索引与报告，以 `acceptance_matrix_20261009.md`、`g7_candidate012_tx_ownership_board_20261011.md`、`g7_candidate014_safe_hello_ack_retry_offline_20261011.md`、`keccak_sponge_x4_capture_fix_20261011.md` 和 M02 记录为主入口；按“源码/仿真、电脑构建、板上实测、待测”分别整理，保留失败和未测项。
 3. 仅挑选不含密钥、主机路径、个人资料、原始 USB/串口载荷和无关录像的脱敏证据。对另行封存的本机原始数据，记录原路径、脱敏派生文件和 hash；原始文件留在本地证据库，不因做公开摘要而删除。
 4. 对所选构建产物记录 variant、XSA/ELF/BOOT.BIN/bitstream hash、对应源码 manifest、`board_validated` 值及板卡验证状态。若无法重现当前身份，则注明是历史产物，不借用最新板测结果替旧构建背书。
 5. 生成最终文件 manifest 与目录清单，做一次缺文件/零字节/意外秘密/忽略产物检查；交付前只对最终选定目录生成压缩包，并保留原始目录供复核。若规则限制大小，按必需与可选附件分包，不降低证据准确度。

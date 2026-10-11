@@ -21,10 +21,10 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUT = ROOT / "build" / "delivery_20261010"
-BUNDLE_NAME = "submission_bundle_current_20261010.zip"
+DEFAULT_OUT = ROOT / "build" / "delivery_20261011_candidate014"
+BUNDLE_NAME = "EYEPQC_submission_review_candidate014_20261011.zip"
 MANIFEST_MEMBER = "META/content_manifest.json"
-INDEX_NAME = "evidence_index_current_20261010.json"
+INDEX_NAME = "evidence_index_candidate014_20261011.json"
 
 TEXT_SUFFIXES = {
     ".c", ".h", ".inc", ".s", ".sv", ".v", ".vh", ".xdc", ".ld",
@@ -59,27 +59,38 @@ PUBLIC_REPORT_FILES = {
     "report/acceptance_matrix_20261009.md",
     "report/benchmark_summary_20261009.md",
     "report/benchmark_summary_20261009.json",
+    "report/collaboration_log.md",
     "report/competition_submission.md",
     "report/demo_software_ready.md",
     "report/g0_acceptance.md",
     "report/g7_candidate006d_acceptance_20261010.md",
     "report/g7_candidate006d_acceptance_20261010.json",
+    "report/g7_candidate012_tx_ownership_board_20261011.md",
+    "report/g7_candidate013_hello_ack_retry_offline_20261011.md",
+    "report/g7_candidate014_safe_hello_ack_retry_offline_20261011.md",
+    "report/g7_usb_etw_capture_guide.md",
     "report/goal_gap_audit.md",
     "report/keccak_accel.md",
     "report/keccak_board_benchmark_20261010.md",
     "report/keccak_board_benchmark_20261010.json",
+    "report/keccak_sponge_x4_capture_fix_20261011.md",
+    "report/m02_sensor_reset_board_20261011.md",
+    "report/m02_timing_explore_20261011.md",
     "report/parallel_B_20261009.md",
     "report/parallel_C_20261009.md",
     "report/progress.md",
+    "report/reuse_license_audit_20261011.md",
     "report/security_gap_audit.md",
     "report/security_cleanup_20261010.md",
     "report/security_cleanup_board_summary_20261010.json",
     "report/software_ready.md",
+    "report/technical_report.md",
     "report/next_stage_plan.md",
     "report/github_sync_20261010.md",
 }
 
-# These new files are intentionally included before they are committed.
+# Explicit supplemental reports/tools remain included when the public-report
+# allowlist is narrowed for a particular review bundle.
 DEFAULT_SUPPLEMENTAL_FILES = {
     "report/production_security_plan_20261010.md",
     "report/submission_delivery_plan_20261010.md",
@@ -91,9 +102,41 @@ DEFAULT_SUPPLEMENTAL_FILES = {
     "prj/test_parse_keccak_board_benchmark.py",
     "prj/run_keccak_board_benchmark.py",
     "prj/run_keccak_benchmark_jtag.tcl",
+    "report/g7_candidate012_tx_ownership_board_20261011.md",
+    "report/g7_candidate013_hello_ack_retry_offline_20261011.md",
+    "report/g7_candidate014_safe_hello_ack_retry_offline_20261011.md",
+    "report/g7_usb_etw_capture_guide.md",
+    "report/keccak_sponge_x4_capture_fix_20261011.md",
+    "report/m02_sensor_reset_board_20261011.md",
+    "report/m02_timing_explore_20261011.md",
+    "report/reuse_license_audit_20261011.md",
 }
 
 EVIDENCE_STATUS = [
+    {
+        "id": "g7_overall",
+        "status": "not_passed",
+        "evidence": "report/next_stage_plan.md",
+        "scope": "G7 整体未通过；candidate014 尚未下载到板卡，必须先完成同构建短基线、ETW/AP0 单轮和 20/20 receiver-exit，再单独完成 USB 物理拔插门禁。",
+    },
+    {
+        "id": "g7_candidate014_receiver_exit",
+        "status": "offline_candidate_board_validation_pending",
+        "evidence": "report/g7_candidate014_safe_hello_ack_retry_offline_20261011.md",
+        "scope": "ARM 构建、197 项哈希预检、25 项 G6 测试、9 项 runner 测试、项目级离线补测与 20 轮软件 Mock 已通过；board_validated=false，未计实板轮次。",
+    },
+    {
+        "id": "g7_candidate014_physical_usb_unplug",
+        "status": "pending_prior_receiver_exit_gate_and_user_presence",
+        "evidence": "report/g7_candidate014_safe_hello_ack_retry_offline_20261011.md",
+        "scope": "candidate014 的同构建物理 USB 拔插 20/20 尚未开始；需 receiver-exit 前序门禁通过后现场执行。",
+    },
+    {
+        "id": "g7_candidate012_receiver_exit",
+        "status": "failed_batch_13_of_20",
+        "evidence": "report/g7_candidate012_tx_ownership_board_20261011.md",
+        "scope": "candidate012 r3 累计 13/20 个唯一轮次通过，trial 7 与 14 的 HELLO_ACK 恢复握手超时；这些轮次不折算到 candidate014。",
+    },
     {
         "id": "candidate006d_camera_reset",
         "status": "passed_limited_scope",
@@ -108,21 +151,33 @@ EVIDENCE_STATUS = [
     },
     {
         "id": "candidate006d_pc_exit_dtr",
-        "status": "pending",
-        "evidence": "report/competition_submission.md",
-        "scope": "最终 candidate006d 同构建 20 次尚未验收。",
+        "status": "partial_not_accepted",
+        "evidence": "report/next_stage_plan.md",
+        "scope": "candidate006d 的一次 host recovery 通过，但 status/fatal/transport 计数各增加 2，未达到 clean-health，也不满足 20 轮验收。",
     },
     {
         "id": "candidate006d_physical_usb_unplug",
         "status": "pending",
-        "evidence": "report/competition_submission.md",
-        "scope": "最终 candidate006d 同构建 20 次尚未验收。",
+        "evidence": "report/next_stage_plan.md",
+        "scope": "最终 candidate006d 同构建 20 次尚未验收；旧 usbfix3 记录不能替代。",
     },
     {
         "id": "g0_sd_reset_cold_start",
         "status": "pending",
         "evidence": "report/g0_acceptance.md",
         "scope": "SD 独立启动、物理复位和 30 分钟断电冷启动未完成。",
+    },
+    {
+        "id": "m02_cold_power_and_camera_absent",
+        "status": "passed_limited_scope",
+        "evidence": "report/m02_sensor_reset_board_20261011.md",
+        "scope": "20 次用户确认的整板断电/上电后 JTAG 配置 20/20，无摄像头 fail-closed 通过；不代表 SD 启动或 DVP/JPEG 实拍。",
+    },
+    {
+        "id": "kx41_mlkem_60_kat",
+        "status": "passed_independent_candidate_limited_scope",
+        "evidence": "report/keccak_sponge_x4_capture_fix_20261011.md",
+        "scope": "独立 KX41 候选 software/hardware/timeout fallback 各 60/60 KAT；硬件窗口耗时为软件的 88.6%，未集成视频工程，Keccak STATE/OUTPUT 未读回。",
     },
     {
         "id": "production_security",
@@ -140,19 +195,7 @@ EVIDENCE_STATUS = [
         "id": "competition_requirements",
         "status": "not_provided",
         "evidence": "report/submission_delivery_plan_20261010.md",
-        "scope": "正式规则、模板、命名、容量和截止时间未提供。",
-    },
-    {
-        "id": "keccak_board_benefit",
-        "status": "functional_passed_no_speedup",
-        "evidence": "report/keccak_board_benchmark_20261010.json",
-        "scope": "route4k 板测的 3 次 firmware_hw 启动均完成 tcId 76 KAT；96/96 hardware dispatch，timeout 为 96/96 fallback 且 STATUS 清零读回。硬件比软件慢 8.57%-8.68%（均值 8.62%）；不覆盖全部 84 个板上向量、不证明全域清零、未集成 006d 视频。",
-    },
-    {
-        "id": "keccak_identity_cached_board_benefit",
-        "status": "functional_passed_no_speedup",
-        "evidence": "report/keccak_identity_cached_20261010.json",
-        "scope": "identity-cached优化版3次独立板测均通过tcId 76；同boot配对SW/HW窗口中96/96 dispatch使用硬件，timeout 96/96 fallback且STATUS清零读回。HW仍慢8.356%-8.490%（均值8.411%），未集成006d视频；不覆盖全部84个板上向量、不证明全域清零。",
+        "scope": "已从协办方赛程页和高校通知查到作品截止时间；AMD 赛道正式规则、提交模板/命名/容量及队伍资格仍待官网或报名后台核实。",
     },
 ]
 

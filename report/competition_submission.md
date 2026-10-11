@@ -8,7 +8,7 @@ M04/M05 原生 XSim 已通过，软件修正与统一入口见 [软件阶段交�
 该轮电脑端构建缺口已补齐；后续实板通过项与剩余门禁分别列于下文。
 首次实机使用 [bringup 指南](../doc/bringup.md)，不要继续使用源码哈希已失效的旧 `g3_delivery`。
 
-历史 candidate006d camera-reset/routing-stall 恢复批次见 [006d 报告](g7_candidate006d_acceptance_20261010.md)。最新 candidate012 的 receiver-exit 失败和普通 CDC 重连对照见 [candidate012 报告](g7_candidate012_tx_ownership_board_20261011.md)；普通重连通过不是 G7 故障恢复通过。
+历史 candidate006d camera-reset/routing-stall 恢复批次见 [006d 报告](g7_candidate006d_acceptance_20261010.md)。candidate012 r3 的 receiver-exit 批次累计 13/20 后因两次 HELLO_ACK 超时失败；candidate014 已完成 ACK 缓存重放/有限重试及半帧保护的离线候选，测试与哈希预检通过，但 `board_validated=false`、尚未上板。详见 [candidate012 实板诊断](g7_candidate012_tx_ownership_board_20261011.md) 和 [candidate014 离线候选报告](g7_candidate014_safe_hello_ack_retry_offline_20261011.md)。G7 仍未通过。
 
 2026-10-11 新增：KX41 独立候选全 60 组三窗口实板 KAT 和性能结果见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md)；M02 Explore 候选的 20 次整板断电/上电后 JTAG 配置和无摄像头 fail-closed 均完成，证据见 [M02 实板报告](m02_sensor_reset_board_20261011.md)。M02 的 SD/Flash 独立启动和 DVP/JPEG 实拍、G0/G7 其他未完成门禁仍按验收矩阵保留。
 
@@ -32,7 +32,7 @@ M04/M05 原生 XSim 已通过，软件修正与统一入口见 [软件阶段交�
 | 已归档电脑端交付基线 | `build/vitis/usbfix3_20261007` 有四套 ARM 固件、同 XSA 的 bitstream/PS 初始化、FSBL/BOOT.BIN 和 SHA-256 清单；启动来源/BSP/哈希预检通过，构建清单仍为 `board_validated=false`。目录被 Git 忽略，需重建或单独作为附件提供；该路径不等同 candidate012 板测构建。 |
 | 可复跑的离线检查 | `run_demo.ps1 -Mode Check` 覆盖 M04/M05 原生 XSim、M08 GCM、G6 内存 USB 集成及 USB 恢复 helper；最新结果见 [软件交付记录](software_ready.md)。不访问板卡。 |
 | 2026-10-09 离线交付（历史范围） | B 的 G0 离线复核、统一验收矩阵、现场流程与脱敏 Benchmark 已完成；fixture 单测 12/12。C 的独立 Keccak route4k PS+PL 工程、匹配 XSA/bitstream 和两种 A9 固件已通过离线构建/hash 检查，但未上板、未测性能，不能作为加速收益证据。 |
-| G7 最新板卡证据 | candidate012 r3 receiver-exit 单轮失败：HELLO_ACK 对应设备 dTD 报告完成，但主机 39 次读取共 0 字节，根因未明；同构建、无 JTAG 普通 CDC 重连认证 141 帧/1,130 包，47.672 fps。历史 candidate006d camera-reset/routing-stall 各 20/20 仍按其构建身份保留。G7 整体未通过，见 [candidate012 报告](g7_candidate012_tx_ownership_board_20261011.md)、[006d 报告](g7_candidate006d_acceptance_20261010.md) 与 [验收矩阵](acceptance_matrix_20261009.md)。 |
+| G7 最新板卡证据 | 最新板测仍是 candidate012：receiver-exit 批次 13/20 后失败，trial 7/14 在 HELLO_ACK 等待处超时；同期普通 CDC 重连认证 141 帧/1,130 包、47.672 fps。candidate014 只有软件构建/离线证据，尚未下载到板卡。历史 candidate006d camera-reset/routing-stall 各 20/20 仅按原构建身份保留。G7 整体未通过，见 [candidate012 报告](g7_candidate012_tx_ownership_board_20261011.md)、[candidate014 报告](g7_candidate014_safe_hello_ack_retry_offline_20261011.md)、[006d 报告](g7_candidate006d_acceptance_20261010.md) 与 [验收矩阵](acceptance_matrix_20261009.md)。 |
 | KX41 实板证据 | 独立候选 software、hardware 和 timeout fallback 三窗口各 60/60 KAT；硬件窗口 ticks 为软件的 88.6%。未集成视频固件，也没有读回 Keccak 内部 STATE/OUTPUT，见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md)。 |
 | M02 实板证据 | 用户确认的 20 次整板断电/上电后 JTAG 配置 20/20；无摄像头 fail-closed 通过。SD/Flash 启动和 DVP/JPEG 实拍未测，见 [M02 报告](m02_sensor_reset_board_20261011.md)。 |
 | 历史 Keccak 实板证据 | safe_elfs 配匹配 route4k XSA 的 tcId76 路径中 HW 约慢 8.6%；STATUS 清理不证明全域清零，见 [旧实板报告](keccak_board_benchmark_20261010.md)。 |
@@ -48,7 +48,7 @@ M04/M05 原生 XSim 已通过，软件修正与统一入口见 [软件阶段交�
 2. 本轮 G3 实拍结果已保存并复核 GCM 认证、JPEG 解码和邮箱清零。提交包仍需整理对应实拍、日志和构建身份，禁止将它算作 20 次冷启动或持续视频验收。
 3. 若比赛要求 SD 卡冷启动，使用已生成并预检的同 XSA 启动镜像，另行实测；G0 final2 已完成临时 JTAG、LED 与30秒局部DDR/定时器检查，SD独立启动、物理复位及30分钟冷启动仍未验收。用户目前没有读卡器，板上 SD 卡保持原样、不写入。
 4. G6 认证视频/换钥及最新固件的自动连接恢复已有实机记录；统一脱敏 Benchmark 已建立，但缺少结构化来源的历史项仍需逐项补证；丢帧/认证失败计数及演示材料不能以短测替代长测。
-5. G7 下一步先采集有界的主机 USB 请求/串口层证据，定位 candidate012 receiver-exit 的单轮失败；之后按同一构建跑单轮、20 轮接收进程退出及独立物理 USB 拔插批次。candidate006d 的受控 camera-reset/PWDN 与 routing-stall 各 20/20 只作为历史特定场景通过。约 50 分钟时长例外不写成实测 2 小时，见 [执行计划](next_stage_plan.md)。
+5. G7 下一步先用 candidate014 做新板上短基线和 ETW/AP0 单轮；通过后，同一 ELF/manifest 从零跑 20 轮接收进程退出，再单独进行 20 轮物理 USB 拔插。candidate012 的 13 个通过轮及 candidate006d 的受控 camera-reset/PWDN、routing-stall 各 20/20 都只作为原构建的历史证据。约 50 分钟时长例外不写成实测 2 小时，见 [执行计划](next_stage_plan.md)。
 6. M02 的 20 次上电配置、无摄像头 fail-closed 现场操作已完成；若提交范围需要，再单独安排 SD 启动、物理复位、长时冷启动或 DVP/JPEG 实拍，不把不同门禁合并。
 7. 从官网/报名后台获取 AMD 具体赛道最新细则并确认队伍资格；据此定稿作品报告、演示视频、声明和附件格式。根项目许可证尚未确定，先完成[版权与依赖盘点](reuse_license_audit_20261011.md)并获得团队授权，再讨论公开范围。
 

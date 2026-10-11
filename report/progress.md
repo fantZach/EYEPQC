@@ -4,6 +4,10 @@
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
 当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。
 
+## 2026-10-11：candidate014 HELLO_ACK 安全重试完成离线准备
+
+针对 candidate012 receiver-exit 中两次 HELLO_ACK 超时，candidate014 让固件对相同 HELLO 重放缓存 ACK，主机最多重发两次原样 HELLO；超时后若 decoder 留有半帧则停止重试，避免新旧记录拼接。构建、197 项文件哈希预检、G6 离线测试 25/25、G7 runner 测试 9/9、项目级 M04/M05 补测及 20 轮软件 Mock 均通过。candidate014 尚未下载到板卡，`board_validated=false`；candidate012 的 13 个通过轮不折算。代码和报告已推送 GitHub；下一步需要同候选板上基线、ETW/AP0 单轮和从零 20/20 receiver-exit，之后才进行物理 USB 拔插门禁。该轮没有访问板卡、SD、Flash 或 eFuse。详见 [candidate012 实板诊断](g7_candidate012_tx_ownership_board_20261011.md)、[candidate014 离线报告](g7_candidate014_safe_hello_ack_retry_offline_20261011.md) 和 [下一阶段计划](next_stage_plan.md)。
+
 ## 2026-10-11：candidate011 receiver-exit 实板单轮失败
 
 用户重新插拔后 CDC COM16 与只读 JTAG 枚举恢复。candidate011 两个构建各自通过 JTAG 加载后的 2 帧认证视频基线。首个 receiver-exit 单轮在旧进程解出 7 帧后，新 receiver 等待 HELLO_ACK 超时；板端 HELLO/ACK 计数各增加 1、ACK send status=0、错误计数为 0。新增无载荷 RX/framing 诊断后重新构建，启动阶段再次超时：39 次串口读取共 0 字节，decoder 缓冲为 0；板端只读快照仍显示 HELLO/ACK send status=0。该结果排除主机收到半帧后卡在 decoder 的解释，但未确认 EP1 IN 实际数据交付。两批均 fail-stop，未跑 20 轮或物理拔插批次。详见 [candidate011 实板报告](g7_candidate011_receiver_exit_board_20261011.md) 和[机器摘要](g7_candidate011_receiver_exit_board_20261011.json)。

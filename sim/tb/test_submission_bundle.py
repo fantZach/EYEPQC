@@ -7,6 +7,11 @@ from zipfile import ZipFile
 
 from prj.prepare_submission_bundle import (
     BundleError,
+    EVIDENCE_STATUS,
+    INDEX_NAME,
+    BUNDLE_NAME,
+    ROOT,
+    selected_paths,
     is_explicit_extra_candidate,
     is_forbidden_path,
     is_public_candidate,
@@ -19,6 +24,31 @@ from prj.prepare_submission_bundle import (
 
 
 class SubmissionBundlePolicyTests(unittest.TestCase):
+    def test_current_candidate014_status_and_evidence_are_included(self):
+        statuses = {entry["id"]: entry for entry in EVIDENCE_STATUS}
+        self.assertEqual(statuses["g7_overall"]["status"], "not_passed")
+        self.assertEqual(
+            statuses["g7_candidate014_receiver_exit"]["status"],
+            "offline_candidate_board_validation_pending",
+        )
+        self.assertEqual(
+            statuses["g7_candidate012_receiver_exit"]["status"],
+            "failed_batch_13_of_20",
+        )
+        selected, _, _ = selected_paths(ROOT, [])
+        selected_set = set(selected)
+        for entry in EVIDENCE_STATUS:
+            with self.subTest(evidence=entry["evidence"]):
+                self.assertIn(entry["evidence"], selected_set)
+        self.assertIn(
+            "report/g7_candidate014_safe_hello_ack_retry_offline_20261011.md",
+            selected_set,
+        )
+
+    def test_review_bundle_names_are_current_and_not_formal_submission_names(self):
+        self.assertEqual(BUNDLE_NAME, "EYEPQC_submission_review_candidate014_20261011.zip")
+        self.assertEqual(INDEX_NAME, "evidence_index_candidate014_20261011.json")
+
     def test_fixed_exclusions_and_known_public_kat(self):
         excluded = (
             "build/vitis/image.elf",
