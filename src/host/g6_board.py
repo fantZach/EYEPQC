@@ -76,11 +76,17 @@ def jtag(workspace, pk, sk, tool_root):
         fields = line.split()
         if len(fields) == 4 and fields[3] in ("g6_sk_load", "g6_seed_load", "g6_ready", "g6_status"):
             symbols[fields[3]] = (int(fields[0], 16), int(fields[1], 16))
-    for name, size in (("g6_sk_load", SK), ("g6_seed_load", 32),
-                       ("g6_ready", 4), ("g6_status", 4)):
+    owned_sizes = (("g6_sk_load", SK), ("g6_seed_load", 32),
+                   ("g6_ready", 4), ("g6_status", 4))
+    for name, size in owned_sizes:
         address, actual = symbols[name]
         if actual != size or address % 64 or not 0x100000 <= address <= 0x40000000 - size:
             raise ValueError("invalid ELF-owned G6 buffer: " + name)
+    owned_ranges = sorted((symbols[name][0], symbols[name][0] + size, name)
+                          for name, size in owned_sizes)
+    for previous, current in zip(owned_ranges, owned_ranges[1:]):
+        if current[0] < previous[1]:
+            raise ValueError("overlapping ELF-owned G6 buffers: " + previous[2] + "/" + current[2])
     if len(pk) != PK or len(sk) != SK or sk[768:1568] != pk:
         raise ValueError("private/public key mismatch")
     xsdb = tool_root / "Vivado/bin/xsdb.bat"

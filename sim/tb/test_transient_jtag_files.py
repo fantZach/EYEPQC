@@ -22,6 +22,24 @@ from transient_file import read_mutable_file, staged_file
 
 
 class TransientJtagFileTests(unittest.TestCase):
+    def test_g6_jtag_rejects_overlapping_elf_owned_buffers(self):
+        pk = bytes((index % 251 for index in range(m09.PK)))
+        sk = bytearray((index % 239 for index in range(m09.SK)))
+        sk[768:1568] = pk
+        addresses = {"g6_sk_load": 0x101000, "g6_seed_load": 0x101600,
+                     "g6_ready": 0x103000, "g6_status": 0x104000}
+        sizes = {"g6_sk_load": m09.SK, "g6_seed_load": 32,
+                 "g6_ready": 4, "g6_status": 4}
+        nm_output = "\n".join(
+            f"{addresses[name]:08x} {sizes[name]:08x} B {name}"
+            for name in sizes)
+        with patch.object(g6_board.subprocess, "check_output", return_value=nm_output), \
+                patch.object(g6_board.subprocess, "run",
+                             side_effect=AssertionError("must reject before XSDB")):
+            with self.assertRaisesRegex(ValueError, "overlapping ELF-owned G6 buffers"):
+                g6_board.jtag(Path("workspace"), pk, sk, Path("tools"))
+        sk[:] = bytes(len(sk))
+
     def test_g6_jtag_seed_file_is_overwritten_before_removal(self):
         with tempfile.TemporaryDirectory(prefix="eyepqc-g6-seed-") as temp:
             root = Path(temp)

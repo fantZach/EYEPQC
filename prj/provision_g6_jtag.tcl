@@ -8,6 +8,17 @@ if {[catch {
             error "Invalid ELF-owned DDR address: $name"
         }
     }
+    set ranges [list [list $sk_addr 1632] [list $seed_addr 32] \
+                     [list $ready_addr 4] [list $status_addr 4]]
+    for {set i 0} {$i < [llength $ranges]} {incr i} {
+        lassign [lindex $ranges $i] start_i size_i
+        for {set j [expr {$i + 1}]} {$j < [llength $ranges]} {incr j} {
+            lassign [lindex $ranges $j] start_j size_j
+            if {$start_i < $start_j + $size_j && $start_j < $start_i + $size_i} {
+                error "Overlapping G6 provisioning buffers"
+            }
+        }
+    }
     if {[file size $sk] != 1632 || [file size $seed] != 32 ||
         $sk_addr + 1632 > 0x40000000 || $seed_addr + 32 > 0x40000000} {
         error "Invalid G6 provision input"
