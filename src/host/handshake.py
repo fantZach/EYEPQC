@@ -111,7 +111,11 @@ class HostSession:
     def verify_board_finished(self, message):
         if self.state != "CONFIRM" or self.board_verified:
             raise ValueError("unexpected board Finished")
-        kind, body = decode_control(message)
+        try:
+            kind, body = decode_control(message)
+        except (TypeError, ValueError):
+            self.close("ERROR")
+            raise
         expected = hmac.digest(self.control_key, b"board finished" + self.transcript, "sha256")
         if kind != MessageType.FINISHED_BOARD or not hmac.compare_digest(body, expected):
             self.close("ERROR")

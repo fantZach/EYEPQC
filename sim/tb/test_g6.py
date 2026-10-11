@@ -280,6 +280,21 @@ class G6(unittest.TestCase):
         self.assertEqual(bytes(board.session.video_key), bytes(16))
         host.close('ERROR')
 
+    def test_malformed_board_finished_retires_host_keys(self):
+        _, host = self.create_pair()
+        host.begin(bytes.fromhex('11' * 32), bytes.fromhex('22' * 32),
+                   bytes.fromhex('33' * 32))
+        old_video, old_control = host.video_key, host.control_key
+
+        with self.assertRaisesRegex(ValueError, 'truncated control header'):
+            host.verify_board_finished(b'bad')
+
+        self.assertEqual(host.state, 'ERROR')
+        self.assertIsNone(host.video_key)
+        self.assertIsNone(host.control_key)
+        self.assertEqual(old_video, bytearray(16))
+        self.assertEqual(old_control, bytearray(32))
+
     def test_coalesced_controls_preserve_every_record(self):
         ack = encode_control(MessageType.HELLO_ACK, b'\x01\x01\x00\x01' + bytes(32))
         finished = encode_control(MessageType.FINISHED_BOARD, bytes(32))
