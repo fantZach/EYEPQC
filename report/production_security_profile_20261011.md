@@ -42,6 +42,8 @@ Opaque-key provider 接口和生产源列表收紧后的候选为 `build/vitis/g
 
 增加必需 DRBG/provider/secure-cleanup 符号检查，并在调用 provider 前先清零共享秘密输出区后的候选为 `build/vitis/g6s12/g6_usb/build/g6_usb.elf`，SHA-256 `f5ade2b395e51de3bc35b00022c9b2ce267479cfe530f80b502b4cb0e5db41ed`；`g6_usb.c` SHA-256 `99765b137a3726252ca7e33f54ab98a41b7d76c720b3726d3e6fa63675876556` 与 manifest 一致。builder 要求 instantiate/generate/reseed、全部 provider API、受限清理诊断与 cleanup callbacks 均链接，并拒绝应用侧 ML-KEM、私钥导出和开发 provision/seed 符号；该 ARM 构建通过全部要求。manifest 仍标记 `external_provider_unvalidated`、`board_validated=false`，临时 provider 故意 fail closed。
 
+为补齐静态 CPU-owned 清理范围的地址证据，builder 现从最终 ARM ELF 校验并写入 `tx`（1472 B）、`hello`/`ack`（各48 B）、`session`（192 B）和 `production_drbg`（72 B）的 DDR 地址/尺寸，并检查地址对齐和对象范围不重叠。新版只读 AP0 Tcl 读回除 frame/sealed/TX 外，还检查 session transcript/key 字段（偏移64..144）、session nonce/counter字段（偏移144..184）及 HELLO/ACK 缓存；XSDB wrapper 从 manifest 取地址并校验 ELF SHA-256，只持久化零值状态，不输出缓冲内容。`session.h` 增加结构尺寸与偏移静态断言。新候选 `build/vitis/g6s13/g6_usb/build/g6_usb.elf` SHA-256 `dd1c14d167741acad6f77e4ae7c4c2226beeed6313a90dae411feee49d0b2e9e`，link map SHA-256 `93ce346dd1f0ffbd9298ca772e4db83034252f9d23a4265827ed733bdf2c3edb`；manifest 的 `owned` 含上述地址范围，仍为 `external_provider_unvalidated`、`board_validated=false`。新增采集器与 Tcl 定向测试通过；全量电脑端回归 **133/133** 通过（157.173 秒）。Tcl 测试使用 mock AP0，实际板端读回尚未执行，临时 provider 仍故意 fail closed。
+
 ## 主机握手临时秘密生命周期（电脑端）
 
 `src/host/m09.py` 现在把 ML-KEM keygen/encaps/decaps 的私钥或共享秘密返回到可覆写的 `bytearray`；原生 C 输出缓冲仍在返回前清零。`src/host/handshake.py` 将 HKDF 中间值和 56 字节派生材料放在可覆写缓冲中，退出 `derive()` 时清 PRK、T1、T2 与上下文；`HostSession.begin()` 在成功、重复 transcript 拒绝或异常退出时清本次拥有的 encapsulation coins、shared secret 与完整派生材料。生产 G6/M10 主机入口在调用后也清传入的 coins 缓冲；离线 board 测试路径清 decaps shared/material 和私钥缓冲。握手会话关闭时，先前持有引用的 video/control key 缓冲会被覆写后再从 session 释放。
@@ -50,7 +52,7 @@ Opaque-key provider 接口和生产源列表收紧后的候选为 `build/vitis/g
 
 另以同一 XSA 和当前构建脚本编译开发 profile：`build/vitis/g6_dev_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `f80f9fd014d0ee6d329b8149c7a12cb62e881801eb10858e722d807f236dff1c`。开发 ELF 保留 mailbox 和旧开发随机状态，未编译/链接 DRBG 源；生产 ELF 则相反。两个 manifest 分别标记 `development_jtag_mailbox` 与 `external_provider_unvalidated`。两个构建的 `g6_usb.c`/DRBG 源码哈希均匹配；该对照验证 DRBG 仅进入显式生产配置。
 
-本节最新全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **128 tests / OK**，耗时 **270.085 秒**。覆盖 host 临时秘密清理、DRBG 输入失败状态覆写、opaque-key provider 身份/失败门禁、输出区调用前清零、生产启动单次初始化、启动失败清理，以及 fail-closed 时逐字节确认会话 key/DRBG/握手缓存归零；USB TX 仅在清理回调确认释放后覆写，前序清理失败时不越权写入。生产 profile C harness 随后在 `-O0` 与 `-O3` 均通过定向测试；故障后断连保持终态及全部既有 RTL/协议用例也通过。production/development ARM profile 均完成重建，生产 ELF 必需/禁止安全符号 link gate 通过。电脑端回归不代表熵源、密钥服务、host 全进程清零或板端安全验收。
+本节最新全量电脑端回归 `.venv/Scripts/python.exe -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **133 tests / OK**，耗时 **157.173 秒**。覆盖 host 临时秘密清理、DRBG 输入失败状态覆写、opaque-key provider 身份/失败门禁、输出区调用前清零、生产启动单次初始化、启动失败清理，以及 fail-closed 时逐字节确认会话 key/DRBG/握手缓存归零；USB TX 仅在清理回调确认释放后覆写，前序清理失败时不越权写入。生产 profile C harness 在 `-O0` 与 `-O3` 均通过；新增 manifest 驱动的只读清零读回工具测试拒绝错 ELF、地址重叠、非零范围、重复总结和不完整/夸大的证据。故障后断连保持终态及全部既有 RTL/协议用例也通过。production/development ARM profile 均完成重建，生产 ELF 必需/禁止安全符号 link gate 通过。电脑端回归不代表熵源、密钥服务、host 全进程清零或板端安全验收；实际 AP0 读回仍待板测。
 
 ## 仍未完成
 

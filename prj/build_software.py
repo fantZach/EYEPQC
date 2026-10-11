@@ -278,6 +278,29 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
         if actual != size or address % 64 or not 0x100000 <= address <= 0x40000000 - size:
             raise RuntimeError(f'Invalid ELF-owned DDR ABI: {name}/{key}')
         owned[key] = dict(address=address, size=size)
+    if name == 'g6_usb' and production_provider is not None:
+        # Include statically allocated production state needed by the AP0
+        # cleanup readback. Only TX needs cache-line alignment; the other
+        # CPU-owned byte buffers require word-aligned AP0 reads.
+        software_owned = {
+            'tx': (1472, 64),
+            'hello': (48, 4),
+            'ack': (48, 4),
+            'session': (192, 4),
+            'production_drbg': (72, 4),
+        }
+        for key, (size, alignment) in software_owned.items():
+            address, actual = abi.get(key, (0, 0))
+            if (actual != size or address % alignment or
+                    not 0x100000 <= address <= 0x40000000 - size):
+                raise RuntimeError(f'Invalid production-owned DDR ABI: {key}')
+            owned[key] = dict(address=address, size=size)
+        ranges = sorted((entry['address'], entry['address'] + entry['size'], key)
+                        for key, entry in owned.items())
+        for previous, current in zip(ranges, ranges[1:]):
+            if current[0] < previous[1]:
+                raise RuntimeError('Overlapping production-owned DDR ranges: ' +
+                                   previous[2] + ' / ' + current[2])
     with zipfile.ZipFile(xsa) as archive:
         for member, target in [('m01.bit', app / '_ide/bitstream/m01.bit'),
                                ('ps7_init.tcl', app / '_ide/psinit/ps7_init.tcl')]:

@@ -1,5 +1,6 @@
 # Read-only PS DDR verification for a completed G6 secure cleanup.
 # Usage: diag_addr diag_size frame_addr frame_size sealed_addr sealed_size tx_addr tx_size
+#        session_addr session_size hello_addr hello_size ack_addr ack_size
 # This script only connects, selects APU, reads AP0, and disconnects. It never
 # stops/resets a target, loads an image, or writes memory/registers.
 
@@ -14,9 +15,9 @@ proc parse_u32 {name value} {
     return $parsed
 }
 
-proc validate_range {name address size max_size} {
+proc validate_range {name address size max_size {alignment 64}} {
     if {$address < 0x00100000 || $address >= 0x40000000 ||
-        $size <= 0 || $size > $max_size || ($address % 64) != 0 ||
+        $size <= 0 || $size > $max_size || ($address % $alignment) != 0 ||
         ($size % 4) != 0 || ($address + $size) > 0x40000000} {
         error "Invalid DDR range for $name"
     }
@@ -66,12 +67,14 @@ proc read_zero_or {name address size} {
 
 set connected 0
 if {[catch {
-    if {[llength $argv] != 8} {
-        error "usage: diag_addr diag_size frame_addr frame_size sealed_addr sealed_size tx_addr tx_size"
+    if {[llength $argv] != 14} {
+        error "usage: diag_addr diag_size frame_addr frame_size sealed_addr sealed_size tx_addr tx_size session_addr session_size hello_addr hello_size ack_addr ack_size"
     }
     lassign $argv diag_addr diag_size frame_addr frame_size \
-        sealed_addr sealed_size tx_addr tx_size
-    foreach name {diag_addr diag_size frame_addr frame_size sealed_addr sealed_size tx_addr tx_size} {
+        sealed_addr sealed_size tx_addr tx_size session_addr session_size \
+        hello_addr hello_size ack_addr ack_size
+    foreach name {diag_addr diag_size frame_addr frame_size sealed_addr sealed_size \
+        tx_addr tx_size session_addr session_size hello_addr hello_size ack_addr ack_size} {
         set $name [parse_u32 $name [set $name]]
     }
 
@@ -85,13 +88,37 @@ if {[catch {
         tx $tx_addr $tx_size] {
         validate_range $name $address $size 1048576
     }
+    if {$session_size != 192 || $hello_size != 48 || $ack_size != 48} {
+        error "CPU secret/cache sizes do not match the G6 production ABI"
+    }
+    foreach {name address size} [list \
+        session $session_addr $session_size \
+        hello $hello_addr $hello_size \
+        ack $ack_addr $ack_size] {
+        validate_range $name $address $size 256 4
+    }
     foreach {a_addr a_size b_addr b_size} [list \
         $diag_addr $diag_size $frame_addr $frame_size \
         $diag_addr $diag_size $sealed_addr $sealed_size \
         $diag_addr $diag_size $tx_addr $tx_size \
+        $diag_addr $diag_size $session_addr $session_size \
+        $diag_addr $diag_size $hello_addr $hello_size \
+        $diag_addr $diag_size $ack_addr $ack_size \
         $frame_addr $frame_size $sealed_addr $sealed_size \
         $frame_addr $frame_size $tx_addr $tx_size \
-        $sealed_addr $sealed_size $tx_addr $tx_size] {
+        $frame_addr $frame_size $session_addr $session_size \
+        $frame_addr $frame_size $hello_addr $hello_size \
+        $frame_addr $frame_size $ack_addr $ack_size \
+        $sealed_addr $sealed_size $tx_addr $tx_size \
+        $sealed_addr $sealed_size $session_addr $session_size \
+        $sealed_addr $sealed_size $hello_addr $hello_size \
+        $sealed_addr $sealed_size $ack_addr $ack_size \
+        $tx_addr $tx_size $session_addr $session_size \
+        $tx_addr $tx_size $hello_addr $hello_size \
+        $tx_addr $tx_size $ack_addr $ack_size \
+        $session_addr $session_size $hello_addr $hello_size \
+        $session_addr $session_size $ack_addr $ack_size \
+        $hello_addr $hello_size $ack_addr $ack_size] {
         if {[ranges_overlap $a_addr $a_size $b_addr $b_size]} {
             error "Diagnostic and wipe-verification DDR ranges must not overlap"
         }
@@ -183,7 +210,12 @@ if {[catch {
     set frame_zero [read_zero_or frame $frame_addr $frame_size]
     set sealed_zero [read_zero_or sealed $sealed_addr $sealed_size]
     set tx_zero [read_zero_or tx $tx_addr $tx_size]
-    set total_bytes [expr {$frame_size + $sealed_size + $tx_size}]
+    set session_keys_zero [read_zero_or session_keys [expr {$session_addr + 64}] 80]
+    set session_counters_zero [read_zero_or session_counters [expr {$session_addr + 144}] 40]
+    set hello_zero [read_zero_or hello $hello_addr $hello_size]
+    set ack_zero [read_zero_or ack $ack_addr $ack_size]
+    set total_bytes [expr {$frame_size + $sealed_size + $tx_size + 120 +
+                           $hello_size + $ack_size}]
 
     set diag_after [mrd_u32 $diag_addr 30]
     set stage_after [lindex $diag_after 1]
@@ -192,11 +224,13 @@ if {[catch {
         $result_after != 0 || $diag_after ne $diag_before} {
         error "Cleanup diagnostic changed or left successful COMPLETE state during readback"
     }
-    puts [format "G6_CLEANUP_READBACK frame_zero=%u sealed_zero=%u tx_zero=%u total_bytes=%u stage_before=%u stage_after=%u scope=PS_AP0_DDR_only pl_gcm_full_readback=not_proven" \
-        $frame_zero $sealed_zero $tx_zero $total_bytes $stage_before $stage_after]
+    puts [format "G6_CLEANUP_READBACK frame_zero=%u sealed_zero=%u tx_zero=%u session_keys_zero=%u session_counters_zero=%u hello_zero=%u ack_zero=%u total_bytes=%u stage_before=%u stage_after=%u scope=PS_AP0_DDR_only pl_gcm_full_readback=not_proven" \
+        $frame_zero $sealed_zero $tx_zero $session_keys_zero $session_counters_zero \
+        $hello_zero $ack_zero $total_bytes $stage_before $stage_after]
     disconnect
     set connected 0
-    if {!$frame_zero || !$sealed_zero || !$tx_zero} {
+    if {!$frame_zero || !$sealed_zero || !$tx_zero || !$session_keys_zero ||
+        !$session_counters_zero || !$hello_zero || !$ack_zero} {
         error "One or more PS DDR cleanup ranges contain nonzero data"
     }
     puts "G6_CLEANUP_READBACK_PASS"

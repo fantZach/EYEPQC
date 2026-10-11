@@ -12,12 +12,16 @@ VALID_ARGS = [
     "0x100100", "64",
     "0x100200", "64",
     "0x100300", "64",
+    "0x100400", "192",
+    "0x100500", "48",
+    "0x100600", "48",
 ]
 
 
 def run_script(
     args: list[str], *, diag_overrides: dict[int, int] | None = None,
     changed_after_read: bool = False, nonzero_frame: bool = False,
+    nonzero_region: str | None = None,
     partial_read_at: int | None = None,
 ):
     interp = tkinter.Tcl()
@@ -36,6 +40,12 @@ def run_script(
     sealed_size = arg_int(5)
     tx_addr = arg_int(6, 0)
     tx_size = arg_int(7)
+    session_addr = arg_int(8, 0)
+    session_size = arg_int(9)
+    hello_addr = arg_int(10, 0)
+    hello_size = arg_int(11)
+    ack_addr = arg_int(12, 0)
+    ack_size = arg_int(13)
     diag = [
         0x4736434C, 6, 0, 0, 3, 0, 1, 1, 2, 0,
         frame_addr, frame_size, 0, sealed_addr, sealed_size, 0,
@@ -71,10 +81,19 @@ def run_script(
             values = diag.copy()
             if changed_after_read and diag_reads == 2:
                 values[1] = 5
-        elif frame_addr <= address < frame_addr + frame_size:
-            values = [0xDEADBEEF if nonzero_frame else 0] * count
         else:
-            values = [0] * count
+            regions = {
+                "frame": (frame_addr, frame_size),
+                "sealed": (sealed_addr, sealed_size),
+                "tx": (tx_addr, tx_size),
+                "session": (session_addr, session_size),
+                "hello": (hello_addr, hello_size),
+                "ack": (ack_addr, ack_size),
+            }
+            region = next((name for name, (base, size) in regions.items()
+                           if base <= address < base + size), None)
+            nonzero = nonzero_frame if region == "frame" else region == nonzero_region
+            values = [0xDEADBEEF if nonzero else 0] * count
         if partial_read_at == address:
             values = values[:-1]
         return " ".join(str(x) for x in values)
@@ -113,11 +132,13 @@ class ReadG6SecureCleanupTests(unittest.TestCase):
         self.assertEqual(calls["connect"], 1)
         self.assertEqual(calls["targets"], 1)
         self.assertEqual(calls["disconnect"], 1)
-        self.assertEqual(calls["mrd"], 5)
+        self.assertEqual(calls["mrd"], 9)
         self.assertIn(
-            "G6_CLEANUP_READBACK frame_zero=1 sealed_zero=1 tx_zero=1 total_bytes=192",
+            "G6_CLEANUP_READBACK frame_zero=1 sealed_zero=1 tx_zero=1 session_keys_zero=1 session_counters_zero=1 hello_zero=1 ack_zero=1 total_bytes=408",
             output,
         )
+        self.assertIn("G6_CLEANUP_RANGE name=session_keys bytes=80 words=20 zero=1", output)
+        self.assertIn("G6_CLEANUP_RANGE name=session_counters bytes=40 words=10 zero=1", output)
         self.assertIn("G6_CLEANUP_READBACK_PASS", output)
         self.assertIn("route=3", output)
         self.assertIn("dma_reset=00000000", output)
@@ -140,6 +161,10 @@ class ReadG6SecureCleanupTests(unittest.TestCase):
             lambda a: a.__setitem__(3, "65"),
             lambda a: a.__setitem__(4, "0x100100"),
             lambda a: a.__setitem__(2, "not-an-address"),
+            lambda a: a.__setitem__(9, "188"),
+            lambda a: a.__setitem__(8, "0x100402"),
+            lambda a: a.__setitem__(11, "44"),
+            lambda a: a.__setitem__(12, "0x100520"),
         ]
         for mutate in mutations:
             with self.subTest(mutation=mutate):
@@ -189,7 +214,7 @@ class ReadG6SecureCleanupTests(unittest.TestCase):
             VALID_ARGS, changed_after_read=True
         )
         self.assertEqual(exit_code, 1)
-        self.assertEqual(calls["mrd"], 5)
+        self.assertEqual(calls["mrd"], 9)
 
         exit_code, _output, calls = run_script(
             VALID_ARGS, partial_read_at=int(VALID_ARGS[2], 0)
@@ -202,6 +227,9 @@ class ReadG6SecureCleanupTests(unittest.TestCase):
         args[3] = str(4096 * 4 + 64)
         args[4] = "0x104200"
         args[6] = "0x104300"
+        args[8] = "0x104400"
+        args[10] = "0x104500"
+        args[12] = "0x104600"
         # Keep disjoint capacities and ensure the large frame range stays in DDR.
         exit_code, output, calls = run_script(args)
         self.assertEqual(exit_code, 0)
@@ -210,12 +238,18 @@ class ReadG6SecureCleanupTests(unittest.TestCase):
         self.assertEqual(sum(count for address, count in calls["reads"]
                              if int(args[2], 0) <= address < int(args[2], 0) + int(args[3])),
                          4096 + 16)
-        self.assertIn("total_bytes=16576", output)
+        self.assertIn("total_bytes=16792", output)
 
     def test_nonzero_readback_reports_only_boolean(self):
         exit_code, output, _calls = run_script(VALID_ARGS, nonzero_frame=True)
         self.assertEqual(exit_code, 1)
         self.assertIn("G6_CLEANUP_RANGE name=frame bytes=64 words=16 zero=0", output)
+        self.assertNotIn("DEADBEEF", output)
+        self.assertNotIn("3735928559", output)
+
+        exit_code, output, _calls = run_script(VALID_ARGS, nonzero_region="session")
+        self.assertEqual(exit_code, 1)
+        self.assertIn("G6_CLEANUP_RANGE name=session_keys bytes=80 words=20 zero=0", output)
         self.assertNotIn("DEADBEEF", output)
         self.assertNotIn("3735928559", output)
 

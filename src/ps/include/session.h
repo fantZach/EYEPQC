@@ -21,6 +21,15 @@ struct eye_session {
     uint8_t receive_started, board_finished_sent, host_finished_verified, state;
 };
 
+_Static_assert(sizeof(struct eye_session) == 192U &&
+               offsetof(struct eye_session, transcript_hash) == 64U &&
+               offsetof(struct eye_session, video_key) == 96U &&
+               offsetof(struct eye_session, control_key) == 112U &&
+               offsetof(struct eye_session, nonce_prefix) == 144U &&
+               offsetof(struct eye_session, receive_started) == 184U &&
+               offsetof(struct eye_session, state) == 187U,
+               "G6 session DDR readback layout changed");
+
 int eye_sha256(uint8_t out[32], const uint8_t *data, size_t length);
 int eye_hmac_sha256(uint8_t out[32], const uint8_t *key, size_t key_length,
                     const uint8_t *data, size_t length);
