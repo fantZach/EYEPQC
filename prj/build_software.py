@@ -131,8 +131,8 @@ def symbols(nm, elf):
             if len(f := line.split()) == 4}
 
 
-def prepare_production_cleanup_usb(workspace, gcc):
-    """Generate the isolated bounded USBPS overlay used by production cleanup."""
+def prepare_secure_cleanup_usb(workspace, gcc):
+    """Generate the hash-pinned bounded USBPS overlay for ordered G6 cleanup."""
     vendor = gcc.parents[5] / 'data/embeddedsw/XilinxProcessorIPLib/drivers/usbps_v2_11/examples'
     sdk_root = vendor.parent
     run([sys.executable, ROOT / 'prj/prepare_usb_bounded_sdk.py',
@@ -155,7 +155,7 @@ def prepare_production_cleanup_usb(workspace, gcc):
                  ('xusbps_endpoint.c', 'xusbps_ch9.c', 'xusbps_intr.c')]
     generated += [generated_probe, wrapper_unit]
     if any(not path.is_file() for path in generated):
-        raise RuntimeError('Production USB cleanup overlay generation was incomplete')
+        raise RuntimeError('Secure USB cleanup overlay generation was incomplete')
     external_sources = {
         'src/xusbps_endpoint.c': digest(sdk_root / 'src/xusbps_endpoint.c'),
         'examples/xusbps_ch9.c': digest(sdk_root / 'examples/xusbps_ch9.c'),
@@ -166,7 +166,10 @@ def prepare_production_cleanup_usb(workspace, gcc):
     return generated, external_sources, overlay
 
 
-def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
+def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
+              dev_secure_cleanup=False):
+    secure_cleanup_enabled = (name == 'g6_usb' and
+                              (production_provider is not None or dev_secure_cleanup))
     app = workspace / name
     build = app / 'build'
     build.mkdir(parents=True)
@@ -176,7 +179,9 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
     if name == 'g6_usb':
         defines.append('G6_USB')
         if production_provider is not None:
-            defines.extend(['G6_PRODUCTION', 'G6_SECURE_CLEANUP'])
+            defines.append('G6_PRODUCTION')
+        if secure_cleanup_enabled:
+            defines.append('G6_SECURE_CLEANUP')
     sources = [ROOT / 'src/ps/src/g3_camera.c']
     include = [cpu / 'include', ROOT / 'src/ps/include']
     cleanup_external_sources = {}
@@ -186,9 +191,9 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
         # HSI generates driver sources; official examples stay in the install.
         vendor = gcc.parents[5] / 'data/embeddedsw/XilinxProcessorIPLib/drivers/usbps_v2_11/examples'
         sources.append(ROOT / 'src/ps/src' / ('g6_usb.c' if name == 'g6_usb' else 'g4_usb.c'))
-        if name == 'g6_usb' and production_provider is not None:
+        if name == 'g6_usb' and secure_cleanup_enabled:
             secure_cleanup_usb_sources, cleanup_external_sources, secure_cleanup_overlay = \
-                prepare_production_cleanup_usb(workspace, gcc)
+                prepare_secure_cleanup_usb(workspace, gcc)
             sources += [secure_cleanup_usb_sources[-1], *secure_cleanup_usb_sources[:3]]
             include += [secure_cleanup_overlay, ROOT / 'prj', vendor]
         else:
@@ -214,7 +219,7 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
         inputs += list((ROOT / 'src/third_party/tinycrypt/lib/include').rglob('*.h'))
         if production_provider is None:
             inputs += list((ROOT / 'src/third_party/mlkem').rglob('*'))
-        if production_provider is not None:
+        if secure_cleanup_enabled:
             inputs += [ROOT / 'prj/usb_probe_auto_recovery.c',
                        ROOT / 'prj/usb_probe.c',
                        ROOT / 'prj/prepare_usb_bounded_sdk.py',
@@ -261,6 +266,14 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
         if missing:
             raise RuntimeError('Production ELF omits required security symbols: ' +
                                ', '.join(missing))
+    if secure_cleanup_enabled:
+        required_cleanup = {'g6_secure_cleanup_diag', 'secure_cleanup',
+                            'secure_tx_quiesce', 'secure_tx_wipe',
+                            'secure_tx_rebuild', 'usb_cdc_secure_cleanup_tx'}
+        missing_cleanup = sorted(required_cleanup.difference(abi))
+        if missing_cleanup:
+            raise RuntimeError('G6 cleanup ELF omits required symbols: ' +
+                               ', '.join(missing_cleanup))
     expected = {'g3_job': 128, 'g3_frame': 65600, 'g3_sealed': 68096}
     if name == 'g6_usb':
         if production_provider is None:
@@ -270,7 +283,7 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
                         g6_capture_errors=4, g6_transport_errors=4,
                         g6_fatal_errors=4, g6_disconnects=4,
                         g6_fault_inject=4, g6_injected_capture_errors=4)
-        if production_provider is not None:
+        if secure_cleanup_enabled:
             expected['g6_secure_cleanup_diag'] = 120
     owned = {}
     for key, size in expected.items():
@@ -301,6 +314,30 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
             if current[0] < previous[1]:
                 raise RuntimeError('Overlapping production-owned DDR ranges: ' +
                                    previous[2] + ' / ' + current[2])
+    if name == 'g6_usb' and dev_secure_cleanup:
+        # Bind every development secret/readback range to this ELF so a later
+        # read-only AP0 capture can verify terminal-fault cleanup by identity.
+        development_owned = {
+            'private_key': (1632, 4),
+            'random_seed': (32, 4),
+            'random_counter': (8, 4),
+            'tx': (1472, 64),
+            'session': (192, 4),
+            'hello': (48, 4),
+            'ack': (48, 4),
+        }
+        for key, (size, alignment) in development_owned.items():
+            address, actual = abi.get(key, (0, 0))
+            if (actual != size or address % alignment or
+                    not 0x100000 <= address <= 0x40000000 - size):
+                raise RuntimeError(f'Invalid development-owned DDR ABI: {key}')
+            owned[key] = dict(address=address, size=size)
+        ranges = sorted((entry['address'], entry['address'] + entry['size'], key)
+                        for key, entry in owned.items())
+        for previous, current in zip(ranges, ranges[1:]):
+            if current[0] < previous[1]:
+                raise RuntimeError('Overlapping development-owned DDR ranges: ' +
+                                   previous[2] + ' / ' + current[2])
     with zipfile.ZipFile(xsa) as archive:
         for member, target in [('m01.bit', app / '_ide/bitstream/m01.bit'),
                                ('ps7_init.tcl', app / '_ide/psinit/ps7_init.tcl')]:
@@ -320,7 +357,7 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
                 raise RuntimeError('Link map omits bounded USB cleanup source: ' + str(source))
         if ('libxil.a(usbps_v2_11_xusbps_endpoint.o)' in map_text or
                 'libxil.a(usbps_v2_11_xusbps_intr.o)' in map_text):
-            raise RuntimeError('Unpatched USBPS endpoint/interrupt object linked into production profile')
+            raise RuntimeError('Unpatched USBPS endpoint/interrupt object linked into G6 cleanup profile')
     manifest = dict(xsa=str(xsa), xsa_sha256=digest(xsa), application=name,
                     bsp_sha256=digest(cpu / 'lib/libxil.a'),
                     sources=hashes,
@@ -330,10 +367,16 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
     if cleanup_external_sources:
         manifest['external_sources'] = cleanup_external_sources
         manifest['external_sources_root'] = 'tool-root'
-        manifest['production_secure_cleanup'] = 'bounded_usbps_overlay_and_dma_gcm_frame_tx_callbacks'
+        manifest['secure_cleanup_implementation'] = 'bounded_usbps_overlay_and_dma_gcm_frame_tx_callbacks'
     if name == 'g6_usb':
-        manifest['security_profile'] = ('external_provider_unvalidated' if production_provider is not None
-                                        else 'development_jtag_mailbox')
+        if production_provider is not None:
+            manifest['security_profile'] = 'external_provider_unvalidated'
+            manifest['production_secure_cleanup'] = manifest['secure_cleanup_implementation']
+        elif dev_secure_cleanup:
+            manifest['security_profile'] = 'development_jtag_mailbox_secure_cleanup'
+            manifest['development_secure_cleanup'] = manifest['secure_cleanup_implementation']
+        else:
+            manifest['security_profile'] = 'development_jtag_mailbox'
         manifest['development_provisioning_required'] = production_provider is None
         if production_provider is not None:
             manifest['production_provider'] = dict(
@@ -351,9 +394,15 @@ def main():
     parser.add_argument('--boot-images', action='store_true', help='Build matching FSBL/BOOT.BIN files; never write media')
     parser.add_argument('--g6-production-provider', type=Path,
                         help='Compile an explicit G6_PRODUCTION provider source; its quality is not security-certified')
+    parser.add_argument('--g6-dev-secure-cleanup', action='store_true',
+                        help='Add bounded USB/DMA cleanup to the development JTAG/host-seed profile; remains experimental')
     args = parser.parse_args()
     xsa, workspace, tools = args.xsa.resolve(), args.output.resolve(), args.tool_root.resolve()
     provider_source = args.g6_production_provider.resolve() if args.g6_production_provider else None
+    if args.g6_dev_secure_cleanup and 'g6_usb' not in args.apps:
+        parser.error('--g6-dev-secure-cleanup requires --apps to include g6_usb')
+    if args.g6_dev_secure_cleanup and provider_source is not None:
+        parser.error('--g6-dev-secure-cleanup cannot be combined with --g6-production-provider')
     if provider_source is not None and 'g6_usb' not in args.apps:
         parser.error('--g6-production-provider requires --apps to include g6_usb')
     if provider_source is not None and not provider_source.is_file():
@@ -380,7 +429,8 @@ def main():
     manifests = {}
     for name in args.apps:
         manifests[name] = build_app(name, workspace, cpu, gcc, xsa,
-                                    provider_for_build if name == 'g6_usb' else None)
+                                    provider_for_build if name == 'g6_usb' else None,
+                                    args.g6_dev_secure_cleanup and name == 'g6_usb')
         (workspace / (name + '_manifest.json')).write_text(json.dumps(manifests[name], indent=2) + '\n', encoding='utf-8')
         print('ARM_ELF_OK', name, flush=True)
     if args.boot_images:
@@ -389,7 +439,7 @@ def main():
             for path in (fsbl, fsbl.with_suffix('.map'), workspace / name / 'boot/BOOT.BIN'):
                 manifest['artifacts'][path.relative_to(workspace).as_posix()] = digest(path)
             manifest['development_provisioning_required'] = (
-                manifest.get('security_profile') == 'development_jtag_mailbox')
+                manifest.get('security_profile', '').startswith('development_jtag_mailbox'))
             (workspace / (name + '_manifest.json')).write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     if 'g3_camera' in manifests:
         (workspace / 'build_manifest.json').write_text(json.dumps(manifests['g3_camera'], indent=2) + '\n', encoding='utf-8')
@@ -412,6 +462,7 @@ def main():
             build_inputs[f'{name}/external_sources/{external_path}'] = external_hash
     (workspace / 'software_build.json').write_text(json.dumps(dict(
         xsa_sha256=xsa_hash, tool_root=str(tools), applications=list(manifests),
+        g6_dev_secure_cleanup=args.g6_dev_secure_cleanup,
         generated_inputs=build_inputs,
         build_scripts={p.relative_to(ROOT).as_posix(): digest(p) for p in
                        (ROOT / 'prj/build_software.py', ROOT / 'prj/generate_bsp.tcl',

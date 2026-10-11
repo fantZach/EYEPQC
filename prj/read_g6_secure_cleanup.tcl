@@ -1,6 +1,8 @@
 # Read-only PS DDR verification for a completed G6 secure cleanup.
 # Usage: diag_addr diag_size frame_addr frame_size sealed_addr sealed_size tx_addr tx_size
 #        session_addr session_size hello_addr hello_size ack_addr ack_size
+# Development cleanup profile appends address/size pairs for private_key,
+# random_seed, g6_sk_load, g6_seed_load, random_counter, and g6_ready.
 # This script only connects, selects APU, reads AP0, and disconnects. It never
 # stops/resets a target, loads an image, or writes memory/registers.
 
@@ -67,14 +69,28 @@ proc read_zero_or {name address size} {
 
 set connected 0
 if {[catch {
-    if {[llength $argv] != 14} {
-        error "usage: diag_addr diag_size frame_addr frame_size sealed_addr sealed_size tx_addr tx_size session_addr session_size hello_addr hello_size ack_addr ack_size"
+    set argument_count [llength $argv]
+    if {$argument_count != 14 && $argument_count != 26} {
+        error "usage: 14 base cleanup args; append 12 development key args when using the dev cleanup profile"
     }
+    set dev_cleanup [expr {$argument_count == 26}]
     lassign $argv diag_addr diag_size frame_addr frame_size \
         sealed_addr sealed_size tx_addr tx_size session_addr session_size \
         hello_addr hello_size ack_addr ack_size
-    foreach name {diag_addr diag_size frame_addr frame_size sealed_addr sealed_size \
-        tx_addr tx_size session_addr session_size hello_addr hello_size ack_addr ack_size} {
+    if {$dev_cleanup} {
+        lassign [lrange $argv 14 end] private_key_addr private_key_size \
+            random_seed_addr random_seed_size g6_sk_load_addr g6_sk_load_size \
+            g6_seed_load_addr g6_seed_load_size random_counter_addr random_counter_size \
+            g6_ready_addr g6_ready_size
+    }
+    set numeric_names {diag_addr diag_size frame_addr frame_size sealed_addr sealed_size \
+        tx_addr tx_size session_addr session_size hello_addr hello_size ack_addr ack_size}
+    if {$dev_cleanup} {
+        lappend numeric_names private_key_addr private_key_size random_seed_addr random_seed_size \
+            g6_sk_load_addr g6_sk_load_size g6_seed_load_addr g6_seed_load_size \
+            random_counter_addr random_counter_size g6_ready_addr g6_ready_size
+    }
+    foreach name $numeric_names {
         set $name [parse_u32 $name [set $name]]
     }
 
@@ -97,30 +113,31 @@ if {[catch {
         ack $ack_addr $ack_size] {
         validate_range $name $address $size 256 4
     }
-    foreach {a_addr a_size b_addr b_size} [list \
-        $diag_addr $diag_size $frame_addr $frame_size \
-        $diag_addr $diag_size $sealed_addr $sealed_size \
-        $diag_addr $diag_size $tx_addr $tx_size \
-        $diag_addr $diag_size $session_addr $session_size \
-        $diag_addr $diag_size $hello_addr $hello_size \
-        $diag_addr $diag_size $ack_addr $ack_size \
-        $frame_addr $frame_size $sealed_addr $sealed_size \
-        $frame_addr $frame_size $tx_addr $tx_size \
-        $frame_addr $frame_size $session_addr $session_size \
-        $frame_addr $frame_size $hello_addr $hello_size \
-        $frame_addr $frame_size $ack_addr $ack_size \
-        $sealed_addr $sealed_size $tx_addr $tx_size \
-        $sealed_addr $sealed_size $session_addr $session_size \
-        $sealed_addr $sealed_size $hello_addr $hello_size \
-        $sealed_addr $sealed_size $ack_addr $ack_size \
-        $tx_addr $tx_size $session_addr $session_size \
-        $tx_addr $tx_size $hello_addr $hello_size \
-        $tx_addr $tx_size $ack_addr $ack_size \
-        $session_addr $session_size $hello_addr $hello_size \
-        $session_addr $session_size $ack_addr $ack_size \
-        $hello_addr $hello_size $ack_addr $ack_size] {
-        if {[ranges_overlap $a_addr $a_size $b_addr $b_size]} {
-            error "Diagnostic and wipe-verification DDR ranges must not overlap"
+    set owned_ranges [list \
+        [list diag $diag_addr $diag_size] [list frame $frame_addr $frame_size] \
+        [list sealed $sealed_addr $sealed_size] [list tx $tx_addr $tx_size] \
+        [list session $session_addr $session_size] [list hello $hello_addr $hello_size] \
+        [list ack $ack_addr $ack_size]]
+    if {$dev_cleanup} {
+        foreach {name address size max_size alignment} [list \
+            private_key $private_key_addr $private_key_size 1632 4 \
+            random_seed $random_seed_addr $random_seed_size 32 4 \
+            g6_sk_load $g6_sk_load_addr $g6_sk_load_size 1632 64 \
+            g6_seed_load $g6_seed_load_addr $g6_seed_load_size 32 64 \
+            random_counter $random_counter_addr $random_counter_size 8 4 \
+            g6_ready $g6_ready_addr $g6_ready_size 4 4] {
+            if {$size != $max_size} { error "Invalid development key range size for $name" }
+            validate_range $name $address $size $max_size $alignment
+            lappend owned_ranges [list $name $address $size]
+        }
+    }
+    for {set i 0} {$i < [llength $owned_ranges]} {incr i} {
+        lassign [lindex $owned_ranges $i] name_i address_i size_i
+        for {set j [expr {$i + 1}]} {$j < [llength $owned_ranges]} {incr j} {
+            lassign [lindex $owned_ranges $j] name_j address_j size_j
+            if {[ranges_overlap $address_i $size_i $address_j $size_j]} {
+                error "Cleanup DDR ranges overlap: $name_i / $name_j"
+            }
         }
     }
 
@@ -216,6 +233,17 @@ if {[catch {
     set ack_zero [read_zero_or ack $ack_addr $ack_size]
     set total_bytes [expr {$frame_size + $sealed_size + $tx_size + 120 +
                            $hello_size + $ack_size}]
+    if {$dev_cleanup} {
+        set private_key_zero [read_zero_or private_key $private_key_addr $private_key_size]
+        set random_seed_zero [read_zero_or random_seed $random_seed_addr $random_seed_size]
+        set g6_sk_load_zero [read_zero_or g6_sk_load $g6_sk_load_addr $g6_sk_load_size]
+        set g6_seed_load_zero [read_zero_or g6_seed_load $g6_seed_load_addr $g6_seed_load_size]
+        set random_counter_zero [read_zero_or random_counter $random_counter_addr $random_counter_size]
+        set g6_ready_zero [read_zero_or g6_ready $g6_ready_addr $g6_ready_size]
+        incr total_bytes [expr {$private_key_size + $random_seed_size + \
+                                $g6_sk_load_size + $g6_seed_load_size + \
+                                $random_counter_size + $g6_ready_size}]
+    }
 
     set diag_after [mrd_u32 $diag_addr 30]
     set stage_after [lindex $diag_after 1]
@@ -224,14 +252,24 @@ if {[catch {
         $result_after != 0 || $diag_after ne $diag_before} {
         error "Cleanup diagnostic changed or left successful COMPLETE state during readback"
     }
-    puts [format "G6_CLEANUP_READBACK frame_zero=%u sealed_zero=%u tx_zero=%u session_keys_zero=%u session_counters_zero=%u hello_zero=%u ack_zero=%u total_bytes=%u stage_before=%u stage_after=%u scope=PS_AP0_DDR_only pl_gcm_full_readback=not_proven" \
+    set summary [format "G6_CLEANUP_READBACK frame_zero=%u sealed_zero=%u tx_zero=%u session_keys_zero=%u session_counters_zero=%u hello_zero=%u ack_zero=%u total_bytes=%u stage_before=%u stage_after=%u scope=PS_AP0_DDR_only pl_gcm_full_readback=not_proven" \
         $frame_zero $sealed_zero $tx_zero $session_keys_zero $session_counters_zero \
         $hello_zero $ack_zero $total_bytes $stage_before $stage_after]
+    if {$dev_cleanup} {
+        append summary [format " private_key_zero=%u random_seed_zero=%u g6_sk_load_zero=%u g6_seed_load_zero=%u random_counter_zero=%u g6_ready_zero=%u" \
+            $private_key_zero $random_seed_zero $g6_sk_load_zero $g6_seed_load_zero \
+            $random_counter_zero $g6_ready_zero]
+    }
+    puts $summary
     disconnect
     set connected 0
     if {!$frame_zero || !$sealed_zero || !$tx_zero || !$session_keys_zero ||
         !$session_counters_zero || !$hello_zero || !$ack_zero} {
         error "One or more PS DDR cleanup ranges contain nonzero data"
+    }
+    if {$dev_cleanup && (!$private_key_zero || !$random_seed_zero ||
+        !$g6_sk_load_zero || !$g6_seed_load_zero || !$random_counter_zero || !$g6_ready_zero)} {
+        error "One or more development key ranges contain nonzero data"
     }
     puts "G6_CLEANUP_READBACK_PASS"
 } message options]} {

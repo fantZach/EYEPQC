@@ -540,3 +540,7 @@ M05 帧所有权、AXIS 路由和 DMA 缓冲区三项中两项通过，
 但已生成非空 VVP 文件；新共享助手只对该精确退出码和非空文件继续，并要求 `vvp`
 实际运行、匹配原有功能通过标记。该兜底没有放宽 HDL 判据。M04/M05 原生 XSim 本轮仍未通过。
 完整命令与调查记录见 [电脑构建记录](pc_build.md)。
+
+## 2026-10-11：开发态可选安全清理配置
+
+新增 `--g6-dev-secure-cleanup`，在保留开发 JTAG/mailbox 和 host-seed 机制的前提下，将有界 USBPS overlay 与 DMA/GCM/frame/TX 有序清理纳入 G6 开发 ELF；默认 profile 不变。manifest 标记为 `development_jtag_mailbox_secure_cleanup`，候选 ELF SHA-256 为 `b9eab1d80cf1a1e4fa15f7ae2afa27a4dad1120e0c5dafd62f589c7b096b1ca6`，`board_validated=false`。清零读回工具现在也覆盖开发测试私钥、seed、mailbox、计数器和 ready 标志，并且仅输出零化状态；定向回归 16 passed、37 subtests，全量 `sim/tb` 166 passed、91 subtests（323.65 秒）。当前仍未做板端 AP0 读回；生产 provider、可信熵源、密钥存储和生产安全状态仍未通过。详见[生产安全实施记录](production_security_profile_20261011.md)。

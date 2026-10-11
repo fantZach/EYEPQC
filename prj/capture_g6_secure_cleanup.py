@@ -21,6 +21,14 @@ RANGES = {
     "hello": ("hello", 48, 4),
     "ack": ("ack", 48, 4),
 }
+DEV_RANGES = {
+    "private_key": ("private_key", 1632, 4),
+    "random_seed": ("random_seed", 32, 4),
+    "g6_sk_load": ("g6_sk_load", 1632, 64),
+    "g6_seed_load": ("g6_seed_load", 32, 64),
+    "random_counter": ("random_counter", 8, 4),
+    "g6_ready": ("g6_ready", 4, 4),
+}
 READBACK_RANGES = {
     "frame": 65600,
     "sealed": 68096,
@@ -30,10 +38,22 @@ READBACK_RANGES = {
     "hello": 48,
     "ack": 48,
 }
+DEV_READBACK_RANGES = {
+    "private_key": 1632,
+    "random_seed": 32,
+    "g6_sk_load": 1632,
+    "g6_seed_load": 32,
+    "random_counter": 8,
+    "g6_ready": 4,
+}
 RESULT_FIELDS = {
     "frame_zero", "sealed_zero", "tx_zero", "session_keys_zero",
     "session_counters_zero", "hello_zero", "ack_zero", "total_bytes",
     "stage_before", "stage_after", "scope", "pl_gcm_full_readback",
+}
+DEV_RESULT_FIELDS = {
+    "private_key_zero", "random_seed_zero", "g6_sk_load_zero",
+    "g6_seed_load_zero", "random_counter_zero", "g6_ready_zero",
 }
 
 
@@ -56,15 +76,21 @@ def load_build_identity(workspace: Path) -> tuple[dict, dict[str, dict[str, int]
     elf_hash = digest(elf_path)
     if manifest.get("artifacts", {}).get("g6_usb/build/g6_usb.elf") != elf_hash:
         raise ValueError("G6 ELF does not match its manifest")
-    if manifest.get("security_profile") != "external_provider_unvalidated":
-        raise ValueError("Cleanup readback requires an explicit G6 production profile")
+    profile = manifest.get("security_profile")
+    if profile not in ("external_provider_unvalidated",
+                       "development_jtag_mailbox_secure_cleanup"):
+        raise ValueError("Cleanup readback requires an explicit G6 secure-cleanup profile")
+    dev_cleanup = profile == "development_jtag_mailbox_secure_cleanup"
     xsa_hash = manifest.get("xsa_sha256")
     if not isinstance(xsa_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", xsa_hash):
         raise ValueError("Build manifest has no XSA identity")
 
     owned = manifest.get("owned", {})
     ranges: dict[str, dict[str, int]] = {}
-    for label, (symbol, size, alignment) in RANGES.items():
+    required_ranges = dict(RANGES)
+    if dev_cleanup:
+        required_ranges.update(DEV_RANGES)
+    for label, (symbol, size, alignment) in required_ranges.items():
         entry = owned.get(symbol)
         if not isinstance(entry, dict) or int(entry.get("size", -1)) != size:
             raise ValueError("Build manifest has an invalid owned range: " + symbol)
@@ -85,11 +111,21 @@ def load_build_identity(workspace: Path) -> tuple[dict, dict[str, dict[str, int]
         "manifest_sha256": digest(manifest_path),
         "elf_sha256": elf_hash,
         "xsa_sha256": xsa_hash,
+        "security_profile": profile,
     }
     return identity, ranges
 
 
 def parse_readback(stdout: str, ranges: dict[str, dict[str, int]]) -> dict:
+    dev_names = set(DEV_READBACK_RANGES)
+    has_dev_ranges = bool(dev_names.intersection(ranges))
+    if has_dev_ranges and not dev_names.issubset(ranges):
+        raise ValueError("Development key readback ranges are incomplete")
+    readback_ranges = dict(READBACK_RANGES)
+    result_fields = set(RESULT_FIELDS)
+    if has_dev_ranges:
+        readback_ranges.update(DEV_READBACK_RANGES)
+        result_fields.update(DEV_RESULT_FIELDS)
     summaries = re.findall(r"^G6_CLEANUP_READBACK (.+)$", stdout, re.MULTILINE)
     pass_markers = re.findall(r"^G6_CLEANUP_READBACK_PASS\s*$", stdout, re.MULTILINE)
     if (len(summaries) != 1 or len(pass_markers) != 1 or
@@ -103,7 +139,7 @@ def parse_readback(stdout: str, ranges: dict[str, dict[str, int]]) -> dict:
         if name in fields:
             raise ValueError("Duplicate G6 cleanup readback field: " + name)
         fields[name] = value
-    if set(fields) != RESULT_FIELDS:
+    if set(fields) != result_fields:
         raise ValueError("G6 cleanup readback fields do not match the expected schema")
 
     parsed: dict[str, object] = {}
@@ -111,6 +147,8 @@ def parse_readback(stdout: str, ranges: dict[str, dict[str, int]]) -> dict:
         "frame_zero", "sealed_zero", "tx_zero", "session_keys_zero",
         "session_counters_zero", "hello_zero", "ack_zero",
     }
+    if has_dev_ranges:
+        boolean_fields.update(DEV_RESULT_FIELDS)
     for name in boolean_fields:
         try:
             value = int(fields[name], 10)
@@ -131,7 +169,7 @@ def parse_readback(stdout: str, ranges: dict[str, dict[str, int]]) -> dict:
         parsed[name] = value
     if parsed["stage_before"] != 6 or parsed["stage_after"] != 6:
         raise ValueError("Cleanup diagnostic did not remain in COMPLETE state")
-    expected_total = sum(READBACK_RANGES.values())
+    expected_total = sum(readback_ranges.values())
     if parsed["total_bytes"] != expected_total:
         raise ValueError("Cleanup readback byte count does not match the ABI")
     if fields["scope"] != "PS_AP0_DDR_only" or \
@@ -153,18 +191,18 @@ def parse_readback(stdout: str, ranges: dict[str, dict[str, int]]) -> dict:
         if set(item) != {"name", "bytes", "words", "zero"}:
             raise ValueError("G6 cleanup range record has an unexpected schema")
         name = item["name"]
-        if name not in READBACK_RANGES or name in observed:
+        if name not in readback_ranges or name in observed:
             raise ValueError("Unexpected or duplicate G6 cleanup range: " + name)
         try:
             byte_count, words, zero = (int(item[key], 10)
                                        for key in ("bytes", "words", "zero"))
         except ValueError as exc:
             raise ValueError("Invalid G6 cleanup range value") from exc
-        if (byte_count != READBACK_RANGES[name] or words != byte_count // 4 or
+        if (byte_count != readback_ranges[name] or words != byte_count // 4 or
                 zero != 1):
             raise ValueError("G6 cleanup range is incomplete or nonzero: " + name)
         observed[name] = {"bytes": byte_count, "words": words, "zero": zero}
-    if set(observed) != set(READBACK_RANGES):
+    if set(observed) != set(readback_ranges):
         raise ValueError("G6 cleanup readback omitted one or more DDR ranges")
     parsed["ranges"] = observed
     return parsed
@@ -179,6 +217,10 @@ def capture(workspace: Path, tool_root: Path, output_prefix: Path) -> dict:
     for label in ("diag", "frame", "sealed", "tx", "session", "hello", "ack"):
         item = ranges[label]
         args.extend((hex(item["address"]), str(item["size"])))
+    if "private_key" in ranges:
+        for label in DEV_RANGES:
+            item = ranges[label]
+            args.extend((hex(item["address"]), str(item["size"])))
 
     output_prefix.parent.mkdir(parents=True, exist_ok=True)
     stdout_path = output_prefix.with_suffix(".stdout.log")
@@ -203,16 +245,23 @@ def capture(workspace: Path, tool_root: Path, output_prefix: Path) -> dict:
         raise RuntimeError("XSDB cleanup readback failed with exit " +
                            str(result.returncode))
     parsed = parse_readback(result.stdout, ranges)
+    evidence_scope = (
+        "read-only PS AP0 DDR zero-or checks; no keys, packet payloads, "
+        "or full PL GCM state emitted"
+    )
+    if identity["security_profile"] == "development_jtag_mailbox_secure_cleanup":
+        evidence_scope = (
+            "read-only PS AP0 DDR zero-or checks after terminal development FAULT; "
+            "test-key and provisioning ranges emit zero flags only; no payload "
+            "or full PL GCM state emitted"
+        )
     record = {
         "schema": "eyepqc-g6-secure-cleanup-readback-v1",
         "captured_utc": datetime.now(timezone.utc).isoformat(),
         "build": identity,
         "ranges": ranges,
         "readback": parsed,
-        "evidence_scope": (
-            "read-only PS AP0 DDR zero-or checks; no keys, packet payloads, "
-            "or full PL GCM state emitted"
-        ),
+        "evidence_scope": evidence_scope,
     }
     output_prefix.with_suffix(".json").write_text(
         json.dumps(record, indent=2) + "\n", encoding="utf-8")

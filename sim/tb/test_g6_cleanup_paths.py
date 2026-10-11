@@ -64,13 +64,15 @@ class G6CleanupPathHarnessTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            for candidate in (False, True):
+            profiles = (
+                ("default", False, False),
+                ("secure_cleanup", True, False),
+                ("recovery_candidate", True, True),
+            )
+            for profile, secure_cleanup, auto_recovery in profiles:
                 for optimization in ("-O0", "-O3"):
-                    with self.subTest(candidate_cleanup=candidate, optimization=optimization):
-                        executable = temp_path / (
-                            f"g6_cleanup_{'candidate' if candidate else 'default'}_"
-                            f"{optimization[1:]}.exe"
-                        )
+                    with self.subTest(profile=profile, optimization=optimization):
+                        executable = temp_path / f"g6_cleanup_{profile}_{optimization[1:]}.exe"
                         command = [
                             compiler, "-std=c11", optimization, "-Wall", "-Wextra",
                             "-ffunction-sections", "-fdata-sections",
@@ -78,8 +80,10 @@ class G6CleanupPathHarnessTests(unittest.TestCase):
                         ]
                         for include in INCLUDES:
                             command.extend(["-I", str(include)])
-                        if candidate:
-                            command.extend(["-DG6_SECURE_CLEANUP", "-DG6_AUTO_RECOVERY"])
+                        if secure_cleanup:
+                            command.append("-DG6_SECURE_CLEANUP")
+                        if auto_recovery:
+                            command.append("-DG6_AUTO_RECOVERY")
                         command.extend(str(source) for source in SOURCES)
                         command.extend(["-o", str(executable)])
                         built = subprocess.run(
@@ -97,11 +101,9 @@ class G6CleanupPathHarnessTests(unittest.TestCase):
                             ran.returncode, 0,
                             msg=f"real G6 branch harness failed:\n{ran.stdout}\n{ran.stderr}",
                         )
-                        expected = (
-                            "candidate_cleanup_paths=PASS cleanup_failure_stops=PASS session_semantics=PASS"
-                            if candidate else
-                            "default_gcm_clear_paths=PASS session_semantics=PASS"
-                        )
+                        expected = ("candidate_cleanup_paths=PASS cleanup_failure_stops=PASS session_semantics=PASS"
+                                    if secure_cleanup else
+                                    "default_gcm_clear_paths=PASS session_semantics=PASS")
                         self.assertIn(expected, ran.stdout)
 
 

@@ -16,6 +16,10 @@ VALID_ARGS = [
     "0x100500", "48",
     "0x100600", "48",
 ]
+DEV_ARGS = [
+    "0x154000", "1632", "0x154800", "32", "0x155000", "1632",
+    "0x155800", "32", "0x156000", "8", "0x156100", "4",
+]
 
 
 def run_script(
@@ -46,6 +50,8 @@ def run_script(
     hello_size = arg_int(11)
     ack_addr = arg_int(12, 0)
     ack_size = arg_int(13)
+    dev_values = [arg_int(i, 0 if i % 2 == 0 else 10)
+                  for i in range(14, 26)] if len(args) == 26 else []
     diag = [
         0x4736434C, 6, 0, 0, 3, 0, 1, 1, 2, 0,
         frame_addr, frame_size, 0, sealed_addr, sealed_size, 0,
@@ -90,6 +96,15 @@ def run_script(
                 "hello": (hello_addr, hello_size),
                 "ack": (ack_addr, ack_size),
             }
+            if dev_values:
+                regions.update({
+                    "private_key": (dev_values[0], dev_values[1]),
+                    "random_seed": (dev_values[2], dev_values[3]),
+                    "g6_sk_load": (dev_values[4], dev_values[5]),
+                    "g6_seed_load": (dev_values[6], dev_values[7]),
+                    "random_counter": (dev_values[8], dev_values[9]),
+                    "g6_ready": (dev_values[10], dev_values[11]),
+                })
             region = next((name for name, (base, size) in regions.items()
                            if base <= address < base + size), None)
             nonzero = nonzero_frame if region == "frame" else region == nonzero_region
@@ -152,6 +167,22 @@ class ReadG6SecureCleanupTests(unittest.TestCase):
             r"(?im)^\s*(?:mwr|stop|rst|dow|load)\s",
         )
 
+    def test_development_profile_reads_owned_key_ranges_without_payload_output(self):
+        exit_code, output, calls = run_script(VALID_ARGS + DEV_ARGS)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(calls["connect"], 1)
+        self.assertEqual(calls["disconnect"], 1)
+        self.assertEqual(calls["mrd"], 15)
+        self.assertIn("private_key_zero=1", output)
+        self.assertIn("random_seed_zero=1", output)
+        self.assertIn("g6_sk_load_zero=1", output)
+        self.assertIn("g6_seed_load_zero=1", output)
+        self.assertIn("random_counter_zero=1", output)
+        self.assertIn("g6_ready_zero=1", output)
+        self.assertIn("total_bytes=3748", output)
+        self.assertNotIn("DEADBEEF", output)
+        self.assertNotIn("3735928559", output)
+
     def test_invalid_args_fail_before_connecting_to_hardware(self):
         mutations = [
             lambda a: a.__setitem__(1, "108"),
@@ -177,6 +208,13 @@ class ReadG6SecureCleanupTests(unittest.TestCase):
                 self.assertEqual(calls["mrd"], 0)
 
         exit_code, _output, calls = run_script(VALID_ARGS[:-1])
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(calls["connect"], 0)
+        self.assertEqual(calls["mrd"], 0)
+
+        dev_overlap = VALID_ARGS + DEV_ARGS
+        dev_overlap[14] = VALID_ARGS[6]  # private-key range overlaps TX
+        exit_code, _output, calls = run_script(dev_overlap)
         self.assertEqual(exit_code, 1)
         self.assertEqual(calls["connect"], 0)
         self.assertEqual(calls["mrd"], 0)

@@ -369,11 +369,13 @@ static int test_disconnect(void)
     if (retire_disconnected_session(4U, 0U, 0U, 14U) != 0) return 1;
     if (phase != WAIT_HELLO || g6_disconnects != 41U ||
         g6_transport_errors != 0U ||
+#ifdef G6_AUTO_RECOVERY
         g6_transport_failure_diag.send_status != 4U ||
         g6_transport_failure_diag.resume_status != 0U ||
         g6_transport_failure_diag.usb_ready != 0U ||
         g6_transport_failure_diag.connection_epoch != 14U ||
         g6_transport_failure_diag.transport_error_count != 0U ||
+#endif
         !callbacks_stopped_at(3U) || g6_secure_cleanup_diag.stage != G6_CLEANUP_COMPLETE ||
         g6_secure_cleanup_diag.result != 0U || gcm_clear_calls != 1U ||
         cleanup_diag_flush_calls != 1U ||
@@ -386,11 +388,13 @@ static int test_disconnect(void)
             phase != FAULT || g6_disconnects != 40U ||
             g6_fatal_errors != 21U || g6_status != 11U ||
             g6_transport_errors != 1U ||
+#ifdef G6_AUTO_RECOVERY
             g6_transport_failure_diag.send_status != 4U ||
             g6_transport_failure_diag.resume_status != 0U ||
             g6_transport_failure_diag.usb_ready != 0U ||
             g6_transport_failure_diag.connection_epoch != 14U ||
             g6_transport_failure_diag.transport_error_count != 1U ||
+#endif
             !callbacks_stopped_at(fail) || !cleanup_failed_diag(fail) ||
             cleanup_diag_flush_calls != 1U ||
             !session_closed(EYE_STATE_ERROR) || !long_term_material_zeroized())
@@ -398,10 +402,12 @@ static int test_disconnect(void)
     }
     setup_case(STREAM, EYE_STATE_STREAMING);
     if (retire_disconnected_session(UINT32_MAX, 0U, 0U, 15U) != 0 ||
+#ifdef G6_AUTO_RECOVERY
         g6_transport_failure_diag.send_status != UINT32_MAX ||
         g6_transport_failure_diag.usb_ready != 0U ||
         g6_transport_failure_diag.connection_epoch != 15U ||
         g6_transport_failure_diag.transport_error_count != 0U ||
+#endif
         g6_transport_errors != 0U || g6_disconnects != 41U)
         return 20;
 #else

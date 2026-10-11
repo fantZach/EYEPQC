@@ -193,9 +193,9 @@ EVIDENCE_STATUS = [
     },
     {
         "id": "full_sim_regression_20261011",
-        "status": "passed_163_of_163_offline",
+        "status": "passed_166_of_166_offline",
         "evidence": "report/production_security_profile_20261011.md",
-        "scope": "完整 sim/tb pytest 回归 163/163 通过，313.64 秒，89 个子测试；这是电脑端软件/仿真证据，不是板端生产安全或 G0/G7 验收。",
+        "scope": "完整 sim/tb pytest 回归 166/166 通过，323.65 秒，91 个子测试；这是电脑端软件/仿真证据，不是板端生产安全或 G0/G7 验收。",
     },
     {
         "id": "security_cleanup_candidate007",

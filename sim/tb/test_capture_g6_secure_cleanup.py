@@ -20,34 +20,53 @@ OWNED = {
     "hello": (0x00152000, 48),
     "ack": (0x00153000, 48),
 }
+DEV_OWNED = {
+    "private_key": (0x00154000, 1632),
+    "random_seed": (0x00154800, 32),
+    "g6_sk_load": (0x00155000, 1632),
+    "g6_seed_load": (0x00155800, 32),
+    "random_counter": (0x00156000, 8),
+    "g6_ready": (0x00156100, 4),
+}
 
 
-def readback_output(*, session_keys_zero: int = 1, omit_range: str | None = None) -> str:
+def readback_output(*, session_keys_zero: int = 1, omit_range: str | None = None,
+                    dev_cleanup: bool = False) -> str:
     lines = []
-    for name, size in capture.READBACK_RANGES.items():
+    expected_ranges = dict(capture.READBACK_RANGES)
+    if dev_cleanup:
+        expected_ranges.update(capture.DEV_READBACK_RANGES)
+    for name, size in expected_ranges.items():
         if name == omit_range:
             continue
         lines.append(
             f"G6_CLEANUP_RANGE name={name} bytes={size} words={size // 4} zero=1")
-    total = sum(capture.READBACK_RANGES.values())
+    total = sum(expected_ranges.values())
     lines.append(
         "G6_CLEANUP_READBACK frame_zero=1 sealed_zero=1 tx_zero=1 "
         f"session_keys_zero={session_keys_zero} session_counters_zero=1 "
         f"hello_zero=1 ack_zero=1 total_bytes={total} stage_before=6 "
-        "stage_after=6 scope=PS_AP0_DDR_only pl_gcm_full_readback=not_proven")
+        "stage_after=6 scope=PS_AP0_DDR_only pl_gcm_full_readback=not_proven" +
+        (" private_key_zero=1 random_seed_zero=1 g6_sk_load_zero=1 "
+         "g6_seed_load_zero=1 random_counter_zero=1 g6_ready_zero=1"
+         if dev_cleanup else ""))
     lines.append("G6_CLEANUP_READBACK_PASS")
     return "\n".join(lines)
 
 
 class CaptureG6SecureCleanupTests(unittest.TestCase):
-    def make_workspace(self, root: Path) -> tuple[Path, dict]:
+    def make_workspace(self, root: Path, *, dev_cleanup: bool = False) -> tuple[Path, dict]:
         workspace = root / "candidate"
         build = workspace / "g6_usb" / "build"
         build.mkdir(parents=True)
         elf = build / "g6_usb.elf"
         elf.write_bytes(b"test-elf")
+        owned = dict(OWNED)
+        if dev_cleanup:
+            owned.update(DEV_OWNED)
         manifest = {
-            "security_profile": "external_provider_unvalidated",
+            "security_profile": ("development_jtag_mailbox_secure_cleanup"
+                                 if dev_cleanup else "external_provider_unvalidated"),
             "board_validated": False,
             "xsa_sha256": "ab" * 32,
             "artifacts": {
@@ -55,7 +74,7 @@ class CaptureG6SecureCleanupTests(unittest.TestCase):
             },
             "owned": {
                 name: {"address": address, "size": size}
-                for name, (address, size) in OWNED.items()
+                for name, (address, size) in owned.items()
             },
         }
         (workspace / "g6_usb_manifest.json").write_text(
@@ -91,6 +110,33 @@ class CaptureG6SecureCleanupTests(unittest.TestCase):
             self.assertNotIn("3735928559", serialized)
             self.assertEqual(saved["readback"]["pl_gcm_full_readback"], "not_proven")
 
+    def test_development_cleanup_capture_is_elf_pinned_and_reports_only_zero_flags(self):
+        with tempfile.TemporaryDirectory(prefix="eyepqc-dev-cleanup-readback-") as temp:
+            root = Path(temp)
+            workspace, _manifest = self.make_workspace(root, dev_cleanup=True)
+            tool_root = root / "tools"
+            xsdb = tool_root / "Vivado" / "bin" / "xsdb.bat"
+            xsdb.parent.mkdir(parents=True)
+            xsdb.write_text("mock", encoding="ascii")
+            prefix = root / "evidence" / "cleanup"
+            mocked = SimpleNamespace(
+                returncode=0, stdout=readback_output(dev_cleanup=True), stderr="")
+            with patch.object(capture.subprocess, "run", return_value=mocked) as run:
+                record = capture.capture(workspace, tool_root, prefix)
+
+            command = run.call_args.args[0]
+            self.assertEqual(len(command) - 2, 26)
+            self.assertEqual(record["build"]["security_profile"],
+                             "development_jtag_mailbox_secure_cleanup")
+            self.assertEqual(record["readback"]["ranges"]["private_key"]["zero"], 1)
+            self.assertEqual(record["readback"]["ranges"]["g6_sk_load"]["zero"], 1)
+            saved = json.loads(prefix.with_suffix(".json").read_text(encoding="utf-8"))
+            serialized = json.dumps(saved).lower()
+            self.assertNotIn('"payload":', serialized)
+            self.assertNotIn("deadbeef", serialized)
+            self.assertEqual(saved["readback"]["total_bytes"], 138724)
+            self.assertIn("after terminal development FAULT", saved["evidence_scope"])
+
     def test_bad_elf_hash_or_profile_fails_before_xsdb(self):
         with tempfile.TemporaryDirectory(prefix="eyepqc-secure-readback-") as temp:
             root = Path(temp)
@@ -107,7 +153,7 @@ class CaptureG6SecureCleanupTests(unittest.TestCase):
             manifest["security_profile"] = "development_jtag_mailbox"
             (workspace / "g6_usb_manifest.json").write_text(
                 json.dumps(manifest), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "production profile"):
+            with self.assertRaisesRegex(ValueError, "secure-cleanup profile"):
                 capture.capture(workspace, tool_root, root / "out")
 
     def test_manifest_rejects_overlaps_and_wrong_symbol_sizes(self):
@@ -125,6 +171,16 @@ class CaptureG6SecureCleanupTests(unittest.TestCase):
             (workspace / "g6_usb_manifest.json").write_text(
                 json.dumps(manifest), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "owned range"):
+                capture.load_build_identity(workspace)
+
+    def test_development_manifest_rejects_key_range_overlap(self):
+        with tempfile.TemporaryDirectory(prefix="eyepqc-dev-cleanup-readback-") as temp:
+            root = Path(temp)
+            workspace, manifest = self.make_workspace(root, dev_cleanup=True)
+            manifest["owned"]["private_key"]["address"] = OWNED["tx"][0]
+            (workspace / "g6_usb_manifest.json").write_text(
+                json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "overlap"):
                 capture.load_build_identity(workspace)
 
     def test_parser_rejects_duplicate_or_conflicting_summary_records(self):
