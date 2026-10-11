@@ -12,15 +12,19 @@
 
 `src/ps/src/g6_hmac_drbg.c` 实现 [NIST SP 800-90A Rev. 1 §10.1.2](https://csrc.nist.gov/pubs/sp/800/90/a/r1/final) 的 HMAC_DRBG-SHA-256，启动明确请求 256-bit security strength，并按 strength 检查 entropy_input/nonce 最小长度；另限定输入长度、最大请求长度和 1024 次重播种间隔。失败输出会清零，熵/provider 或密码运算失败时清除 DRBG 状态。生产接口启动时取 32 字节 entropy_input 和 16 字节 nonce；重播种时取 32 字节 entropy_input 与 16 字节 additional input。接口定义不是熵评估：provider 必须用实际源证明所需熵量、健康检查和故障锁止。仓库没有实际 provider 源码；任意 provider 也不会自动获得可信、认证或量产状态。
 
+本轮对 `src/rtl`、`src/ps`、`board`、`prj`、`doc` 搜索 TRNG、XADC、PUF、熵采集等实现标记，没有找到项目内熵源 IP 或 PS 驱动。该搜索只说明当前仓库未见对应实现，不证明板卡芯片或外接电路不存在可用源；生产熵仍待按实际板型识别与测量。
+
 NIST [HMAC_DRBG-SHA-256 示例向量](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/HMAC_DRBG.pdf)中的连续两组 64 字节输出纳入原生 C 回归，用于核对实例化、Generate 与状态更新。该向量只验证确定性算法实现，不证明熵源、CAVP/FIPS 认证或目标板行为。
 
 ## 验证
 
 `sim/tb/test_g6_hmac_drbg.py` 编译实际 DRBG、会话 HMAC 与 TinyCrypt SHA-256，NIST 连续输出向量、输入边界、未实例化状态、重播种门禁和擦除检查通过。`sim/tb/test_g6_production_profile.py` 编译并运行实际 `g6_usb.c` 的 `G6_PRODUCTION` 分支。C harness 覆盖：provider/熵启动失败不读取密钥、密钥接口部分写入后整块清零、重播种失败不发送 HELLO_ACK、密钥身份变化时不解封装、匹配身份时每次 KEM 都经 provider 重新取钥。`nm` 确认测试生产二进制没有开发 mailbox 或 `random_seed` 符号。固定模式测试熵不具备真实熵或存储安全属性。
 
-2026-10-11 最终版用临时 fail-closed provider 完成 XC7Z020 ARM 交叉编译与链接：`build/vitis/g6_production_drbg_smoke4_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `511e55ec2f7c5246f61f7e65ab1901a2a58a6eddf8e7ee74056b5b1393a85c73`；输入 XSA SHA-256 `46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024`。manifest 标为 `external_provider_unvalidated`、`board_validated=false`，`g6_usb.c` 和 DRBG 源码哈希均匹配当前工作树。ELF 含 DRBG instantiate/generate/reseed 入口；精确符号检查确认开发 mailbox、host seed、计数器和静态私钥数据符号为零。临时 provider 的初始化、密钥、熵接口全部返回失败；此产物只证明最终源码可交叉编译/链接，不含可用熵源或密钥服务。
+2026-10-11 最终版用临时 fail-closed provider 完成 XC7Z020 ARM 交叉编译与链接：`build/vitis/g6_prod_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `fe3511229c4725abfb214784ea013b03c71dec512fe37eefa598742748e22a7b`；输入 XSA SHA-256 `46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024`。manifest 标为 `external_provider_unvalidated`、`board_validated=false`，DRBG 和 G6 源码哈希均匹配当前工作树。ELF 含 DRBG instantiate/generate/reseed 入口；精确符号检查确认开发 mailbox、host seed、计数器和静态私钥数据符号为零。临时 provider 的初始化、密钥、熵接口全部返回失败；此产物只证明最终源码可交叉编译/链接，不含可用熵源或密钥服务。
 
-最终代码全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **127 tests / OK**，耗时 271.962 秒；包含 M04/M05 XSim 与 DRBG/生产 profile harness。强度参数、熵/nonce 最小输入、熵/重播种失败 fail-closed 和两组 NIST 输出向量均在这批回归中。随后报告与 review-bundle policy 更新的定向 8 项测试通过，`py_compile`、`git diff --check` 通过。
+另以同一 XSA 和当前构建脚本编译开发 profile：`build/vitis/g6_dev_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `f80f9fd014d0ee6d329b8149c7a12cb62e881801eb10858e722d807f236dff1c`。开发 ELF 保留 mailbox 和旧开发随机状态，未编译/链接 DRBG 源；生产 ELF 则相反。两个 manifest 分别标记 `development_jtag_mailbox` 与 `external_provider_unvalidated`。两个构建的 `g6_usb.c`/DRBG 源码哈希均匹配；该对照验证 DRBG 仅进入显式生产配置。
+
+最终代码全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **127 tests / OK**，耗时 271.962 秒；包含 M04/M05 XSim 与 DRBG/生产 profile harness。强度参数、熵/nonce 最小输入、熵/重播种失败 fail-closed 和两组 NIST 输出向量均在这批回归中。随后报告、review-bundle policy 与 build-profile 隔离更新的 8 项定向测试通过；开发态与生产态 ARM 构建均成功，`py_compile`、`git diff --check` 通过。
 
 ## 仍未完成
 
