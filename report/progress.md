@@ -6,7 +6,7 @@
 
 ## 2026-10-11：G6 生产 profile 软件隔离
 
-G6 已增加显式生产编译 profile：隔离开发 JTAG mailbox 和 host-seed 随机路径；要求外部 provider，启动/随机服务失败 fail closed；每次 KEM 临时装载密钥、校验并钉住公钥身份后擦除。ARM 交叉编译联调通过；完整 `sim/tb` 126/126 通过。真实 provider、板端可信熵、持久密钥保护和实板读回仍缺失，**生产安全未通过**。电脑端 harness 覆盖失败注入与开发 mailbox 符号排除；细节见[实施记录](production_security_profile_20261011.md)。
+G6 生产 profile 已隔离开发 JTAG mailbox 与 host-seed 路径；加入 HMAC_DRBG-SHA-256、256-bit strength 输入长度门禁、1024 次重播种和失败关闭。NIST 两组连续输出向量、失败注入和最终 XC7Z020 ARM 交叉链接通过；完整 `sim/tb` 127/127 通过。真实 provider/熵源、持久密钥保护、启动链、PS/PL/DDR 全域清零读回和板端验收仍缺失，**生产安全未通过**。细节与哈希见[实施记录](production_security_profile_20261011.md)。
 
 ## 2026-10-11：完整电脑端回归 19/19
 

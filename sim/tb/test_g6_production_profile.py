@@ -18,6 +18,7 @@ INCLUDES = [
 SOURCES = [
     HARNESS,
     ROOT / "src" / "ps" / "src" / "session.c",
+    ROOT / "src" / "ps" / "src" / "g6_hmac_drbg.c",
     ROOT / "src" / "ps" / "src" / "protocol.c",
     ROOT / "src" / "third_party" / "tinycrypt" / "lib" / "source" / "sha256.c",
     ROOT / "src" / "third_party" / "tinycrypt" / "lib" / "source" / "utils.c",

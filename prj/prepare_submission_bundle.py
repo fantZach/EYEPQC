@@ -187,7 +187,7 @@ EVIDENCE_STATUS = [
         "id": "production_security",
         "status": "not_passed",
         "evidence": "report/production_security_profile_20261011.md",
-        "scope": "源码隔离开发 mailbox/host-seed 并要求外部 provider；真实 provider、可信板端熵源、密钥存储与全域清零均未闭环。",
+        "scope": "生产 profile 已接入 HMAC_DRBG-SHA-256、NIST 向量/ARM 链接和 fail-closed 接口；真实 provider、可信板端熵源、密钥存储与全域清零读回均未闭环。",
     },
     {
         "id": "security_cleanup_candidate007",

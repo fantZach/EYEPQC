@@ -10,7 +10,7 @@
 
 2026-10-10 续测：Keccak 配置阶段核验身份的优化版完成 3 次独立实板启动，逐次 tcId 76 KAT/96 次硬件调用与 timeout fallback 通过，仍约慢 8.4%，暂不接入视频。CPU 本地控制缓冲清理已实现，独立 candidate007 双会话认证视频共 284 帧及坏 Finished 拒绝回归通过；这不证明全域清零或生产安全。实验后恢复冻结 006d 并复测 140 帧。见 [优化版板测](report/keccak_identity_cached_20261010.md) 和 [清理实施记录](report/security_cleanup_20261010.md)。
 生产安全缺口与材料审阅包见 [安全计划](report/production_security_plan_20261010.md) 和 [交付计划](report/submission_delivery_plan_20261010.md)；可信板端熵源、生产密钥存储和全域清零仍未完成。
-G6 电脑端生产 profile 已隔离开发 JTAG/host-seed 路径并加入外部 provider fail-closed 接口；provider 和硬件门禁尚未实现，详见[实施记录](report/production_security_profile_20261011.md)。
+G6 电脑端生产 profile 已加入 HMAC_DRBG-SHA-256、NIST 向量测试和外部熵/provider fail-closed 接口；真实熵源、密钥服务和硬件门禁尚未实现，详见[实施记录](report/production_security_profile_20261011.md)。
 项目设计与已有实验数据汇总见[技术报告草稿](report/technical_report.md)，
 电脑端构建和本轮验证边界见[构建记录](report/pc_build.md)，
 关键协作决策与纠错见[协作记录](report/collaboration_log.md)。

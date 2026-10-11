@@ -28,6 +28,7 @@
 #include <string.h>
 #ifdef G6_PRODUCTION
 #include "g6_production_provider.h"
+#include "g6_hmac_drbg.h"
 #endif
 
 #define PROVISION_MAGIC 0x36475345U
@@ -78,6 +79,8 @@ volatile struct g6_transport_failure_diag g6_transport_failure_diag
 
 #ifndef G6_PRODUCTION
 static uint8_t private_key[1632], random_seed[32];
+#else
+static struct eye_hmac_drbg production_drbg;
 #endif
 static uint8_t hello[48], ack[48], tx[G6_SECURE_TX_CAPACITY] __attribute__((aligned(64)));
 _Static_assert(sizeof tx == 1472U && (sizeof tx & 63U) == 0U &&
@@ -212,9 +215,22 @@ static int send_control(const uint8_t *message, unsigned length) {
 }
 static int board_random(uint8_t out[32], const uint8_t host_random[32]) {
 #ifdef G6_PRODUCTION
-    (void)host_random;
+    int status;
     wipe(out, 32U);
-    int status = g6_production_random_bytes(out);
+    if (eye_hmac_drbg_needs_reseed(&production_drbg)) {
+        uint8_t entropy[48] = {0};
+        status = g6_production_entropy_bytes(entropy, sizeof entropy);
+        if (!status)
+            status = eye_hmac_drbg_reseed(&production_drbg, entropy, 32U,
+                                          entropy + 32U, 16U);
+        wipe(entropy, sizeof entropy);
+        if (status) eye_hmac_drbg_uninstantiate(&production_drbg);
+    } else {
+        status = EYE_HMAC_DRBG_OK;
+    }
+    if (!status)
+        status = eye_hmac_drbg_generate(&production_drbg, out, 32U,
+                                        host_random, 32U);
     if (status) wipe(out, 32U);
     return status;
 #else
@@ -236,12 +252,21 @@ static int production_load_key(uint8_t out[1632]) {
 }
 
 static int initialize_production_security(void) {
-    uint8_t key[1632] = {0};
+    uint8_t key[1632] = {0}, entropy[48] = {0};
+    eye_hmac_drbg_uninstantiate(&production_drbg);
     int status = g6_production_security_init();
+    if (!status) status = g6_production_entropy_bytes(entropy, sizeof entropy);
+    if (!status)
+        status = eye_hmac_drbg_instantiate(&production_drbg, 256U, entropy, 32U,
+                                           entropy + 32U, 16U, NULL, 0U);
     if (!status) status = production_load_key(key);
     if (!status) status = eye_session_init(&session, key + 768U);
     wipe(key, sizeof key);
-    if (status) g6_production_security_shutdown();
+    wipe(entropy, sizeof entropy);
+    if (status) {
+        eye_hmac_drbg_uninstantiate(&production_drbg);
+        g6_production_security_shutdown();
+    }
     return status;
 }
 
@@ -265,6 +290,7 @@ static void mark_fault(void) {
     eye_session_error(&session);
     clear_handshake_cache();
 #ifdef G6_PRODUCTION
+    eye_hmac_drbg_uninstantiate(&production_drbg);
     g6_production_security_shutdown();
 #endif
     phase = FAULT;
@@ -343,6 +369,9 @@ static int handle_control(const uint8_t *message, unsigned length) {
 #endif
         wipe(body_ack, sizeof body_ack);
         if (status) {
+#ifdef G6_PRODUCTION
+            fail_closed();
+#endif
 #ifdef G6_SECURE_CLEANUP
             publish_rekey_diag();
 #endif
@@ -473,6 +502,7 @@ int main(void) {
 #ifdef G6_PRODUCTION
     int status = initialize_production_security();
     if (status) {
+        eye_hmac_drbg_uninstantiate(&production_drbg);
         g6_status = 0xffffffffU;
         xil_printf("G6_SECURITY_PROVIDER_FAIL %d\r\n", status);
         for (;;) {}
@@ -483,7 +513,10 @@ int main(void) {
 #endif
     if (!status) status = usb_cdc_init();
 #ifdef G6_PRODUCTION
-    if (status) g6_production_security_shutdown();
+    if (status) {
+        eye_hmac_drbg_uninstantiate(&production_drbg);
+        g6_production_security_shutdown();
+    }
 #endif
     if (status) { xil_printf("G6_INIT_FAIL %d\r\n", status); for (;;) {} }
 #ifndef G6_PRODUCTION

@@ -55,6 +55,9 @@ class SubmissionBundlePolicyTests(unittest.TestCase):
         self.assertIn("report/contest_rules_review_20261011.md", selected_set)
         self.assertIn("report/software_regression_20261011.md", selected_set)
         self.assertIn("report/production_security_profile_20261011.md", selected_set)
+        self.assertIn("src/ps/src/g6_hmac_drbg.c", selected_set)
+        self.assertIn("src/ps/include/g6_hmac_drbg.h", selected_set)
+        self.assertIn("sim/tb/test_g6_hmac_drbg.c", selected_set)
 
     def test_review_bundle_names_are_current_and_not_formal_submission_names(self):
         self.assertEqual(BUNDLE_NAME, "EYEPQC_submission_review_candidate014_20261011.zip")

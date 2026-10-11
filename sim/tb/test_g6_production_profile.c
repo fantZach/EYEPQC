@@ -12,12 +12,12 @@
 
 static int provider_init_status;
 static int provider_read_status;
-static int provider_random_status;
+static int provider_entropy_status;
 static uint8_t provider_key_value;
 static unsigned provider_init_calls;
 static unsigned provider_shutdown_calls;
 static unsigned provider_read_calls;
-static unsigned provider_random_calls;
+static unsigned provider_entropy_calls;
 static unsigned decapsulation_calls;
 static unsigned usb_send_calls;
 static uint8_t last_send[1040];
@@ -37,11 +37,11 @@ int g6_production_read_mlkem512_private_key(uint8_t out[1632])
     return provider_read_status;
 }
 
-int g6_production_random_bytes(uint8_t out[32])
+int g6_production_entropy_bytes(uint8_t *out, uint32_t length)
 {
-    ++provider_random_calls;
-    memset(out, 0xa7, 32U);
-    return provider_random_status;
+    ++provider_entropy_calls;
+    memset(out, 0xa7, length);
+    return provider_entropy_status;
 }
 
 void g6_production_security_shutdown(void)
@@ -114,10 +114,10 @@ static void reset_provider(void)
 {
     provider_init_status = 0;
     provider_read_status = 0;
-    provider_random_status = 0;
+    provider_entropy_status = 0;
     provider_key_value = 0x5aU;
     provider_init_calls = provider_shutdown_calls = provider_read_calls = 0U;
-    provider_random_calls = decapsulation_calls = usb_send_calls = 0U;
+    provider_entropy_calls = decapsulation_calls = usb_send_calls = 0U;
     last_send_length = 0U;
     memset(last_send, 0, sizeof last_send);
     memset(&session, 0, sizeof session);
@@ -135,6 +135,12 @@ static int test_missing_provider_fails_closed(void)
     if (initialize_production_security() == 0 || provider_init_calls != 1U ||
         provider_read_calls != 0U || provider_shutdown_calls != 1U)
         return 1;
+    reset_provider();
+    provider_entropy_status = 6;
+    if (initialize_production_security() == 0 || provider_entropy_calls != 1U ||
+        provider_read_calls != 0U || provider_shutdown_calls != 1U ||
+        production_drbg.instantiated)
+        return 4;
     reset_provider();
     provider_read_status = 8;
     if (production_load_key(key) == 0 || provider_read_calls != 1U)
@@ -163,14 +169,16 @@ static int test_random_failure_sends_no_ack(void)
     uint8_t message[48], output[32];
     reset_provider();
     if (initialize_production_security() || make_hello(message)) return 1;
-    provider_random_status = 9;
+    production_drbg.reseed_counter = EYE_HMAC_DRBG_RESEED_INTERVAL + 1U;
+    provider_entropy_status = 9;
     memset(output, 0xcc, sizeof output);
-    if (board_random(output, message) == 0 || provider_random_calls != 1U)
+    if (board_random(output, message) == 0 || provider_entropy_calls != 2U)
         return 2;
     for (unsigned i = 0; i < sizeof output; ++i)
         if (output[i] != 0U) return 3;
-    if (handle_control(message, sizeof message) == 0 || phase != WAIT_HELLO ||
-        usb_send_calls != 0U)
+    if (handle_control(message, sizeof message) == 0 || phase != FAULT ||
+        usb_send_calls != 0U || provider_shutdown_calls != 1U ||
+        production_drbg.instantiated)
         return 4;
     return 0;
 }
@@ -182,7 +190,7 @@ static int test_pinned_key_and_provider_random(void)
     if (initialize_production_security() || make_hello(hello_message)) return 1;
     if (handle_control(hello_message, sizeof hello_message) ||
         phase != WAIT_KEM || usb_send_calls != 1U ||
-        provider_random_calls != 1U || last_send_length != 51U)
+        provider_entropy_calls != 1U || last_send_length != 51U)
         return 2;
 
     /* A provider returning a different device identity must not decapsulate. */
@@ -199,7 +207,8 @@ static int test_pinned_key_and_provider_random(void)
     if (handle_control(hello_message, sizeof hello_message) ||
         handle_control(kem_message, sizeof kem_message) ||
         phase != WAIT_FINISHED || provider_read_calls != 2U ||
-        decapsulation_calls != 1U || usb_send_calls != 2U)
+        decapsulation_calls != 1U || usb_send_calls != 2U ||
+        provider_entropy_calls != 1U)
         return 6;
     return 0;
 }
@@ -213,6 +222,6 @@ int main(void)
         fprintf(stderr, "g6_production_profile_failed=%d\n", status);
         return 1;
     }
-    puts("G6_PRODUCTION_PROFILE_PASS provider_required=1 random_failure_no_ack=1 key_identity_pinned=1");
+    puts("G6_PRODUCTION_PROFILE_PASS entropy_fail_closed=1 reseed_failure_no_ack=1 key_identity_pinned=1");
     return 0;
 }

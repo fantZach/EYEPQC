@@ -150,7 +150,8 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
                     ROOT / 'prj/usb_probe.c', vendor / 'xusbps_ch9.c']
         include += [vendor]
     if name == 'g6_usb':
-        sources += [ROOT / 'src/ps/src' / f for f in ('session.c', 'protocol.c', 'm09_mlkem.c')]
+        sources += [ROOT / 'src/ps/src' / f for f in
+                    ('session.c', 'protocol.c', 'm09_mlkem.c', 'g6_hmac_drbg.c')]
         sources += [ROOT / 'src/third_party/tinycrypt/lib/source' / f for f in ('sha256.c', 'utils.c')]
         if production_provider is not None:
             sources.append(production_provider)

@@ -29,7 +29,7 @@ try:
         domain="standalone_a9_0", template="empty_application")
     sources = ["g3_camera.c", "g6_usb.c" if app_name == "g6_usb" else "g4_usb.c"]
     if app_name == "g6_usb":
-        sources += ["session.c", "protocol.c", "m09_mlkem.c"]
+        sources += ["session.c", "protocol.c", "m09_mlkem.c", "g6_hmac_drbg.c"]
     app.import_files(from_loc=str(repo / "src/ps/src"), files=sources, dest_dir_in_cmp="src")
     app.import_files(from_loc=str(repo / "src/ps/include"), files=["bsp_compat.h"], dest_dir_in_cmp="src")
     app.import_files(from_loc=str(repo / "prj"), files=["usb_probe.c"], dest_dir_in_cmp="src")
@@ -42,7 +42,7 @@ try:
         definitions.append("G6_USB")
         app.import_files(from_loc=str(repo / "src/third_party/tinycrypt/lib/source"),
                          files=["sha256.c", "utils.c"], dest_dir_in_cmp="src")
-        for name in ("session.h", "protocol.h", "g6_control_dispatch.h"):
+        for name in ("session.h", "protocol.h", "g6_control_dispatch.h", "g6_hmac_drbg.h"):
             shutil.copy2(repo / "src/ps/include" / name, workspace / app_name / "src" / name)
         shutil.copytree(repo / "src/third_party/mlkem", workspace / app_name / "src/mlkem")
         shutil.copytree(repo / "src/third_party/tinycrypt", workspace / app_name / "src/tinycrypt")
