@@ -29,3 +29,5 @@ candidate012 的 13 个通过轮不能折算到 candidate014。candidate014 仍�
 ## 项目级离线回归补测（2026-10-11）
 
 `sim/tb` 全套发现共运行 123 项，首次运行有 2 项因 Vivado/XSim 与 Icarus 路径未配置而无法启动。设置本机 Vivado `E:\fpg\2026.1\Vivado` 并补齐 Icarus PATH 后，重新运行 M04 和 M05 文件，相关 4 项（M04 1 项、M05 3 项）全部通过；没有未解决的代码断言失败。该补测只覆盖软件/RTL 仿真，不是板卡验收。
+
+同日使用 candidate014 build identity 执行 `run_g7_batch.ps1 -Mock -Attempts 20`，20/20 通过。它只验证 runner 的批次/身份/摘要逻辑，不启动 receiver、不枚举 USB、不访问 JTAG，因此不计入实板 G7 轮次；Mock 原始记录留在本机忽略目录 `report/g7_runs/g7_batch_mock_20261011_120431_780_80615e5f/`。
