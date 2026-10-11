@@ -1,8 +1,8 @@
 # 生产安全闭环计划
 
-更新：2026-10-10。本文依据当前仓库源码和 [会话密钥与清零边界审阅](security_gap_audit.md) 制定电脑端实施与后续板级验收路线。当前 G6 是开发态协议实现；**生产安全未通过**。本文没有验证硬件熵源、密钥存储、启动链、JTAG 生命周期或全域清零，也不构成安全认证。
+更新：2026-10-11。本文依据当前仓库源码、[会话密钥与清零边界审阅](security_gap_audit.md) 和 AMD Zynq-7000 安全资料制定电脑端实施与后续板级验收路线。当前 G6 是开发态协议实现；**生产安全未通过**。本文没有验证硬件熵源、密钥存储、启动链、JTAG 生命周期或全域清零，也不构成安全认证。
 
-2026-10-11 的电脑端 profile 与软件 DRBG 进展见[实施记录](production_security_profile_20261011.md)：生产宏下已排除开发 JTAG mailbox 与 host-seed 随机路径，并接入 HMAC_DRBG-SHA-256 与外部熵/provider fail-closed 接口；真实 provider、板端熵源、密钥保护及读回门禁仍未完成，状态仍为**生产安全未通过**。
+2026-10-11 的电脑端 profile 与软件 DRBG 进展见[实施记录](production_security_profile_20261011.md)：生产宏下已排除开发 JTAG mailbox 与 host-seed 随机路径，并接入 HMAC_DRBG-SHA-256 与外部熵/provider fail-closed 接口；DRBG 错误输入现清除旧状态。AMD WP467 明确 Zynq-7000 没有为应用层会话密钥提供的片上 silicon RNG，虽可由用户在 PL 实现 RNG，但本项目尚无受评估的 PL 熵源或外部器件。真实 provider、可信熵源、密钥保护及读回门禁仍未完成，状态仍为**生产安全未通过**。
 
 ## 当前实现能证明的边界
 
@@ -23,7 +23,7 @@
 
 ### 1. 固定产品威胁模型和器件事实
 
-先由项目负责人明确设备生命周期、攻击者可否接触实物、是否要求断电后保密、RMA/返修策略、是否接受主机参与，以及一机一钥或批量共钥的要求。对实际核心板版本核对原理图、芯片完整料号、启动配置、PS/PL 资源和可用熵接口；当前源码与仓库资料没有确认可访问的板端熵接口。若无法在实际器件和连线中建立可测的噪声源，不得把 Zynq 系列名或 CPU 时钟、计时器、主机随机数推断为设备熵源。
+先由项目负责人明确设备生命周期、攻击者可否接触实物、是否要求断电后保密、RMA/返修策略、是否接受主机参与，以及一机一钥或批量共钥的要求。当前构建 XSA 的器件为 `xc7z020clg400-2`，属于 Zynq-7000。AMD WP467 指出 Zynq-7000 没有用于生成应用层 session key 的内置 silicon RNG，但允许用户在 PL 实现 RNG；因此软件 provider 不能把 PS 计时器、XADC 读数或主机随机数包装成板端熵。下一步要核实实际 bitstream/原理图中是否有 PL TRNG 或外接熵器件，并针对选定源评估。若在 PL 实现 TRNG，其可信度还依赖受认证的加载链；AMD WP468 将经 RSA 认证的 FSBL 作为确保可编程安全逻辑未被替换的信任基础。参考 [AMD WP467](https://docs.amd.com/api/khub/documents/~r0Z3L3XXjpo2pmVrIvd_g/content) 与 [AMD WP468](https://docs.amd.com/api/khub/documents/kpDj1NsgdFh10n3DhSxgdA/content)。若无法在实际器件和连线中建立可测的噪声源，不得推断已有可信熵。
 
 ### 2. 建立随机服务并 fail closed
 
@@ -35,7 +35,7 @@ NIST SP 800-90B 规定熵源设计原则、熵评估与健康测试，并用于�
 
 先选择并记录可部署的密钥保护方案，再改造 G6 接口：量产私钥生成/导入主体、设备身份绑定、公钥登记、密钥轮换、版本/反回滚、读取控制、故障恢复、返修注销和销毁均要有明确流程。`provision_g6_jtag.tcl`、mailbox `g6_sk_load`/`g6_seed_load` 只保留在受控开发/测试构建中；生产构建不得接受该 mailbox 或留有可绕过认证的调试接口。
 
-不要将 Zynq 启动安全特性直接等同于 ML-KEM 私钥安全存储：AMD Zynq-7000 文档描述 RSA 公钥哈希、启动认证及 AES 启动密钥等 SoC 启动功能，尚未证明能直接存储/隔离本项目 1632 字节私钥。JTAG 禁用和部分 eFuse 配置是生命周期决策，AMD 文档指出相关选项可能永久生效并影响 RMA；仅完成器件/返修/恢复方案审查后，另行安排受控器件验证，不在本计划中编程 eFuse：[AMD UG821 Secure Boot](https://docs.amd.com/r/en-US/ug821-zynq-7000-swdev/Secure-Boot-Support)、[AMD UG585 PS eFUSE](https://docs.amd.com/r/en-US/ug585-zynq-7000-SoC-TRM/PS-eFUSE-Settings)、[AMD UG585 JTAG/debug](https://docs.amd.com/r/en-US/ug585-zynq-7000-SoC-TRM/JTAG-and-Debug-Considerations)。
+不要将 Zynq 启动安全特性直接等同于 ML-KEM 私钥安全存储：AMD Zynq-7000 文档描述 RSA 公钥哈希、启动认证及 AES 启动密钥等 SoC 启动功能，尚未证明能直接存储/隔离本项目 1632 字节私钥。若熵源放在 PL，需同时证明安全启动链实际认证了对应 bitstream；未完成认证加载前不能把 PL TRNG 视为可信根。JTAG 禁用和部分 eFuse 配置是生命周期决策，AMD 文档指出相关选项可能永久生效并影响 RMA；仅完成器件/返修/恢复方案审查后，另行安排受控器件验证，不在本计划中编程 eFuse：[AMD WP468](https://docs.amd.com/api/khub/documents/kpDj1NsgdFh10n3DhSxgdA/content)、[AMD UG821 Secure Boot](https://docs.amd.com/r/en-US/ug821-zynq-7000-swdev/Secure-Boot-Support)、[AMD UG585 PS eFUSE](https://docs.amd.com/r/en-US/ug585-zynq-7000-SoC-TRM/PS-eFUSE-Settings)、[AMD UG585 JTAG/debug](https://docs.amd.com/r/en-US/ug585-zynq-7000-SoC-TRM/JTAG-and-Debug-Considerations)。
 
 ### 4. 定义秘密清零矩阵并实现有序清理
 

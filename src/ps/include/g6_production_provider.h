@@ -7,6 +7,10 @@
  * Platform integration contract for the opt-in G6 production profile.
  * The project intentionally supplies no implementation: a production link
  * without a reviewed provider must fail with unresolved symbols.
+ * Zynq-7000 has no built-in silicon RNG for application-layer session keys.
+ * A provider must use an evaluated PL entropy source or external source;
+ * timer jitter or XADC measurements alone are not an entropy-source claim.
+ * A PL source also requires an authenticated boot chain for its bitstream.
  *
  * security_init must fail unless the selected key service and entropy-source
  * health checks pass. entropy_bytes must provide 48 bytes at instantiation:
