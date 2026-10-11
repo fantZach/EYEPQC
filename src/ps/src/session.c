@@ -37,7 +37,11 @@ int eye_sha256(uint8_t out[32], const uint8_t *data, size_t length)
 {
     struct tc_sha256_state_struct state;
     int okay;
-    if (!out || (!data && length)) return EYE_SESSION_INPUT;
+    if (!out) return EYE_SESSION_INPUT;
+    if (!data && length) {
+        wipe(out, 32);
+        return EYE_SESSION_INPUT;
+    }
     okay = tc_sha256_init(&state) == TC_CRYPTO_SUCCESS &&
            (!length || tc_sha256_update(&state, data, length) == TC_CRYPTO_SUCCESS) &&
            tc_sha256_final(out, &state) == TC_CRYPTO_SUCCESS;
@@ -53,7 +57,10 @@ static int hmac2(uint8_t out[32], const uint8_t *key, size_t key_length,
     uint8_t pad[64], inner[32];
     int okay = out && key && key_length && key_length <= 64 &&
                (!a_length || a) && (!b_length || b);
-    if (!okay) return EYE_SESSION_INPUT;
+    if (!okay) {
+        if (out) wipe(out, 32);
+        return EYE_SESSION_INPUT;
+    }
     memset(pad, 0x36, sizeof pad);
     for (size_t i = 0; i < key_length; ++i) pad[i] ^= key[i];
     okay = tc_sha256_init(&state) && tc_sha256_update(&state, pad, 64) &&
@@ -79,7 +86,11 @@ int eye_hkdf56(uint8_t out[56], const uint8_t shared[32], const uint8_t salt[32]
     static const uint8_t info[] = "EYEPQC v1 keys";
     uint8_t prk[32], block[32], input[sizeof info];
     int status;
-    if (!out || !shared || !salt) return EYE_SESSION_INPUT;
+    if (!out) return EYE_SESSION_INPUT;
+    if (!shared || !salt) {
+        wipe(out, 56);
+        return EYE_SESSION_INPUT;
+    }
     status = hmac2(prk, salt, 32, shared, 32, NULL, 0);
     memcpy(input, info, sizeof info - 1);
     input[sizeof info - 1] = 1;
@@ -126,8 +137,9 @@ void eye_session_error(struct eye_session *s)
 
 int eye_session_init(struct eye_session *s, const uint8_t pk[800])
 {
-    if (!s || !pk) return EYE_SESSION_INPUT;
+    if (!s) return EYE_SESSION_INPUT;
     eye_session_reset(s);
+    if (!pk) return EYE_SESSION_INPUT;
     return eye_sha256(s->pinned_pk_hash, pk, 800);
 }
 
@@ -141,7 +153,11 @@ int eye_session_begin(struct eye_session *s, const uint8_t shared[32],
     uint8_t type, derived[56], transcript[32];
     uint32_t length;
     int okay;
-    if (!s || !shared || !hello || !ack || !kem) return EYE_SESSION_INPUT;
+    if (!s) return EYE_SESSION_INPUT;
+    if (!shared || !hello || !ack || !kem) {
+        eye_session_error(s);
+        return EYE_SESSION_INPUT;
+    }
     if (s->state != EYE_STATE_IDLE && s->state != EYE_STATE_REKEY && s->state != EYE_STATE_ERROR)
         return EYE_SESSION_STATE;
     if (eye_control_decode(&type, &body, &length, hello, 48) || type != EYE_HELLO ||
@@ -195,15 +211,22 @@ int eye_session_board_finished(struct eye_session *s, uint8_t out[44])
 int eye_session_verify_host_finished(struct eye_session *s, const uint8_t message[44])
 {
     static const uint8_t label[] = "host finished";
-    uint8_t tag[32], type;
+    uint8_t tag[32] = {0}, type;
     uint32_t length;
     const uint8_t *body;
     int status;
-    if (!s || !message) return EYE_SESSION_INPUT;
+    if (!s) return EYE_SESSION_INPUT;
+    if (!message) {
+        eye_session_error(s);
+        return EYE_SESSION_INPUT;
+    }
     if (s->state != EYE_STATE_CONFIRM || !s->board_finished_sent || s->host_finished_verified)
         return EYE_SESSION_STATE;
-    if (eye_control_decode(&type, &body, &length, message, 44) || type != EYE_FINISHED_HOST)
+    if (eye_control_decode(&type, &body, &length, message, 44) || type != EYE_FINISHED_HOST) {
+        wipe(tag, sizeof tag);
+        eye_session_error(s);
         return EYE_SESSION_INPUT;
+    }
     status = finished(tag, s, label, sizeof label - 1);
     if (!status && !equal32(tag, body)) status = EYE_SESSION_AUTH;
     wipe(tag, sizeof tag);

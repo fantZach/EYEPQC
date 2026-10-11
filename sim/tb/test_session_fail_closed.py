@@ -1,0 +1,159 @@
+from __future__ import annotations
+
+import ctypes as ct
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class Session(ct.Structure):
+    _fields_ = [
+        ("pinned_pk_hash", ct.c_ubyte * 32),
+        ("last_transcript", ct.c_ubyte * 32),
+        ("transcript_hash", ct.c_ubyte * 32),
+        ("video_key", ct.c_ubyte * 16),
+        ("control_key", ct.c_ubyte * 32),
+        ("nonce_prefix", ct.c_uint32),
+        ("session_id", ct.c_uint32),
+        ("packet_sequence", ct.c_uint64),
+        ("command_sequence", ct.c_uint64),
+        ("receive_high", ct.c_uint64),
+        ("receive_mask", ct.c_uint64),
+        ("receive_started", ct.c_uint8),
+        ("board_finished_sent", ct.c_uint8),
+        ("host_finished_verified", ct.c_uint8),
+        ("state", ct.c_uint8),
+    ]
+
+
+def as_buffer(data: bytes):
+    return (ct.c_ubyte * len(data)).from_buffer_copy(data)
+
+
+class SessionFailClosedTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory(prefix="eyepqc-session-failclosed-")
+        suffix = ".dll" if os.name == "nt" else ".so"
+        cls.library_path = Path(cls.temp.name) / ("session" + suffix)
+        sources = [
+            "src/ps/src/session.c",
+            "src/ps/src/protocol.c",
+            "src/third_party/tinycrypt/lib/source/sha256.c",
+            "src/third_party/tinycrypt/lib/source/utils.c",
+        ]
+        command = [
+            os.environ.get("CC", "gcc"), "-std=c11", "-O2", "-Wall", "-Wextra",
+            "-Werror", "-shared", "-fPIC", "-I", str(ROOT / "src/ps/include"),
+            "-I", str(ROOT / "src/third_party/tinycrypt/lib/include"),
+            *(str(ROOT / source) for source in sources), "-o", str(cls.library_path),
+        ]
+        subprocess.run(command, check=True, capture_output=True, text=True)
+        cls.lib = ct.CDLL(str(cls.library_path))
+        cls.lib.eye_sha256.argtypes = [ct.c_void_p, ct.c_void_p, ct.c_size_t]
+        cls.lib.eye_sha256.restype = ct.c_int
+        cls.lib.eye_hmac_sha256.argtypes = [
+            ct.c_void_p, ct.c_void_p, ct.c_size_t, ct.c_void_p, ct.c_size_t,
+        ]
+        cls.lib.eye_hmac_sha256.restype = ct.c_int
+        cls.lib.eye_hkdf56.argtypes = [ct.c_void_p, ct.c_void_p, ct.c_void_p]
+        cls.lib.eye_hkdf56.restype = ct.c_int
+        cls.lib.eye_session_init.argtypes = [ct.c_void_p, ct.c_void_p]
+        cls.lib.eye_session_init.restype = ct.c_int
+        cls.lib.eye_session_begin.argtypes = [ct.c_void_p] * 5
+        cls.lib.eye_session_begin.restype = ct.c_int
+        cls.lib.eye_session_verify_host_finished.argtypes = [ct.c_void_p, ct.c_void_p]
+        cls.lib.eye_session_verify_host_finished.restype = ct.c_int
+
+    @classmethod
+    def tearDownClass(cls):
+        if os.name == "nt":
+            import _ctypes
+            _ctypes.FreeLibrary(cls.lib._handle)
+        del cls.lib
+        cls.temp.cleanup()
+
+    @staticmethod
+    def filled(size: int, value: int = 0xA5):
+        return (ct.c_ubyte * size)(*([value] * size))
+
+    def make_active_session(self) -> Session:
+        session = Session()
+        session.pinned_pk_hash[:] = bytes([0x11] * 32)
+        session.last_transcript[:] = bytes([0x22] * 32)
+        session.transcript_hash[:] = bytes([0x33] * 32)
+        session.video_key[:] = bytes([0x44] * 16)
+        session.control_key[:] = bytes([0x55] * 32)
+        session.nonce_prefix = 0x66778899
+        session.session_id = 0xAABBCCDD
+        session.packet_sequence = 7
+        session.command_sequence = 3
+        session.receive_high = 9
+        session.receive_mask = 0x101
+        session.receive_started = 1
+        session.board_finished_sent = 1
+        session.host_finished_verified = 1
+        session.state = 3  # EYE_STATE_STREAMING
+        return session
+
+    def assert_session_retired(self, session: Session, *, keep_pins: bool = True):
+        self.assertEqual(bytes(session.transcript_hash), bytes(32))
+        self.assertEqual(bytes(session.video_key), bytes(16))
+        self.assertEqual(bytes(session.control_key), bytes(32))
+        self.assertEqual(session.nonce_prefix, 0)
+        self.assertEqual(session.session_id, 0)
+        self.assertEqual(session.packet_sequence, 0)
+        self.assertEqual(session.command_sequence, 0)
+        self.assertEqual(session.receive_high, 0)
+        self.assertEqual(session.receive_mask, 0)
+        self.assertEqual(session.receive_started, 0)
+        self.assertEqual(session.board_finished_sent, 0)
+        self.assertEqual(session.host_finished_verified, 0)
+        self.assertEqual(session.state, 5)  # EYE_STATE_ERROR
+        if keep_pins:
+            self.assertEqual(bytes(session.pinned_pk_hash), bytes([0x11] * 32))
+            self.assertEqual(bytes(session.last_transcript), bytes([0x33] * 32))
+
+    def test_hash_and_hmac_outputs_are_zeroed_on_invalid_arguments(self):
+        digest = self.filled(32)
+        self.assertEqual(self.lib.eye_sha256(digest, None, 1), -1)
+        self.assertEqual(bytes(digest), bytes(32))
+
+        digest = self.filled(32)
+        message = as_buffer(b"message")
+        self.assertEqual(self.lib.eye_hmac_sha256(digest, None, 32, message, 7), -1)
+        self.assertEqual(bytes(digest), bytes(32))
+
+    def test_hkdf_output_is_zeroed_on_invalid_arguments(self):
+        output = self.filled(56)
+        salt = self.filled(32, 0x5A)
+        self.assertEqual(self.lib.eye_hkdf56(output, None, salt), -1)
+        self.assertEqual(bytes(output), bytes(56))
+
+    def test_invalid_reinitialization_clears_prior_session(self):
+        session = self.make_active_session()
+        self.assertEqual(self.lib.eye_session_init(ct.byref(session), None), -1)
+        self.assertEqual(bytes(session), bytes(ct.sizeof(session)))
+
+    def test_invalid_begin_and_malformed_finished_retire_active_keys(self):
+        session = self.make_active_session()
+        self.assertEqual(
+            self.lib.eye_session_begin(ct.byref(session), None, None, None, None), -1)
+        self.assert_session_retired(session)
+
+        session = self.make_active_session()
+        session.state = 2  # EYE_STATE_CONFIRM
+        session.host_finished_verified = 0
+        malformed = as_buffer(bytes(44))
+        self.assertEqual(
+            self.lib.eye_session_verify_host_finished(ct.byref(session), malformed), -1)
+        self.assert_session_retired(session)
+
+
+if __name__ == "__main__":
+    unittest.main()
