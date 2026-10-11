@@ -4,6 +4,10 @@
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
 当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。
 
+## 2026-10-11：完整电脑端回归 19/19
+
+最新 `run_demo.ps1 -Mode Check` 19 个门禁全部通过，M04/M05 使用原生 XSim；运行器记录 `board_accessed=false`。该次代码基线为 `bb212bc5a134228e6fed7223331bc9e2c2c2063a`，不是 candidate014 上板证据。逐项耗时和原始结果 hash 见[脱敏回归报告](software_regression_20261011.md)与[JSON 摘要](software_regression_20261011.json)。本轮没有访问硬件。
+
 ## 2026-10-11：candidate014 HELLO_ACK 安全重试完成离线准备
 
 针对 candidate012 receiver-exit 中两次 HELLO_ACK 超时，candidate014 让固件对相同 HELLO 重放缓存 ACK，主机最多重发两次原样 HELLO；超时后若 decoder 留有半帧则停止重试，避免新旧记录拼接。构建、197 项文件哈希预检、G6 离线测试 25/25、G7 runner 测试 9/9、项目级 M04/M05 补测及 20 轮软件 Mock 均通过。candidate014 尚未下载到板卡，`board_validated=false`；candidate012 的 13 个通过轮不折算。代码和报告已推送 GitHub；下一步需要同候选板上基线、ETW/AP0 单轮和从零 20/20 receiver-exit，之后才进行物理 USB 拔插门禁。该轮没有访问板卡、SD、Flash 或 eFuse。详见 [candidate012 实板诊断](g7_candidate012_tx_ownership_board_20261011.md)、[candidate014 离线报告](g7_candidate014_safe_hello_ack_retry_offline_20261011.md) 和 [下一阶段计划](next_stage_plan.md)。

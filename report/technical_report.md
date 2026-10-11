@@ -3,7 +3,7 @@
 **技术报告稿 | 更新：2026-10-11**
 本文按当前仓库记录和可追溯测试证据整理。赛事协办方[赛程页](https://www.gowinsemi.com.cn/university/match2026)与[高校通知](https://wdz.qust.edu.cn/info/1055/1203.htm)列出作品提交截止时间为 2026-11-04 18:00；队伍报名/资格状态、AMD 具体赛道细则和报告/视频模板仍待核对。本文是技术报告草稿，不代表组委会格式的最终定稿。系统有历史和最新候选的实板证据，但 G0 SD 启动、G7 receiver-exit 恢复和生产安全尚未通过。
 
-电脑端软件回归和构建交付范围见[软件交付记录](software_ready.md)。历史候选 `candidate006d` 的 camera-reset 与 routing-stall 各 20/20 通过；`candidate012` 的 receiver-exit 批次在 13/20 后失败，同构建普通 CDC 重连基线认证 141 帧、1,130 包、47.672 fps。后续 `candidate014` 增加同 HELLO 缓存 ACK 重放、有界主机重试及半帧保护，ARM 构建、197 项哈希预检、G6 离线测试 25/25、runner 测试 9/9、M04/M05 补测及 20 轮软件 Mock 通过，但 `board_validated=false`，没有任何该候选实板通过轮次。普通重连和软件 Mock 不能替代故障恢复门禁。独立 KX41 候选已完成 software、hardware、timeout fallback 三窗口各 60/60 KAT；该独立工程不代表正式视频构建集成。M02 的用户确认整板断电/上电后 JTAG 配置 20/20 及无摄像头 fail-closed 已通过，但不代表 SD 独立启动或 DVP/JPEG 实拍。以上证据均不构成整机、G0/G7 或生产安全验收。
+电脑端最新完整回归为 19/19，M04/M05 使用原生 XSim；结果标记 `board_accessed=false`，详见[回归报告](software_regression_20261011.md)。历史候选 `candidate006d` 的 camera-reset 与 routing-stall 各 20/20 通过；`candidate012` 的 receiver-exit 批次在 13/20 后失败，同构建普通 CDC 重连基线认证 141 帧、1,130 包、47.672 fps。后续 `candidate014` 增加同 HELLO 缓存 ACK 重放、有界主机重试及半帧保护，ARM 构建、197 项哈希预检、G6 离线测试 25/25、runner 测试 9/9、M04/M05 补测及 20 轮软件 Mock 通过，但 `board_validated=false`，没有任何该候选实板通过轮次。普通重连和软件 Mock 不能替代故障恢复门禁。独立 KX41 候选已完成 software、hardware、timeout fallback 三窗口各 60/60 KAT；该独立工程不代表正式视频构建集成。M02 的用户确认整板断电/上电后 JTAG 配置 20/20 及无摄像头 fail-closed 已通过，但不代表 SD 独立启动或 DVP/JPEG 实拍。以上证据均不构成整机、G0/G7 或生产安全验收。
 
 ## 摘要
 
@@ -68,6 +68,7 @@ USB CDC 使用 `channel:u8 || record_length:u16_be || record` 外层记录，将
 | G7 `candidate006d` 短测与受控恢复 | 短时认证视频 471 帧、47.3579 fps；camera-reset 20/20、routing-stall 20/20 | 同一候选构建的限定证据；PC退出/DTR 20 次和物理USB拔插20次待测，不能据此判定 G7 整体通过，见 [006d 报告](g7_candidate006d_acceptance_20261010.md) |
 | G7 `candidate012` USB 基线/故障恢复 | 普通 CDC 重连认证 141 帧、1,130 包、47.672 fps；receiver-exit 单轮在 HELLO_ACK 等待处失败，主机 39 次读取为 0 字节 | 同一构建、无 JTAG 重载的普通重连与故障恢复分开计；dTD completion 不能证明 CDC 用户态收到 ACK，G7 未通过，见 [candidate012 报告](g7_candidate012_tx_ownership_board_20261011.md) |
 | G7 `candidate014` 软件候选 | ARM 构建、197 项哈希预检、G6 离线 25/25、runner 9/9、项目补测和软件 Mock 20/20 通过 | 仅离线候选；`board_validated=false`、实板 0 轮。缓存 ACK/有界重试方案仍需先做同构建基线、ETW/AP0 单轮和 receiver-exit 20/20，见 [candidate014 报告](g7_candidate014_safe_hello_ack_retry_offline_20261011.md) |
+| 电脑端完整回归 | 19/19 门禁通过，含 M04/M05 原生 XSim | `run_demo.ps1 -Mode Check` 本次结果标记 `board_accessed=false`；不覆盖实板验收，见[回归报告](software_regression_20261011.md) |
 | M02 冷启动及模组缺席 | 用户确认 20 次整板断电/上电后的 JTAG 配置 20/20；全断电拔除摄像头后 fail-closed 通过 | 限 JTAG 配置与 fail-closed；SD/Flash 独立启动和 DVP/JPEG 实拍未测，见 [M02 报告](m02_sensor_reset_board_20261011.md) |
 | 旧 Keccak 隔离工程 | tcId 76 ML-KEM-512 解封装路径 3 轮功能通过；HW 相对同启动 SW 平均慢 8.62% | 独立 PS+PL/XSA，不是正式视频工程；故障回退和 STATUS 读回通过，不证明全域清零；见 [Keccak 实板基准](keccak_board_benchmark_20261010.md) |
 | KX41 独立固件 | software、hardware、timeout fallback 三窗口各 60/60 个 ML-KEM-512 KAT；硬件窗口 ticks 为软件的 88.6% | 仅限独立候选和所测 60 个唯一向量，不外推到正式视频构建、内部状态清零或完整产品性能，见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md) |

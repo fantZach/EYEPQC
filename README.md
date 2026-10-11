@@ -4,7 +4,9 @@
 目标见 [doc/goals.md](doc/goals.md)，最新进度见 [report/progress.md](report/progress.md)。
 比赛提交前的证据索引与未完成验收项见 [提交检查表](report/competition_submission.md)；
 该清单明确区分历史板测与当前工作副本验证。
-2026-10-11 实板续测：独立 KX41 候选 software、hardware、timeout fallback 三窗口各 60/60 KAT 通过，硬件窗口耗时为软件的 88.6%；M02 Explore 的 20/20 整板断电/上电后 JTAG 配置探针及无摄像头 fail-closed 通过。M02 探针使用 JTAG 临时下载，不代表 SD/Flash 独立启动或 DVP/JPEG 实拍。测试后 candidate006d 已恢复，JTAG 目标可见，视频 CDC `03FD:7020` 为 COM16；恢复后的认证视频未复测。详见 [KX41 实板验收](report/keccak_sponge_x4_capture_fix_20261011.md) 和 [M02 实板验收](report/m02_sensor_reset_board_20261011.md)。G0/G7 整体仍未通过；candidate006d 的 PC 退出/DTR 20 次和物理 USB 拔插 20 次回归待测。独立 Keccak 结果不代表视频工程性能，也未集成到正式视频工程。历史数据见 [Benchmark 汇总](report/benchmark_summary_20261009.md) 和 [验收矩阵](report/acceptance_matrix_20261009.md)。
+2026-10-11 电脑端完整回归 `run_demo.ps1 -Mode Check` 为 19/19 PASS，涵盖 19 个依赖、向量和模块入口，运行器标记 `board_accessed=false`；M04/M05 原生 XSim 通过。逐项记录见[回归报告](report/software_regression_20261011.md)。
+
+最新已记录的实板结果：独立 KX41 候选 software、hardware、timeout fallback 三窗口各 60/60 KAT 通过，硬件窗口耗时为软件的 88.6%；M02 Explore 的 20/20 整板断电/上电后 JTAG 配置探针及无摄像头 fail-closed 通过。M02 使用 JTAG 临时下载，不代表 SD/Flash 独立启动或 DVP/JPEG 实拍。上述测试收尾时恢复了 candidate006d；本轮没有查询当前设备枚举状态。详见 [KX41 实板验收](report/keccak_sponge_x4_capture_fix_20261011.md) 和 [M02 实板验收](report/m02_sensor_reset_board_20261011.md)。G0/G7 整体仍未通过；candidate014 仅完成离线构建和测试，尚需新板基线、ETW/AP0 单轮、receiver-exit 20/20，再做 USB 拔插 20/20。旧 candidate006d/candidate012 的轮次不折算到 candidate014。独立 Keccak 结果不代表视频工程性能，也未集成到正式视频工程。历史数据见 [Benchmark 汇总](report/benchmark_summary_20261009.md) 和 [验收矩阵](report/acceptance_matrix_20261009.md)。
 
 2026-10-10 续测：Keccak 配置阶段核验身份的优化版完成 3 次独立实板启动，逐次 tcId 76 KAT/96 次硬件调用与 timeout fallback 通过，仍约慢 8.4%，暂不接入视频。CPU 本地控制缓冲清理已实现，独立 candidate007 双会话认证视频共 284 帧及坏 Finished 拒绝回归通过；这不证明全域清零或生产安全。实验后恢复冻结 006d 并复测 140 帧。见 [优化版板测](report/keccak_identity_cached_20261010.md) 和 [清理实施记录](report/security_cleanup_20261010.md)。
 生产安全缺口与材料审阅包见 [安全计划](report/production_security_plan_20261010.md) 和 [交付计划](report/submission_delivery_plan_20261010.md)；可信板端熵源、生产密钥存储和全域清零仍未完成。
@@ -24,7 +26,7 @@
 演示窗口：`& ./run_demo.ps1 -Mode Demo -Offline` 可在不接板卡时预览软件认证流程；
 `-Mode Demo` 连接已启动的 G6 固件。提供状态统计、换钥、单包篡改、认证帧录像及回放，
 2026-10-08 已完成一次 15 秒实机录像/回放/MP4/AVI 短测（722/722 帧保存，导出均完整解码），详见[演示验收记录](report/demo_software_ready.md)和[使用说明](doc/demo.md)。
-旧 usbfix3 的接收进程退出 20/20、物理 USB 拔插严格有效 20/20（原17+补3）保留为历史证据，不能代替修改 USB 代码后的 006d 同构建回归。G0 final2 临时 JTAG、LED 和 30 秒局部 DDR/timer 通过；SD 独立启动、物理复位和 30 分钟冷启动待验收。用户没有读卡器，板上原 SD 卡保持原样。后续顺序见 [下一阶段计划](report/next_stage_plan.md)、[G0 记录](report/g0_acceptance.md) 和 [统一矩阵](report/acceptance_matrix_20261009.md)。
+旧 usbfix3 的接收进程退出 20/20、物理 USB 拔插严格有效 20/20（原17+补3）仅为旧构建历史证据。candidate006d 的 camera-reset/routing-stall 各20/20也不代替 candidate014 的 receiver-exit 和 USB 拔插门禁。G0 final2 临时 JTAG、LED 和 30 秒局部 DDR/timer 通过；SD 独立启动、物理复位和 30 分钟冷启动待验收。此前用户说明没有读卡器、板上原 SD 卡保持原样。后续顺序见 [下一阶段计划](report/next_stage_plan.md)、[G0 记录](report/g0_acceptance.md) 和 [统一矩阵](report/acceptance_matrix_20261009.md)。
 
 目前完成 M00 协议与离线黄金参考，已编写 M01 板级工程、自检和 echo；
 构建/上板步骤见 [M01](doc/m01.md)。已解压并研究官方 7020 例程，

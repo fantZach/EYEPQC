@@ -85,6 +85,8 @@ PUBLIC_REPORT_FILES = {
     "report/security_cleanup_20261010.md",
     "report/security_cleanup_board_summary_20261010.json",
     "report/software_ready.md",
+    "report/software_regression_20261011.md",
+    "report/software_regression_20261011.json",
     "report/technical_report.md",
     "report/next_stage_plan.md",
     "report/github_sync_20261010.md",
@@ -197,6 +199,12 @@ EVIDENCE_STATUS = [
         "status": "generic_schedule_verified_track_rules_pending",
         "evidence": "report/contest_rules_review_20261011.md",
         "scope": "协办方页面确认 2026 赛事日程；AMD FPGA 赛道的正式细则、提交格式和队伍资格仍待官网或报名后台确认。其他赛道上传限制不移用。",
+    },
+    {
+        "id": "computer_only_regression_20261011",
+        "status": "passed_19_of_19_offline",
+        "evidence": "report/software_regression_20261011.md",
+        "scope": "19 个电脑端门禁全部通过，含 M04/M05 原生 XSim；运行器标记 board_accessed=false，不代表候选固件上板或 G0/G7 验收。",
     },
 ]
 
