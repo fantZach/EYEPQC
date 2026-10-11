@@ -15,12 +15,69 @@ sys.path.insert(0, str(ROOT / "prj"))
 
 import m09
 import m10_board
+import g6_board
 import prepare_demo
 from handshake import wipe_secret
 from transient_file import read_mutable_file, staged_file
 
 
 class TransientJtagFileTests(unittest.TestCase):
+    def test_g6_jtag_seed_file_is_overwritten_before_removal(self):
+        with tempfile.TemporaryDirectory(prefix="eyepqc-g6-seed-") as temp:
+            root = Path(temp)
+            (root / "build").mkdir()
+            pk = bytes((index % 251 for index in range(m09.PK)))
+            sk = bytearray((index % 239 for index in range(m09.SK)))
+            sk[768:1568] = pk
+            sizes = {"g6_sk_load": m09.SK, "g6_seed_load": 32,
+                     "g6_ready": 4, "g6_status": 4}
+            addresses = {name: 0x101000 + index * 0x1000
+                         for index, name in enumerate(sizes)}
+            nm_output = "\n".join(
+                f"{addresses[name]:08x} {sizes[name]:08x} B {name}"
+                for name in sizes)
+            observed_seed_files = []
+            observed_wiped_files = []
+            seed_buffers = []
+            run_calls = []
+            original_staged_file = g6_board.staged_file
+            original_unlink = Path.unlink
+
+            def track_staged_file(directory, prefix, data=None):
+                if prefix == "g6-seed-":
+                    seed_buffers.append(data)
+                return original_staged_file(directory, prefix, data)
+
+            def capture_unlink(path, *args, **kwargs):
+                if observed_seed_files and path == observed_seed_files[0] and path.exists():
+                    observed_wiped_files.append(path.read_bytes())
+                return original_unlink(path, *args, **kwargs)
+
+            def fake_run(call, **_kwargs):
+                run_calls.append(call)
+                if call[1].endswith("run_usb_probe_jtag.tcl"):
+                    return SimpleNamespace(returncode=0,
+                                           stdout="USB_JTAG_RUNNING g6_usb", stderr="")
+                seed_path = Path(call[3])
+                observed_seed_files.append(seed_path)
+                self.assertEqual(seed_path.read_bytes(), b"R" * 32)
+                return SimpleNamespace(returncode=0, stdout="G6_PROVISIONED", stderr="")
+
+            with patch.object(g6_board, "ROOT", root), \
+                    patch.object(g6_board, "OUT", root / "m09"), \
+                    patch.object(g6_board.subprocess, "check_output", return_value=nm_output), \
+                    patch.object(g6_board.subprocess, "run", side_effect=fake_run), \
+                    patch.object(g6_board.secrets, "token_bytes", return_value=b"R" * 32), \
+                    patch.object(g6_board, "staged_file", side_effect=track_staged_file), \
+                    patch.object(Path, "unlink", capture_unlink):
+                g6_board.jtag(root / "workspace", pk, sk, root / "tools")
+
+            self.assertEqual(len(run_calls), 2)
+            self.assertEqual(observed_wiped_files, [bytes(32)])
+            self.assertEqual(seed_buffers, [bytearray(32)])
+            self.assertFalse(observed_seed_files[0].exists())
+            sk[:] = bytes(len(sk))
+
     def test_demo_prepare_retries_incomplete_keyset_and_wipes_owned_secrets(self):
         with tempfile.TemporaryDirectory(prefix="eyepqc-demo-prepare-") as temp:
             folder = Path(temp)

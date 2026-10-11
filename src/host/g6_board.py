@@ -26,7 +26,7 @@ from m09 import Kem, OUT, PK, SK
 from protocol import (MessageType, USB_CONTROL, USB_VIDEO, UsbRecordDecoder,
                       decode_control, decode_video, encode_control, encode_usb_record,
                       make_nonce)
-from transient_file import read_mutable_file
+from transient_file import read_mutable_file, staged_file
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -88,19 +88,18 @@ def jtag(workspace, pk, sk, tool_root):
                            str(workspace), "g6_usb"], capture_output=True, text=True, timeout=120)
     if boot.returncode or "USB_JTAG_RUNNING g6_usb" not in boot.stdout:
         raise RuntimeError("G6 JTAG boot failed: " + boot.stdout + boot.stderr)
-    fd, name = tempfile.mkstemp(prefix="g6_seed_", dir=ROOT / "build")
+    seed = bytearray(secrets.token_bytes(32))
     try:
-        with os.fdopen(fd, "wb") as seed_file:
-            seed_file.write(secrets.token_bytes(32))
-        args = [str(xsdb), str(ROOT / "prj/provision_g6_jtag.tcl"),
-                str(OUT / "private.bin"), name,
-                *[str(symbols[item][0]) for item in
-                  ("g6_sk_load", "g6_seed_load", "g6_ready", "g6_status")]]
-        loaded = subprocess.run(args, capture_output=True, text=True, timeout=30)
-        if loaded.returncode or "G6_PROVISIONED" not in loaded.stdout:
-            raise RuntimeError("G6 JTAG provision failed: " + loaded.stdout + loaded.stderr)
+        with staged_file(ROOT / "build", "g6-seed-", seed) as seed_file:
+            args = [str(xsdb), str(ROOT / "prj/provision_g6_jtag.tcl"),
+                    str(OUT / "private.bin"), str(seed_file),
+                    *[str(symbols[item][0]) for item in
+                      ("g6_sk_load", "g6_seed_load", "g6_ready", "g6_status")]]
+            loaded = subprocess.run(args, capture_output=True, text=True, timeout=30)
+            if loaded.returncode or "G6_PROVISIONED" not in loaded.stdout:
+                raise RuntimeError("G6 JTAG provision failed: " + loaded.stdout + loaded.stderr)
     finally:
-        Path(name).unlink(missing_ok=True)
+        wipe_secret(seed)
 
 
 def port(timeout=10, cancelled=None):

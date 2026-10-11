@@ -47,7 +47,7 @@ class SubmissionBundlePolicyTests(unittest.TestCase):
         )
         self.assertEqual(
             statuses["full_sim_regression_20261011"]["status"],
-            "passed_158_of_158_offline",
+            "passed_159_of_159_offline",
         )
         self.assertEqual(statuses["production_security"]["status"], "not_passed")
         selected, _, _ = selected_paths(ROOT, [])
