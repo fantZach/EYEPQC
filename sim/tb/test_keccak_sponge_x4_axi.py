@@ -18,7 +18,7 @@ from iverilog_runner import compile_iverilog
 from test_keccak import run_xsim
 
 
-def test_vectors():
+def make_vectors():
     rng = random.Random(0x584134)
     vectors = []
     for length in (0, 1, 34, 167, 168, 169):
@@ -30,7 +30,7 @@ def test_vectors():
 
 class KeccakSpongeX4RTL(unittest.TestCase):
     def test_axi_stateful_x4_matches_hashlib_and_guards(self):
-        vectors = test_vectors()
+        vectors = make_vectors()
         with tempfile.TemporaryDirectory() as temp:
             work = Path(temp)
             vector_file = work / "vectors.txt"
