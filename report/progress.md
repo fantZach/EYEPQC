@@ -6,7 +6,7 @@
 
 ## 2026-10-11：G6 生产 profile 软件隔离
 
-G6 生产 profile 已隔离开发 JTAG mailbox 与 host-seed 路径；加入 HMAC_DRBG-SHA-256、256-bit strength 输入长度门禁、1024 次重播种和失败关闭。DRBG 只编入显式生产配置，开发态仍保留原 mailbox 路径；NIST 无附加输入、additional_input/personalization、成功重播种共五组输出及失败注入定向通过。随后把生产安全清理与自动恢复诊断拆开，生产 builder 现在单独编入 `G6_SECURE_CLEANUP` 和哈希记录的有界 USBPS overlay；新 XC7Z020 ARM 候选 ELF 及 link map 已确认包含受限 DMA/GCM/frame/TX 清理路径、排除 stock endpoint/interrupt 对象，且不含开发 mailbox。CPU 端 harness 覆盖了生产 profile USB 断连清理成功/失败。最新另加强 host 临时秘密生命周期：ML-KEM shared、HKDF 中间值/material 与 coins 在握手结束、失败或关闭后清零；G6 harness 逐字节验证成功和 transcript 重放拒绝路径。主机全量 `sim/tb` 回归 **128/128** 通过（265.763 秒）。生产 ELF 候选仍用 fail-closed 临时 provider，`board_validated=false`。生产安全仍未通过：真实熵源/provider、持久密钥保护、secure boot/JTAG 生命周期、PS/PL/DDR/DMA/USB 清零读回、host 不可控副本及板端验收仍未闭环。细节与哈希见[实施记录](production_security_profile_20261011.md)。
+G6 生产 profile 已隔离开发 JTAG mailbox 与 host-seed 路径；加入 HMAC_DRBG-SHA-256、256-bit strength 输入长度门禁、1024 次重播种和失败关闭。DRBG 只编入显式生产配置，开发态仍保留原 mailbox 路径；NIST 无附加输入、additional_input/personalization、成功重播种共五组输出及失败注入定向通过。随后把生产安全清理与自动恢复诊断拆开，生产 builder 现在单独编入 `G6_SECURE_CLEANUP` 和哈希记录的有界 USBPS overlay；最新 XC7Z020 ARM 候选 `candidate5` 的 ELF/link map 已确认包含受限 DMA/GCM/frame/TX 清理路径、使用候选内 overlay 对象，且不含开发 mailbox。DRBG API 现对非法 instantiate/reseed/generate 输入擦除旧状态，并保留正常 `RESEED_REQUIRED` 状态以便重播种；NIST 向量和负向回归通过。host 临时 ML-KEM/HKDF 缓冲也在握手结束、失败或关闭后覆写。主机全量 `sim/tb` 回归 **128/128** 通过（268.005 秒）。生产 ELF 候选仍使用全部 fail-closed 的临时 provider，`board_validated=false`。生产安全仍未通过：真实熵源/provider、持久密钥保护、secure boot/JTAG 生命周期、PS/PL/DDR/DMA/USB 清零读回、host 不可控副本及板端验收仍未闭环。细节与哈希见[实施记录](production_security_profile_20261011.md)。
 
 ## 2026-10-11：完整电脑端回归 19/19
 

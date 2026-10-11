@@ -30,6 +30,8 @@ struct eye_hmac_drbg {
 };
 
 /* HMAC_DRBG-SHA-256, SP 800-90A Rev. 1, section 10.1.2. */
+/* Invalid instantiate/reseed/generate inputs wipe the supplied state. A
+ * RESEED_REQUIRED result is a normal gate and preserves state for reseeding. */
 int eye_hmac_drbg_instantiate(struct eye_hmac_drbg *state,
                               uint16_t security_strength_bits,
                               const uint8_t *entropy, size_t entropy_length,

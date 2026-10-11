@@ -120,23 +120,39 @@ static int test_bounds_and_reseed_gate(void)
         EYE_HMAC_DRBG_STATE) return 1;
     for (unsigned i = 0; i < sizeof output; ++i)
         if (output[i]) return 2;
+    if (eye_hmac_drbg_instantiate(&state, 256U, entropy, sizeof entropy,
+                                  nonce, sizeof nonce, NULL, 0U)) return 16;
     if (eye_hmac_drbg_instantiate(&state, 256U, entropy, sizeof entropy - 1U,
                                   nonce, sizeof nonce, NULL, 0U) !=
         EYE_HMAC_DRBG_INPUT) return 3;
+    for (unsigned i = 0; i < sizeof state; ++i)
+        if (((const uint8_t *)&state)[i]) return 10;
     if (eye_hmac_drbg_instantiate(&state, 256U, entropy, sizeof entropy,
                                   nonce, sizeof nonce, NULL, 0U)) return 4;
-    snapshot = state;
     if (eye_hmac_drbg_generate(&state, output, sizeof output, NULL,
                                EYE_HMAC_DRBG_MAX_ADDITIONAL_BYTES + 1U) !=
-        EYE_HMAC_DRBG_INPUT || memcmp(&snapshot, &state, sizeof state)) return 5;
+        EYE_HMAC_DRBG_INPUT) return 5;
+    for (unsigned i = 0; i < sizeof state; ++i)
+        if (((const uint8_t *)&state)[i]) return 11;
+    if (eye_hmac_drbg_instantiate(&state, 256U, entropy, sizeof entropy,
+                                  nonce, sizeof nonce, NULL, 0U)) return 12;
     if (eye_hmac_drbg_reseed(&state, entropy, sizeof entropy - 1U, NULL, 0U) !=
-        EYE_HMAC_DRBG_INPUT || memcmp(&snapshot, &state, sizeof state)) return 6;
+        EYE_HMAC_DRBG_INPUT) return 6;
+    for (unsigned i = 0; i < sizeof state; ++i)
+        if (((const uint8_t *)&state)[i]) return 13;
+    if (eye_hmac_drbg_instantiate(&state, 256U, entropy, sizeof entropy,
+                                  nonce, sizeof nonce, NULL, 0U)) return 14;
+    snapshot = state;
     state.reseed_counter = EYE_HMAC_DRBG_RESEED_INTERVAL + 1U;
     memset(output, 0xa5, sizeof output);
     if (eye_hmac_drbg_generate(&state, output, sizeof output, NULL, 0U) !=
         EYE_HMAC_DRBG_RESEED_REQUIRED) return 7;
     for (unsigned i = 0; i < sizeof output; ++i)
         if (output[i]) return 8;
+    if (!state.instantiated || state.reseed_counter !=
+        EYE_HMAC_DRBG_RESEED_INTERVAL + 1U ||
+        state.security_strength_bits != snapshot.security_strength_bits)
+        return 15;
     if (eye_hmac_drbg_reseed(&state, entropy, sizeof entropy, NULL, 0U) ||
         eye_hmac_drbg_needs_reseed(&state) ||
         eye_hmac_drbg_generate(&state, output, sizeof output, NULL, 0U)) return 9;
@@ -153,6 +169,6 @@ int main(void)
         fprintf(stderr, "G6_HMAC_DRBG_FAIL=%d\n", status);
         return 1;
     }
-    puts("G6_HMAC_DRBG_PASS nist_outputs=5 additional_input=2 personalization=1 successful_reseed=1 reseed_gate=1");
+    puts("G6_HMAC_DRBG_PASS nist_outputs=5 additional_input=2 personalization=1 successful_reseed=1 reseed_gate=1 failure_state_wipe=1");
     return 0;
 }

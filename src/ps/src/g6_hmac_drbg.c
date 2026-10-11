@@ -59,7 +59,8 @@ int eye_hmac_drbg_instantiate(struct eye_hmac_drbg *state,
     size_t seed_length;
     int status;
 
-    if (!state || security_strength_bits < EYE_HMAC_DRBG_MIN_STRENGTH_BITS ||
+    if (!state) return EYE_HMAC_DRBG_INPUT;
+    if (security_strength_bits < EYE_HMAC_DRBG_MIN_STRENGTH_BITS ||
         security_strength_bits > EYE_HMAC_DRBG_MAX_STRENGTH_BITS ||
         (security_strength_bits & 7U) ||
         !valid_input(entropy, entropy_length,
@@ -68,8 +69,10 @@ int eye_hmac_drbg_instantiate(struct eye_hmac_drbg *state,
         entropy_length < (size_t)(security_strength_bits / 8U) ||
         nonce_length * 16U < (size_t)security_strength_bits ||
         !valid_input(personalization, personalization_length,
-                     EYE_HMAC_DRBG_MAX_PERSONALIZATION_BYTES, 1))
+                     EYE_HMAC_DRBG_MAX_PERSONALIZATION_BYTES, 1)) {
+        wipe(state, sizeof *state);
         return EYE_HMAC_DRBG_INPUT;
+    }
 
     seed_length = entropy_length + nonce_length + personalization_length;
     memcpy(seed, entropy, entropy_length);
@@ -100,16 +103,24 @@ int eye_hmac_drbg_reseed(struct eye_hmac_drbg *state,
     size_t seed_length;
     int status;
 
-    if (!state || !valid_input(entropy, entropy_length,
+    if (!state) return EYE_HMAC_DRBG_INPUT;
+    if (!valid_input(entropy, entropy_length,
                                EYE_HMAC_DRBG_MAX_ENTROPY_BYTES, 0) ||
         !valid_input(additional, additional_length,
-                     EYE_HMAC_DRBG_MAX_ADDITIONAL_BYTES, 1))
+                     EYE_HMAC_DRBG_MAX_ADDITIONAL_BYTES, 1)) {
+        wipe(state, sizeof *state);
         return EYE_HMAC_DRBG_INPUT;
-    if (!state->instantiated) return EYE_HMAC_DRBG_STATE;
+    }
+    if (!state->instantiated) {
+        wipe(state, sizeof *state);
+        return EYE_HMAC_DRBG_STATE;
+    }
     if (state->security_strength_bits < EYE_HMAC_DRBG_MIN_STRENGTH_BITS ||
         state->security_strength_bits > EYE_HMAC_DRBG_MAX_STRENGTH_BITS ||
-        entropy_length < (size_t)(state->security_strength_bits / 8U))
+        entropy_length < (size_t)(state->security_strength_bits / 8U)) {
+        wipe(state, sizeof *state);
         return EYE_HMAC_DRBG_INPUT;
+    }
 
     seed_length = entropy_length + additional_length;
     memcpy(seed, entropy, entropy_length);
@@ -138,12 +149,19 @@ int eye_hmac_drbg_generate(struct eye_hmac_drbg *state, uint8_t *output,
     if (!state || !output || output_length == 0U ||
         output_length > EYE_HMAC_DRBG_MAX_REQUEST_BYTES ||
         !valid_input(additional, additional_length,
-                     EYE_HMAC_DRBG_MAX_ADDITIONAL_BYTES, 1))
+                     EYE_HMAC_DRBG_MAX_ADDITIONAL_BYTES, 1)) {
+        if (state) wipe(state, sizeof *state);
         return EYE_HMAC_DRBG_INPUT;
-    if (!state->instantiated) return EYE_HMAC_DRBG_STATE;
-    if (state->security_strength_bits < EYE_HMAC_DRBG_MIN_STRENGTH_BITS ||
-        state->security_strength_bits > EYE_HMAC_DRBG_MAX_STRENGTH_BITS)
+    }
+    if (!state->instantiated) {
+        wipe(state, sizeof *state);
         return EYE_HMAC_DRBG_STATE;
+    }
+    if (state->security_strength_bits < EYE_HMAC_DRBG_MIN_STRENGTH_BITS ||
+        state->security_strength_bits > EYE_HMAC_DRBG_MAX_STRENGTH_BITS) {
+        wipe(state, sizeof *state);
+        return EYE_HMAC_DRBG_STATE;
+    }
     if (eye_hmac_drbg_needs_reseed(state))
         return EYE_HMAC_DRBG_RESEED_REQUIRED;
 
