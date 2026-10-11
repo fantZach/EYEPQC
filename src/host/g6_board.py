@@ -26,6 +26,7 @@ from m09 import Kem, OUT, PK, SK
 from protocol import (MessageType, USB_CONTROL, USB_VIDEO, UsbRecordDecoder,
                       decode_control, decode_video, encode_control, encode_usb_record,
                       make_nonce)
+from transient_file import read_mutable_file
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -556,7 +557,7 @@ def main():
     try:
         stage("key_material_load_begin")
         pk = (OUT / "public.bin").read_bytes()
-        sk = bytearray((OUT / "private.bin").read_bytes())
+        sk = read_mutable_file(OUT / "private.bin", SK)
         pin = bytes.fromhex((OUT / "public.sha256").read_text().strip())
         if hashlib.sha256(pk).digest() != pin or sk[768:1568] != pk:
             raise ValueError("pinned G6 test key mismatch")
