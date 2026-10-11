@@ -1,5 +1,7 @@
 # EYEPQC FPGA 工程复用指南
 
+适用范围、可复用案例、验证结果与失效边界见同目录 [README.md](README.md)。
+
 ## 目标
 
 在 Zynq-7000 上按证据驱动方式构建、仿真并验证 JPEG 采集与 AES-GCM 加密工程。默认工具根目录由 `EYEPQC_TOOL_ROOT` 指定；Vivado/Vitis 版本、目标 part、板卡版本都要按当前机器和硬件重新核对。
