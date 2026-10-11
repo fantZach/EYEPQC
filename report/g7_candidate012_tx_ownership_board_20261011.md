@@ -38,8 +38,14 @@
 ## 状态与下一步
 
 - 单轮失败；G7 不通过，receiver-exit 20 轮和物理 USB 拔插 20 轮均未开始。
-- 普通无 JTAG CDC 重连与视频基线已通过，但不能替代 receiver-exit 门禁。当前没有需要用户执行的现场步骤。下一步应取得受限主机 USB 控制器/串口层事务完成记录，把设备 dTD completion、主机 USB 请求状态和应用层读取关联起来；当前 Windows USB ETW 采集需要管理员会话，尚未执行。任何新候选都先跑基线和单轮，禁止盲目重复长批次。
+- 普通无 JTAG CDC 重连与视频基线已通过，但不能替代 receiver-exit 门禁。下一步应取得受限主机 USB 控制器/串口层事务完成记录，把设备 dTD completion、主机 USB 请求状态和应用层读取关联起来；任何新候选都先跑基线和单轮，禁止盲目重复长批次。
 - SD/Flash/eFuse 未写入；candidate012 仅临时 JTAG 下载。不得把短时基线或单次 dTD 完成上升为 G7 验收。
+
+## Windows USB ETW 采集准备（2026-10-11）
+
+当前 Windows PnP 查询看到实验用 CDC `USB\VID_03FD&PID_7020`（COM16）状态正常。已新增 `prj/collect_g7_usb_etw.ps1` 和 [单轮采集说明](g7_usb_etw_capture_guide.md)：Windows 自带 logman 的 USBXHCI/UCX/USBHUB3 trace 启用 `Default`、`HeadersBusTrace`、`StateMachine`、`Rundown`，并启用 Kernel-IoTrace 元数据；不启用 `PartialDataBusTrace` 或 `FullDataBusTrace`，最长 5 分钟、ETL 上限 128 MB，输出在 Git 忽略的 `build/g7_usb_etw/`。
+
+脚本 AST 解析、无副作用 `-Action Plan` 和 provider 注册检查通过。当前 PowerShell 令牌非管理员，因此没有启动 ETW、没有生成 ETL，也没有运行新一轮板测。准备工作不是 G7 新验收证据；待管理员会话启动采集后，只运行一次 candidate012 receiver-exit，再停止采集并按时间关联 ETL、runner 和 AP0 记录。
 
 ## candidate012 普通 CDC 重连基线（10:29）
 
