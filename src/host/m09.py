@@ -2,11 +2,14 @@
 import argparse
 import ctypes as ct
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
 import subprocess
 import struct
+
+from transient_file import staged_file
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "board/output/m09"
@@ -153,65 +156,90 @@ def board(workspace, tool_root):
         if item["size"] != size or address % 64 or not 0x100000 <= address <= 0x40000000 - size:
             raise ValueError("Invalid ELF-owned DDR symbol: " + name)
     pk = (OUT / "public.bin").read_bytes()
-    sk = (OUT / "private.bin").read_bytes()
-    ciphertext = (OUT / "ciphertext.bin").read_bytes()
-    expected = (OUT / "expected_shared.bin").read_bytes()
-    pin = (OUT / "public.sha256").read_text().strip()
-    if (len(pk), len(sk), len(ciphertext), len(expected)) != (PK, SK, CT, SS):
-        raise ValueError("Static key material has invalid length")
-    if hashlib.sha256(pk).hexdigest() != pin or sk[768:1568] != pk:
-        raise ValueError("Pinned public key does not match private key")
+    sk = bytearray((OUT / "private.bin").read_bytes())
+    expected = None
+    loaded = False
 
     def exchange(label, command, payload, iterations=0, boot=False):
         number = {"load": 1, "decap": 2, "clear": 3}[command]
         request = struct.pack("<8I3Q32s40s", 0x39304d45, 0, number, 0, iterations,
                               0, 0, 0, 0, 0, 0, bytes(32), bytes(40))
-        request_file, data_file = OUT / f"{label}.request", OUT / f"{label}.data"
-        reply_file, log_file = OUT / f"{label}.reply", OUT / f"{label}.log"
-        request_file.write_bytes(request)
-        if command != "clear":
-            data_file.write_bytes(payload)
-        if reply_file.exists():
-            reply_file.unlink()
-        call = [str(tool_root / "Vivado/bin/xsdb.bat"), str(ROOT / "prj/run_m09_jtag.tcl"),
-                str(workspace), str(int(boot)), command,
-                str(owned["m09_job"]["address"]), str(owned["m09_sk"]["address"]),
-                str(owned["m09_ct"]["address"]), str(request_file),
-                str(data_file if command != "clear" else "-"), str(reply_file), "120000"]
-        result = subprocess.run(call, capture_output=True, text=True, timeout=300)
-        log_file.write_text(result.stdout + result.stderr)
-        if result.returncode or "M09_JOB_DONE" not in result.stdout:
-            raise RuntimeError(f"JTAG {label} failed; see {log_file}")
-        fields = struct.unpack("<8I3Q32s40s", reply_file.read_bytes())
-        magic, state, reply_command, status, got_count, _, stack, heap, ticks, cycles, us, shared, _ = fields
-        if (magic, state, reply_command, status, got_count) != (
-                0x39304d45, 2, number, 0, iterations):
-            raise RuntimeError(f"Invalid {label} reply: {fields[:5]}")
-        return shared, dict(total_ticks=ticks, total_cycles=cycles, total_us=us,
-                            stack_bytes=stack, heap_bytes=heap, iterations=iterations)
+        log_file = OUT / f"{label}.log"
+        with staged_file(OUT, f".{label}-request-", request) as request_file, \
+                staged_file(OUT, f".{label}-data-", payload if command != "clear" else None) as data_file, \
+                staged_file(OUT, f".{label}-reply-") as reply_file:
+            call = [str(tool_root / "Vivado/bin/xsdb.bat"), str(ROOT / "prj/run_m09_jtag.tcl"),
+                    str(workspace), str(int(boot)), command,
+                    str(owned["m09_job"]["address"]), str(owned["m09_sk"]["address"]),
+                    str(owned["m09_ct"]["address"]), str(request_file),
+                    str(data_file if command != "clear" else "-"), str(reply_file), "120000"]
+            result = subprocess.run(call, capture_output=True, text=True, timeout=300)
+            log_file.write_text(result.stdout + result.stderr)
+            if result.returncode or "M09_JOB_DONE" not in result.stdout:
+                raise RuntimeError(f"JTAG {label} failed; see {log_file}")
+            reply = bytearray(reply_file.read_bytes())
+            try:
+                fields = struct.unpack_from("<8I3Q", reply)
+                if (fields[0], fields[1], fields[2], fields[3], fields[4]) != (
+                        0x39304d45, 2, number, 0, iterations):
+                    raise RuntimeError(f"Invalid {label} reply: {fields[:5]}")
+                shared = bytearray(memoryview(reply)[56:88])
+                return shared, dict(total_ticks=fields[8], total_cycles=fields[9],
+                                    total_us=fields[10], stack_bytes=fields[6],
+                                    heap_bytes=fields[7], iterations=iterations)
+            finally:
+                reply[:] = bytes(len(reply))
 
-    acvp = json.loads((ROOT / "data/kat/nist_mlkem512.json").read_text())["encapsulation"][0]
-    exchange("acvp_load", "load", bytes.fromhex(acvp["dk"]), boot=True)
-    loaded = True
     try:
-        shared, acvp_stats = exchange("acvp_1000", "decap", bytes.fromhex(acvp["c"]), 1000)
-        if shared != bytes.fromhex(acvp["k"]):
-            raise RuntimeError("A9 ACVP shared secret mismatch")
+        ciphertext = (OUT / "ciphertext.bin").read_bytes()
+        expected = bytearray((OUT / "expected_shared.bin").read_bytes())
+        pin = (OUT / "public.sha256").read_text().strip()
+        if (len(pk), len(sk), len(ciphertext), len(expected)) != (PK, SK, CT, SS):
+            raise ValueError("Static key material has invalid length")
+        if hashlib.sha256(pk).hexdigest() != pin or sk[768:1568] != pk:
+            raise ValueError("Pinned public key does not match private key")
+
+        acvp = json.loads((ROOT / "data/kat/nist_mlkem512.json").read_text())["encapsulation"][0]
+        loaded = True  # Clear the AP0 key region even if the initial load times out.
+        exchange("acvp_load", "load", bytes.fromhex(acvp["dk"]), boot=True)
+
+        def decaps_and_check(label, payload, reference):
+            result = None
+            try:
+                result, stats = exchange(label, "decap", payload, 1000)
+                if not hmac.compare_digest(result, reference):
+                    raise RuntimeError(f"A9 {label} shared secret mismatch")
+                return stats
+            finally:
+                if result is not None:
+                    result[:] = bytes(len(result))
+
+        acvp_stats = decaps_and_check("acvp_1000", bytes.fromhex(acvp["c"]),
+                                      bytes.fromhex(acvp["k"]))
         exchange("static_load", "load", sk)
-        shared, static_stats = exchange("static_1000", "decap", ciphertext, 1000)
-        if shared != expected:
-            raise RuntimeError("A9 static shared secret mismatch")
+        static_stats = decaps_and_check("static_1000", ciphertext, expected)
         tampered = bytearray(ciphertext)
         tampered[0] ^= 1
-        shared, tamper_stats = exchange("tamper_1000", "decap", tampered, 1000)
-        if shared == expected:
-            raise RuntimeError("A9 invalid ciphertext did not reject")
+        tamper_result = None
+        try:
+            tamper_result, tamper_stats = exchange("tamper_1000", "decap", tampered, 1000)
+            if hmac.compare_digest(tamper_result, expected):
+                raise RuntimeError("A9 invalid ciphertext did not reject")
+        finally:
+            tampered[:] = bytes(len(tampered))
+            if tamper_result is not None:
+                tamper_result[:] = bytes(len(tamper_result))
         stats = dict(acvp=acvp_stats, static=static_stats, tampered=tamper_stats)
         (OUT / "board_results.json").write_text(json.dumps(stats, indent=2) + "\n")
         print("M09 BOARD PASS", json.dumps(stats))
     finally:
-        if loaded:
-            exchange("clear", "clear", b"")
+        try:
+            if loaded:
+                exchange("clear", "clear", b"")
+        finally:
+            sk[:] = bytes(len(sk))
+            if expected is not None:
+                expected[:] = bytes(len(expected))
 
 
 if __name__ == "__main__":
