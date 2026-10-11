@@ -14,10 +14,11 @@
 static int provider_init_status;
 static int provider_read_status;
 static int provider_entropy_status;
+static int provider_decapsulate_status;
 static uint8_t provider_key_value;
 static unsigned provider_init_calls;
 static unsigned provider_shutdown_calls;
-static unsigned provider_read_calls;
+static unsigned provider_public_key_calls;
 static unsigned provider_entropy_calls;
 static unsigned decapsulation_calls;
 static unsigned usb_send_calls;
@@ -44,12 +45,33 @@ int g6_production_security_init(void)
     return provider_init_status;
 }
 
-int g6_production_read_mlkem512_private_key(uint8_t out[1632])
+int g6_production_read_mlkem512_public_key(uint8_t out[800])
 {
-    ++provider_read_calls;
-    memset(out, provider_key_value, 1632U);
+    ++provider_public_key_calls;
+    memset(out, provider_key_value, 800U);
     if (provider_read_status) out[0] ^= 0xffU; /* simulate partial/error output */
     return provider_read_status;
+}
+
+int g6_production_mlkem512_decapsulate(uint8_t shared[32],
+                                      const uint8_t ciphertext[768],
+                                      const uint8_t expected_public_key_hash[32])
+{
+    uint8_t public_key[800], current_hash[32];
+    (void)ciphertext;
+    memset(public_key, provider_key_value, sizeof public_key);
+    int status = eye_sha256(current_hash, public_key, sizeof public_key);
+    for (unsigned i = 0; !status && i < sizeof current_hash; ++i)
+        if (current_hash[i] != expected_public_key_hash[i]) status = 1;
+    memset(shared, 0xee, 32U); /* model a partial provider output on every path */
+    if (!status) {
+        ++decapsulation_calls;
+        if (!provider_decapsulate_status) memset(shared, 0x41, 32U);
+        else status = provider_decapsulate_status;
+    }
+    memset(current_hash, 0, sizeof current_hash);
+    memset(public_key, 0, sizeof public_key);
+    return status;
 }
 
 int g6_production_entropy_bytes(uint8_t *out, uint32_t length)
@@ -62,23 +84,6 @@ int g6_production_entropy_bytes(uint8_t *out, uint32_t length)
 void g6_production_security_shutdown(void)
 {
     ++provider_shutdown_calls;
-}
-
-int eye_mlkem_check_sk(const uint8_t sk[1632])
-{
-    for (unsigned i = 0; i < 1632U; ++i)
-        if (sk[i] != provider_key_value) return 1;
-    return 0;
-}
-
-int eye_mlkem_dec(uint8_t shared[32], const uint8_t ciphertext[768],
-                  const uint8_t secret_key[1632])
-{
-    (void)ciphertext;
-    if (eye_mlkem_check_sk(secret_key)) return 1;
-    ++decapsulation_calls;
-    memset(shared, 0x41, 32U);
-    return 0;
 }
 
 int usb_cdc_send(uint8_t *data, uint32_t size)
@@ -159,8 +164,9 @@ static void reset_provider(void)
     provider_init_status = 0;
     provider_read_status = 0;
     provider_entropy_status = 0;
+    provider_decapsulate_status = 0;
     provider_key_value = 0x5aU;
-    provider_init_calls = provider_shutdown_calls = provider_read_calls = 0U;
+    provider_init_calls = provider_shutdown_calls = provider_public_key_calls = 0U;
     provider_entropy_calls = decapsulation_calls = usb_send_calls = 0U;
     cleanup_stop_calls = cleanup_wipe_calls = cleanup_usb_calls = 0U;
     cleanup_order = 0U;
@@ -179,25 +185,23 @@ static void reset_provider(void)
 
 static int test_missing_provider_fails_closed(void)
 {
-    uint8_t key[1632];
-    memset(key, 0x99, sizeof key);
     reset_provider();
     provider_init_status = 7;
     if (initialize_production_security() == 0 || provider_init_calls != 1U ||
-        provider_read_calls != 0U || provider_shutdown_calls != 1U)
+        provider_public_key_calls != 0U || provider_shutdown_calls != 1U)
         return 1;
     reset_provider();
     provider_entropy_status = 6;
     if (initialize_production_security() == 0 || provider_entropy_calls != 1U ||
-        provider_read_calls != 0U || provider_shutdown_calls != 1U ||
+        provider_public_key_calls != 0U || provider_shutdown_calls != 1U ||
         production_drbg.instantiated)
         return 4;
     reset_provider();
     provider_read_status = 8;
-    if (production_load_key(key) == 0 || provider_read_calls != 1U)
+    if (initialize_production_startup() == 0 || provider_public_key_calls != 1U ||
+        provider_shutdown_calls != 1U || production_drbg.instantiated ||
+        phase != FAULT || camera_init_calls || cdc_init_calls)
         return 2;
-    for (unsigned i = 0; i < sizeof key; ++i)
-        if (key[i] != 0U) return 3;
     return 0;
 }
 
@@ -297,7 +301,7 @@ static int test_disconnect_uses_secure_cleanup_without_auto_recovery(void)
 
 static int test_pinned_key_and_provider_random(void)
 {
-    uint8_t hello_message[48], kem_message[780];
+    uint8_t hello_message[48], kem_message[780], shared[32];
     reset_provider();
     if (initialize_production_security() || make_hello(hello_message)) return 1;
     if (handle_control(hello_message, sizeof hello_message) ||
@@ -308,20 +312,31 @@ static int test_pinned_key_and_provider_random(void)
     /* A provider returning a different device identity must not decapsulate. */
     if (make_kem(kem_message)) return 3;
     provider_key_value = 0x33U;
-    if (handle_control(kem_message, sizeof kem_message) == 0 ||
+    memset(shared, 0xcc, sizeof shared);
+    if (production_decapsulate(shared, kem_message + 12U) == 0 ||
         decapsulation_calls != 0U)
         return 4;
+    for (unsigned i = 0; i < sizeof shared; ++i)
+        if (shared[i]) return 5;
 
-    /* Start a fresh session with the pinned key; each KEM reloads via provider. */
+    /* Start a fresh session; opaque provider decapsulation exports no private key. */
     reset_provider();
     if (initialize_production_security() || make_hello(hello_message) ||
-        make_kem(kem_message)) return 5;
+        make_kem(kem_message)) return 6;
     if (handle_control(hello_message, sizeof hello_message) ||
         handle_control(kem_message, sizeof kem_message) ||
-        phase != WAIT_FINISHED || provider_read_calls != 2U ||
+        phase != WAIT_FINISHED || provider_public_key_calls != 1U ||
         decapsulation_calls != 1U || usb_send_calls != 2U ||
         provider_entropy_calls != 1U)
-        return 6;
+        return 7;
+
+    memset(shared, 0xcc, sizeof shared);
+    provider_decapsulate_status = 9;
+    if (production_decapsulate(shared, kem_message + 12U) == 0 ||
+        decapsulation_calls != 2U)
+        return 8;
+    for (unsigned i = 0; i < sizeof shared; ++i)
+        if (shared[i]) return 9;
     return 0;
 }
 
@@ -401,6 +416,6 @@ int main(void)
         fprintf(stderr, "g6_production_profile_failed=%d\n", status);
         return 1;
     }
-    puts("G6_PRODUCTION_PROFILE_PASS entropy_fail_closed=1 reseed_failure_no_ack=1 cleanup_order=1 cleanup_failure_fail_closed=1 disconnect_cleanup_without_recovery=1 key_identity_pinned=1 startup_single_pass=1 startup_failure_wipe=1");
+    puts("G6_PRODUCTION_PROFILE_PASS entropy_fail_closed=1 reseed_failure_no_ack=1 cleanup_order=1 cleanup_failure_fail_closed=1 disconnect_cleanup_without_recovery=1 key_identity_pinned=1 opaque_key_decapsulation=1 startup_single_pass=1 startup_failure_wipe=1");
     return 0;
 }

@@ -17,6 +17,7 @@
 #include "g6_auto_recovery.h"
 #include "g6_rekey_diag.h"
 #endif
+#ifndef G6_PRODUCTION
 #define MLK_CONFIG_PARAMETER_SET 512
 #define MLK_CONFIG_NAMESPACE_PREFIX eye_mlkem
 #define MLK_CONFIG_NO_RANDOMIZED_API
@@ -24,6 +25,7 @@
 #define MLK_CONFIG_NO_KEYPAIR_API
 #define MLK_CONFIG_NO_ENCAPS_API
 #include "mlkem/mlkem_native.h"
+#endif
 #include <stdint.h>
 #include <string.h>
 #ifdef G6_PRODUCTION
@@ -249,25 +251,17 @@ static int board_random(uint8_t out[32], const uint8_t host_random[32]) {
 #endif
 }
 #ifdef G6_PRODUCTION
-static int production_load_key(uint8_t out[1632]) {
-    wipe(out, 1632U);
-    int status = g6_production_read_mlkem512_private_key(out);
-    if (!status) status = eye_mlkem_check_sk(out);
-    if (status) wipe(out, 1632U);
-    return status;
-}
-
 static int initialize_production_security(void) {
-    uint8_t key[1632] = {0}, entropy[48] = {0};
+    uint8_t public_key[800] = {0}, entropy[48] = {0};
     eye_hmac_drbg_uninstantiate(&production_drbg);
     int status = g6_production_security_init();
     if (!status) status = g6_production_entropy_bytes(entropy, sizeof entropy);
     if (!status)
         status = eye_hmac_drbg_instantiate(&production_drbg, 256U, entropy, 32U,
                                            entropy + 32U, 16U, NULL, 0U);
-    if (!status) status = production_load_key(key);
-    if (!status) status = eye_session_init(&session, key + 768U);
-    wipe(key, sizeof key);
+    if (!status) status = g6_production_read_mlkem512_public_key(public_key);
+    if (!status) status = eye_session_init(&session, public_key);
+    wipe(public_key, sizeof public_key);
     wipe(entropy, sizeof entropy);
     if (status) {
         eye_hmac_drbg_uninstantiate(&production_drbg);
@@ -277,18 +271,9 @@ static int initialize_production_security(void) {
 }
 
 static int production_decapsulate(uint8_t shared[32], const uint8_t ciphertext[768]) {
-    uint8_t key[1632] = {0}, public_key_hash[32] = {0};
-    uint8_t mismatch = 0U;
-    int status = production_load_key(key);
-    if (!status) status = eye_sha256(public_key_hash, key + 768U, 800U);
-    if (!status) {
-        for (unsigned i = 0; i < sizeof public_key_hash; ++i)
-            mismatch |= (uint8_t)(public_key_hash[i] ^ session.pinned_pk_hash[i]);
-        if (mismatch) status = 1;
-    }
-    if (!status) status = eye_mlkem_dec(shared, ciphertext, key);
-    wipe(public_key_hash, sizeof public_key_hash);
-    wipe(key, sizeof key);
+    int status = g6_production_mlkem512_decapsulate(
+        shared, ciphertext, session.pinned_pk_hash);
+    if (status) wipe(shared, 32U);
     return status;
 }
 

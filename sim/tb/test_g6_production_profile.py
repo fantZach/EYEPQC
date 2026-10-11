@@ -80,8 +80,10 @@ class G6ProductionProfileTests(unittest.TestCase):
             self.assertTrue(nm.is_file(), "Compiler's nm tool is required for mailbox-symbol check")
             symbols = subprocess.run([str(nm), str(executable)], check=True,
                                      capture_output=True, text=True).stdout
-            for development_symbol in ("g6_sk_load", "g6_seed_load", "g6_ready", "random_seed"):
-                self.assertNotIn(development_symbol, symbols)
+            for forbidden_symbol in (
+                    "g6_sk_load", "g6_seed_load", "g6_ready", "random_seed",
+                    "g6_production_read_mlkem512_private_key", "eye_mlkem_dec"):
+                self.assertNotIn(forbidden_symbol, symbols)
 
 
 if __name__ == "__main__":

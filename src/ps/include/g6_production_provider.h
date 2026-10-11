@@ -19,14 +19,23 @@
  * and the remainder as additional input. The provider must fail closed on
  * source-health errors. The firmware runs its own HMAC_DRBG-SHA-256 and
  * enforces a 1024-request reseed interval.
- * read_mlkem512_private_key returns the provisioned device key into
- * caller RAM; G6 validates, pins its public-key identity, and wipes each copy.
+ * read_mlkem512_public_key returns only the validated public key for the
+ * provider's protected key object. The private key must remain behind the
+ * provider boundary and must never be returned to the G6 application.
+ * mlkem512_decapsulate must compare the protected key object's public-key hash
+ * to expected_public_key_hash in constant time, and perform that check and
+ * decapsulation atomically with respect to key rotation. It returns only the
+ * 32-byte shared secret; on every error it must clear the output. The caller
+ * independently clears that output after use.
  * security_shutdown must be idempotent and safe after a failed/partial init.
  * Provider implementations must document their actual storage and entropy
  * properties. This interface alone does not establish either property.
  */
 int g6_production_security_init(void);
-int g6_production_read_mlkem512_private_key(uint8_t out[1632]);
+int g6_production_read_mlkem512_public_key(uint8_t out[800]);
+int g6_production_mlkem512_decapsulate(uint8_t shared[32],
+                                      const uint8_t ciphertext[768],
+                                      const uint8_t expected_public_key_hash[32]);
 int g6_production_entropy_bytes(uint8_t *out, uint32_t length);
 void g6_production_security_shutdown(void);
 

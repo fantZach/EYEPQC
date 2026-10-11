@@ -195,22 +195,25 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
             sources += [ROOT / 'prj/usb_probe.c', vendor / 'xusbps_ch9.c']
         include += [vendor]
     if name == 'g6_usb':
-        sources += [ROOT / 'src/ps/src' / f for f in
-                    ('session.c', 'protocol.c', 'm09_mlkem.c')]
+        sources += [ROOT / 'src/ps/src' / f for f in ('session.c', 'protocol.c')]
+        if production_provider is None:
+            sources.append(ROOT / 'src/ps/src/m09_mlkem.c')
         sources += [ROOT / 'src/third_party/tinycrypt/lib/source' / f for f in ('sha256.c', 'utils.c')]
         if production_provider is not None:
             sources.append(ROOT / 'src/ps/src/g6_hmac_drbg.c')
             sources.append(production_provider)
-        include += [ROOT / 'src/third_party', ROOT / 'src/third_party/mlkem',
-                    ROOT / 'src/third_party/tinycrypt/lib/include']
+        include.append(ROOT / 'src/third_party/tinycrypt/lib/include')
+        if production_provider is None:
+            include += [ROOT / 'src/third_party', ROOT / 'src/third_party/mlkem']
     linker = ROOT / 'prj/a9_ddr.ld'
     inputs = [p for p in sources if p.is_relative_to(ROOT)] + [linker, ROOT / 'src/ps/include/bsp_compat.h']
     if name != 'g3_camera':
         inputs.append(ROOT / 'src/ps/include/usb_recovery.h')
     if name == 'g6_usb':
         inputs += list((ROOT / 'src/ps/include').glob('*.h'))
-        inputs += list((ROOT / 'src/third_party/mlkem').rglob('*'))
         inputs += list((ROOT / 'src/third_party/tinycrypt/lib/include').rglob('*.h'))
+        if production_provider is None:
+            inputs += list((ROOT / 'src/third_party/mlkem').rglob('*'))
         if production_provider is not None:
             inputs += [ROOT / 'prj/usb_probe_auto_recovery.c',
                        ROOT / 'prj/usb_probe.c',
@@ -239,6 +242,13 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None):
     (build / 'link_command.json').write_text(json.dumps([str(a) for a in link], indent=2) + '\n', encoding='utf-8')
     run([gcc.with_name('arm-none-eabi-readelf.exe'), '-h', elf], ROOT, build / 'elf_header.txt')
     abi = symbols(gcc.with_name('arm-none-eabi-nm.exe'), elf)
+    if production_provider is not None:
+        forbidden = {'eye_mlkem_dec', 'eye_mlkem_check_sk',
+                     'g6_production_read_mlkem512_private_key'}
+        present = sorted(forbidden.intersection(abi))
+        if present:
+            raise RuntimeError('Production ELF contains forbidden private-key operations: ' +
+                               ', '.join(present))
     expected = {'g3_job': 128, 'g3_frame': 65600, 'g3_sealed': 68096}
     if name == 'g6_usb':
         if production_provider is None:

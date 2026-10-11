@@ -7,10 +7,10 @@
 - 默认开发 profile 保留现有 JTAG 测试 mailbox 与 host-seed/HMAC 随机实现，保持既有开发流程。
 - 显式以 `G6_PRODUCTION` 编译时，固件不定义 `g6_sk_load`、`g6_seed_load`、`g6_ready`，也不含静态 `private_key`、`random_seed` 或 host-seed 派生的 `board_random()` 路径。
 - 生产 profile 在启动 USB/摄像头前调用外部 `g6_production_security_init()`、熵接口和密钥服务；任一步失败即停机，不开始枚举。HELLO 随机数来自固件内 HMAC_DRBG-SHA-256，熵由 `g6_production_entropy_bytes()` 提供；每 1024 次生成前强制重播种。熵/DRBG 报错时清零输出并拒绝 HELLO_ACK。
-- 生产 profile 启动时只在栈上临时读取密钥，用 ML-KEM 检查并固定公钥身份后清除副本。每次 KEM 解封装重新从 provider 读取、验证并比较公钥身份，之后清除栈上的密钥和公钥哈希。密钥服务失败或返回另一设备身份时拒绝解封装。严重协议错误关闭 provider。
+- 生产 profile 启动时只从 provider 读取公开 ML-KEM 公钥并固定其哈希；长期私钥不通过应用接口导出。KEM 到达时，固件把已固定的公钥哈希交给 provider，由 provider 在不返回私钥的边界内核对密钥身份并完成解封装；固件对返回的共享秘密在任何 provider 错误后都覆写。严重协议错误关闭 provider。
 - 新增 `--g6-production-provider <source.c>` 构建入口。若未给出该源文件，构建继续生成明确标为 `development_jtag_mailbox` 的开发 profile；显式给出时，manifest 标为 `external_provider_unvalidated` 并记录 provider 源码 SHA-256。外部实现缺失时，生产链接因 provider 符号未定义而失败。
 
-对 CPU 本地密钥清理做了源码边界复核：`production_decapsulate()` 在返回前清除栈上的 ML-KEM 私钥副本与公钥哈希，调用方清除共享密钥；便携式 ML-KEM 的解封装中间缓冲通过 `MLK_FREE` 调用 `mlk_zeroize()` 清理。这是源码与构建配置层面的证据，仍需目标板对 PS/DDR/DMA/PL/GCM 状态做停机、cache 处理和清零读回。
+对 CPU 本地秘密清理做了源码边界复核：生产应用不再将 ML-KEM 私钥读入普通 G6 栈，也不在应用映像中执行解封装；provider 只返回短期共享秘密，G6 在 HKDF/session 派生后覆写它。provider 契约要求私钥留在可信 key service 内，且需对“检查固定公钥身份—解封装”提供不可被轮换打断的操作。共享秘密、后续会话密钥及 host 临时缓冲仍在应用内存，擦除只是缩短驻留时间。这项接口变化不证明 provider 真实实现或硬件隔离；仍需目标板对 PS/DDR/DMA/PL/GCM 状态做停机、cache 处理和清零读回。
 
 此前构建审计发现 `--g6-production-provider` 未定义 `G6_SECURE_CLEANUP`，且该宏与自动恢复诊断耦合。本轮已拆分 `G6_SECURE_CLEANUP` / `G6_AUTO_RECOVERY`：生产 profile 只开启安全清理，不带自动恢复状态；G6 自动恢复候选仍显式开启两个宏，保留原路径。生产 builder 生成有界 USBPS overlay，将其纳入编译，并记录 SDK 原件、overlay、生成 probe 和 manifest 的 SHA-256。ARM link map 确认使用 overlay 的 endpoint/CH9/interrupt 对象，且未链接 stock endpoint/interrupt 库成员；ELF 含 `g6_secure_cleanup_diag`（120 字节）、`secure_cleanup`、`secure_tx_quiesce`、`secure_tx_wipe`、`secure_tx_rebuild` 与 `usb_cdc_secure_cleanup_tx`。另将安全清理扩展到生产 profile 的 USB 断连退会话路径；清理完成才回到等待新会话，任一阶段失败都会 fail closed。实际生产 profile 的离线链接与 harness 证据不等于板端所有权或清零读回验收。
 
@@ -24,7 +24,7 @@ NIST [HMAC_DRBG-SHA-256 示例向量](https://csrc.nist.gov/CSRC/media/Projects/
 
 ## 验证
 
-`sim/tb/test_g6_hmac_drbg.py` 编译实际 DRBG、会话 HMAC 与 TinyCrypt SHA-256，NIST 连续输出向量、输入边界、未实例化状态、重播种门禁和擦除检查通过。`sim/tb/test_g6_production_profile.py` 编译并运行实际 `g6_usb.c` 的 `G6_PRODUCTION` 分支。C harness 覆盖：provider/熵启动失败不读取密钥、密钥接口部分写入后整块清零、重播种失败不发送 HELLO_ACK、密钥身份变化时不解封装、匹配身份时每次 KEM 都经 provider 重新取钥。`nm` 确认测试生产二进制没有开发 mailbox 或 `random_seed` 符号。固定模式测试熵不具备真实熵或存储安全属性。
+`sim/tb/test_g6_hmac_drbg.py` 编译实际 DRBG、会话 HMAC 与 TinyCrypt SHA-256，NIST 连续输出向量、输入边界、未实例化状态、重播种门禁和擦除检查通过。`sim/tb/test_g6_production_profile.py` 编译并运行实际 `g6_usb.c` 的 `G6_PRODUCTION` 分支。C harness 覆盖：provider/熵/公钥启动失败关闭，公钥身份变化时 provider 在 mock 中拒绝解封装，provider 解封装错误后的共享秘密由调用者覆写，匹配身份时 KEM 走 opaque provider 接口。`nm` 另检查生产测试二进制没有私钥读取 API、应用侧 `eye_mlkem_dec`、开发 mailbox 或 `random_seed` 符号。固定模式测试熵不具备真实熵或存储安全属性。
 
 2026-10-11 首版 production profile 用临时 fail-closed provider 完成 XC7Z020 ARM 交叉编译与链接：`build/vitis/g6_prod_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `fe3511229c4725abfb214784ea013b03c71dec512fe37eefa598742748e22a7b`；输入 XSA SHA-256 `46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024`。manifest 标为 `external_provider_unvalidated`、`board_validated=false`，DRBG 和 G6 源码哈希匹配该次构建源码。ELF 含 DRBG instantiate/generate/reseed 入口；开发 mailbox、host seed、计数器和静态私钥数据符号为零。临时 provider 的初始化、密钥、熵接口全部返回失败；该产物不含可用熵源或密钥服务。
 
@@ -36,7 +36,9 @@ NIST [HMAC_DRBG-SHA-256 示例向量](https://csrc.nist.gov/CSRC/media/Projects/
 
 修复启动单次初始化后的候选在 `build/vitis/g6s8/g6_usb/build/g6_usb.elf`，SHA-256 `a04ae0656b738a70e34d1879dcd9147bc71f8be08e7dea36209fca0bea031aa3`；XSA SHA-256 仍为 `46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024`。manifest 的 `src/ps/src/g6_usb.c` SHA-256 `a9c4017c18ea9794ee5243e9c6c01ba08ce1b90434ff63980c121da52e8ee22c` 匹配源码；`nm` 确认 DRBG 与 provider 接口仍链接，开发 mailbox/host-seed 符号未出现。构建使用较短的工作目录以避开 Windows HSI 深路径下 BSP 文件复制失败；manifest 仍标为 `external_provider_unvalidated`、`board_validated=false`，链接的 provider 是故意失败的临时实现。
 
-追加生产故障终态门禁后的候选在 `build/vitis/g6s9/g6_usb/build/g6_usb.elf`，SHA-256 `431e135e14dadaccc80b3fe35ece552a9506b78c123c755d2253d2a937a3d011`；manifest 的 G6 源码 SHA-256 为 `a3f38d55f01747154e8fc75a7a8da42a6ba3a8c51920a8d673801351c42f4ca3`，XSA SHA-256 未变。`nm` 确认 DRBG、受限清理诊断和 USB TX 清理入口存在，开发 mailbox/host-seed 符号不存在；manifest 仍明确标记 `external_provider_unvalidated`、`board_validated=false`。这仍是软件候选，不是可启动的生产固件。
+追加生产故障终态门禁后的候选在 `build/vitis/g6s9/g6_usb/build/g6_usb.elf`，SHA-256 `431e135e14dadaccc80b3fe35ece552a9506b78c123c755d2253d2a937a3d011`；manifest 的 G6 源码 SHA-256 为 `a3f38d55f01747154e8fc75a7a8da42a6ba3a8c51920a8d673801351c42f4ca3`，XSA SHA-256 未变。该候选随后被 opaque-key provider 接口替代。
+
+Opaque-key provider 接口和生产源列表收紧后的候选为 `build/vitis/g6s11/g6_usb/build/g6_usb.elf`，SHA-256 `5bc7b5c6b558adc8b51ec4aeb25c630d6a23a4fe42b9552e5abf4e87d0b3fd5d`；manifest 中 `src/ps/src/g6_usb.c` SHA-256 `f49a100dd14d1bf6b2db86c632a43b5d92b250d6b246139130e6f89afc8fe8dc` 与源码相符，XSA SHA-256 `46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024`。生产 builder 不再编译 `m09_mlkem.c`，并把 `eye_mlkem_dec`、`eye_mlkem_check_sk`、私钥导出 API 设为硬失败门禁；ARM `nm` 确认这些符号及开发 mailbox/seed 均不在 ELF，DRBG/provider/secure-cleanup 符号仍在。相同 builder 的开发对照 `build/vitis/g6dev11/g6_usb/build/g6_usb.elf`（SHA-256 `ae7b83adacd4b85b59e2e251a4b26d5629040ff99f2272ca8b26d4001f3fe971`）仍含开发 decapsulation 和 JTAG mailbox。生产候选 manifest 仍是 `external_provider_unvalidated`、`board_validated=false`，临时 provider 故意 fail closed。
 
 ## 主机握手临时秘密生命周期（电脑端）
 
@@ -46,8 +48,8 @@ NIST [HMAC_DRBG-SHA-256 示例向量](https://csrc.nist.gov/CSRC/media/Projects/
 
 另以同一 XSA 和当前构建脚本编译开发 profile：`build/vitis/g6_dev_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `f80f9fd014d0ee6d329b8149c7a12cb62e881801eb10858e722d807f236dff1c`。开发 ELF 保留 mailbox 和旧开发随机状态，未编译/链接 DRBG 源；生产 ELF 则相反。两个 manifest 分别标记 `development_jtag_mailbox` 与 `external_provider_unvalidated`。两个构建的 `g6_usb.c`/DRBG 源码哈希均匹配；该对照验证 DRBG 仅进入显式生产配置。
 
-本节最新全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **128 tests / OK**，耗时 **267.196 秒**。覆盖 host 临时秘密清理、DRBG 输入失败状态覆写、生产启动单次初始化、失败清理、故障后断连保持终态，以及全部既有 RTL/协议用例；最新生产 ARM ELF 重建、宏/符号与 link map 检查通过。电脑端回归不代表熵源、密钥服务、host 全进程清零或板端安全验收。
+本节最新全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **128 tests / OK**，耗时 **268.380 秒**。覆盖 host 临时秘密清理、DRBG 输入失败状态覆写、opaque-key provider 身份/失败门禁、生产启动单次初始化、失败清理、故障后断连保持终态，以及全部既有 RTL/协议用例；production/development ARM profile 均完成重建，production ELF 禁止应用侧 ML-KEM 解封装符号的 link gate 通过。电脑端回归不代表熵源、密钥服务、host 全进程清零或板端安全验收。
 
 ## 仍未完成
 
-必须由平台设计与板卡验证补齐真实 entropy source、SP 800-90B/90A 相关的源评估与健康/重播种策略、长期私钥生成/封装/持久化/身份绑定/轮换/RMA/销毁、secure boot/JTAG 生命周期、复位与掉电行为、PS/PL/DDR/DMA/USB 全域清理及读回。当前将私钥在解封装期间短暂复制到 PS 栈上；provider 需要明确并验证保护该副本的实际边界。接口隔离只阻止生产 profile 误走开发 mailbox 和主机 seed 路径，不是生产安全认证或 G6 验收。
+必须由平台设计与板卡验证补齐真实 entropy source、SP 800-90B/90A 相关的源评估与健康/重播种策略、长期私钥生成/封装/持久化/身份绑定/轮换/RMA/销毁、secure boot/JTAG 生命周期、复位与掉电行为、PS/PL/DDR/DMA/USB 全域清理及读回。软件接口现要求私钥留在 provider/key-service 边界，但实际 provider 尚未实现或审查；还要证明共享秘密及会话密钥在 PS 内存中的保护和清理。接口隔离只阻止生产 profile 误走开发 mailbox 和主机 seed 路径，不是生产安全认证或 G6 验收。
