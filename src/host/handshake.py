@@ -11,6 +11,12 @@ INFO = b"EYEPQC v1 keys"
 ROTATE_AT = (1 << 64) - 65536
 
 
+def wipe_secret(secret):
+    """Best-effort overwrite for owned mutable secret buffers."""
+    if isinstance(secret, bytearray):
+        secret[:] = bytes(len(secret))
+
+
 def derive(shared, pk, hello, ack, kem):
     if len(shared) != 32 or len(pk) != PK:
         raise ValueError("invalid ML-KEM material")
@@ -19,10 +25,28 @@ def derive(shared, pk, hello, ack, kem):
         if decode_control(message)[0] != kind:
             raise ValueError("invalid handshake message order")
     transcript = hashlib.sha256(DOMAIN + hashlib.sha256(pk).digest() + hello + ack + kem).digest()
-    prk = hmac.digest(transcript, shared, "sha256")
-    first = hmac.digest(prk, INFO + b"\x01", "sha256")
-    second = hmac.digest(prk, first + INFO + b"\x02", "sha256")
-    return transcript, first + second[:24]
+    prk = bytearray(hmac.digest(transcript, shared, "sha256"))
+    first = bytearray()
+    second = bytearray()
+    context = bytearray()
+    material = bytearray(56)
+    try:
+        first.extend(hmac.digest(prk, INFO + b"\x01", "sha256"))
+        context.extend(first)
+        context.extend(INFO)
+        context.append(2)
+        second.extend(hmac.digest(prk, context, "sha256"))
+        material[:32] = first
+        memoryview(material)[32:] = memoryview(second)[:24]
+        return transcript, material
+    except BaseException:
+        wipe_secret(material)
+        raise
+    finally:
+        wipe_secret(prk)
+        wipe_secret(first)
+        wipe_secret(second)
+        wipe_secret(context)
 
 
 class HostSession:
@@ -59,19 +83,30 @@ class HostSession:
             raise ValueError("fresh randomness must be 32 bytes per field")
         hello = encode_control(MessageType.HELLO, b"\x01\x01\x00\x01" + host_random)
         ack = encode_control(MessageType.HELLO_ACK, b"\x01\x01\x00\x01" + board_random)
-        ciphertext, shared = self.kem.encaps(self.pk, coins)
-        kem = encode_control(MessageType.KEM_CIPHERTEXT, ciphertext)
         self.state = "HANDSHAKE"
-        transcript, material = derive(shared, self.pk, hello, ack, kem)
-        if transcript == self.last_transcript:
+        coins_buffer = None
+        shared = material = None
+        try:
+            coins_buffer = bytearray(coins)
+            ciphertext, shared = self.kem.encaps(self.pk, coins_buffer)
+            kem = encode_control(MessageType.KEM_CIPHERTEXT, ciphertext)
+            transcript, material = derive(shared, self.pk, hello, ack, kem)
+            if transcript == self.last_transcript:
+                raise ValueError("replayed handshake transcript")
+            self.transcript = transcript
+            view = memoryview(material)
+            self.video_key = bytearray(view[:16])
+            self.control_key = bytearray(view[16:48])
+            self.epoch, self.session_id = struct.unpack("!II", view[48:56])
+            self.state = "CONFIRM"
+            return hello, ack, kem
+        except BaseException:
             self.close("ERROR")
-            raise ValueError("replayed handshake transcript")
-        self.transcript = transcript
-        self.video_key = bytearray(material[:16])
-        self.control_key = bytearray(material[16:48])
-        self.epoch, self.session_id = struct.unpack("!II", material[48:])
-        self.state = "CONFIRM"
-        return hello, ack, kem
+            raise
+        finally:
+            wipe_secret(coins_buffer)
+            wipe_secret(shared)
+            wipe_secret(material)
 
     def verify_board_finished(self, message):
         if self.state != "CONFIRM" or self.board_verified:

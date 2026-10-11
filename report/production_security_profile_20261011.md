@@ -28,9 +28,15 @@ NIST [HMAC_DRBG-SHA-256 示例向量](https://csrc.nist.gov/CSRC/media/Projects/
 
 最新安全清理候选使用同一 XSA 和 fail-closed provider：`build/vitis/g6_prod_secure_cleanup_candidate4_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `a0cbf4a5ba852ee4f55fb8255affdcd545df95160f990403f1ee0f06c4f45988`。manifest 的 `production_secure_cleanup=bounded_usbps_overlay_and_dma_gcm_frame_tx_callbacks`、`security_profile=external_provider_unvalidated`、`board_validated=false`；`g6_usb.c` 与 DRBG 输入哈希匹配当前源码。编译参数有 `G6_PRODUCTION` 和 `G6_SECURE_CLEANUP`，没有 `G6_AUTO_RECOVERY`；ELF 有 DRBG instantiate/generate/reseed 与 secure-cleanup 符号，未见开发 mailbox/host-seed 符号。provider 的初始化、熵和私钥读取均故意返回失败，因此它不可用于启动视频，也不是生产 provider。
 
+## 主机握手临时秘密生命周期（电脑端）
+
+`src/host/m09.py` 现在把 ML-KEM keygen/encaps/decaps 的私钥或共享秘密返回到可覆写的 `bytearray`；原生 C 输出缓冲仍在返回前清零。`src/host/handshake.py` 将 HKDF 中间值和 56 字节派生材料放在可覆写缓冲中，退出 `derive()` 时清 PRK、T1、T2 与上下文；`HostSession.begin()` 在成功、重复 transcript 拒绝或异常退出时清本次拥有的 encapsulation coins、shared secret 与完整派生材料。生产 G6/M10 主机入口在调用后也清传入的 coins 缓冲；离线 board 测试路径清 decaps shared/material 和私钥缓冲。握手会话关闭时，先前持有引用的 video/control key 缓冲会被覆写后再从 session 释放。
+
+验证覆盖：`test_g6` 新增成功握手、关闭及重复 transcript 拒绝后，对 coins/shared/material/key 引用逐字节检查为零；当前针对性结果为 G6 15/15、演示 12/12、M09 NIST KAT/1000 次重复测试通过、M10 KDF/会话互操作通过。该改动只减少应用层可控缓冲的保留时间。Python `hmac.digest`、解释器、分配器和底层密码库仍会产生不可直接覆写的临时副本；因此不宣称 host 全进程清零或抗内存取证，也不改变板端 provider/熵源/密钥存储缺口。
+
 另以同一 XSA 和当前构建脚本编译开发 profile：`build/vitis/g6_dev_profile_final_20261011/g6_usb/build/g6_usb.elf`，SHA-256 `f80f9fd014d0ee6d329b8149c7a12cb62e881801eb10858e722d807f236dff1c`。开发 ELF 保留 mailbox 和旧开发随机状态，未编译/链接 DRBG 源；生产 ELF 则相反。两个 manifest 分别标记 `development_jtag_mailbox` 与 `external_provider_unvalidated`。两个构建的 `g6_usb.c`/DRBG 源码哈希均匹配；该对照验证 DRBG 仅进入显式生产配置。
 
-最新源代码的全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **127 tests / OK**，耗时 268.155 秒；含 M04/M05 原生 XSim、M08 GCM、成功重播种向量、生产 profile 和生产断连清理 harness。清理相关定向回归 **11 项**也通过。编译器级验证完成生产 ARM ELF 构建、宏与符号检查、link map 的 overlay/stock 对象排除检查，`py_compile` 与 `git diff --check` 通过。电脑端全量回归不代表熵源、密钥服务或板端安全验收。
+本节变更后的全量电脑端回归 `python -m unittest discover -s sim/tb -p 'test_*.py' -v` 为 **128 tests / OK**，耗时 **265.763 秒**。新增 host buffer 所有权/擦除用例通过；此前清理相关定向回归 11 项、生产 ARM ELF 构建、宏/符号与 link map 检查，以及本轮 `py_compile` 和 `git diff --check` 通过。电脑端回归不代表熵源、密钥服务、host 全进程清零或板端安全验收。
 
 ## 仍未完成
 

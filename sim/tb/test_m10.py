@@ -11,7 +11,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src/host"))
-from handshake import HostSession, ROTATE_AT, derive
+from handshake import HostSession, ROTATE_AT, derive, wipe_secret
 from m09 import Kem, build as build_kem
 from protocol import MessageType
 
@@ -139,6 +139,8 @@ def main():
         else:
             raise AssertionError("host accepted exhausted nonce counter")
         assert board2.state == 4 and host.state == "REKEY"
+        wipe_secret(shared2)
+        wipe_secret(material)
         print("M10 PC PASS: SHA/HMAC vectors, KDF parity, Finished, command/replay, rekey/zeroize")
         if os.name == "nt":
             import _ctypes

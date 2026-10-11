@@ -8,6 +8,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src/host"))
 from m09 import Kem, build
+from handshake import wipe_secret
 
 
 def main():
@@ -17,24 +18,45 @@ def main():
         kem = Kem(lib)
         for vector in vectors["keygen"]:
             pk, sk = kem.keygen(bytes.fromhex(vector["d"] + vector["z"]))
-            assert pk.hex() == vector["ek"].lower()
-            assert sk.hex() == vector["dk"].lower()
+            try:
+                assert pk.hex() == vector["ek"].lower()
+                assert sk.hex() == vector["dk"].lower()
+            finally:
+                wipe_secret(sk)
         for vector in vectors["encapsulation"]:
             ciphertext, shared = kem.encaps(bytes.fromhex(vector["ek"]),
                                              bytes.fromhex(vector["m"]))
-            assert ciphertext.hex() == vector["c"].lower()
-            assert shared.hex() == vector["k"].lower()
-            assert kem.decaps(bytes.fromhex(vector["dk"]), ciphertext) == shared
+            decapsulated = None
+            try:
+                assert ciphertext.hex() == vector["c"].lower()
+                assert shared.hex() == vector["k"].lower()
+                decapsulated = kem.decaps(bytes.fromhex(vector["dk"]), ciphertext)
+                assert decapsulated == shared
+            finally:
+                wipe_secret(shared)
+                wipe_secret(decapsulated)
         for vector in vectors["decapsulation"]:
-            assert kem.decaps(bytes.fromhex(vector["dk"]), bytes.fromhex(vector["c"])).hex() == vector["k"].lower()
+            shared = kem.decaps(bytes.fromhex(vector["dk"]), bytes.fromhex(vector["c"]))
+            try:
+                assert shared.hex() == vector["k"].lower()
+            finally:
+                wipe_secret(shared)
         vector = vectors["encapsulation"][0]
         sk, ciphertext = bytes.fromhex(vector["dk"]), bytes.fromhex(vector["c"])
         expected = bytes.fromhex(vector["k"])
         for _ in range(1000):
-            assert kem.decaps(sk, ciphertext) == expected
+            shared = kem.decaps(sk, ciphertext)
+            try:
+                assert shared == expected
+            finally:
+                wipe_secret(shared)
         changed = bytearray(ciphertext)
         changed[0] ^= 1
-        assert kem.decaps(sk, changed) != expected
+        shared = kem.decaps(sk, changed)
+        try:
+            assert shared != expected
+        finally:
+            wipe_secret(shared)
         for secret, encrypted in ((sk[:-1], ciphertext), (sk, ciphertext[:-1])):
             try:
                 kem.decaps(secret, encrypted)

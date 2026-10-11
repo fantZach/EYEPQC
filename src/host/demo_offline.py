@@ -7,7 +7,7 @@ import time
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from PIL import Image, ImageDraw
-from handshake import derive
+from handshake import derive, wipe_secret
 from protocol import (MessageType, USB_CONTROL, USB_VIDEO, UsbRecordDecoder,
                       VideoHeader, decode_control, encode_control,
                       encode_usb_record, encode_video, make_nonce)
@@ -16,8 +16,12 @@ from protocol import (MessageType, USB_CONTROL, USB_VIDEO, UsbRecordDecoder,
 class OfflineBoard:
     def __init__(self, kem, fps=20):
         self.kem = kem
-        self.pk, private = kem.keygen(secrets.token_bytes(64))
-        self.sk = bytearray(private)
+        keygen_coins = bytearray(secrets.token_bytes(64))
+        try:
+            self.pk, private = kem.keygen(keygen_coins)
+        finally:
+            wipe_secret(keygen_coins)
+        self.sk = private if isinstance(private, bytearray) else bytearray(private)
         self.fps = fps
         self.pending = bytearray()
         self.decoder = UsbRecordDecoder()
@@ -46,10 +50,17 @@ class OfflineBoard:
                 self.pending.extend(encode_usb_record(USB_CONTROL, self.ack))
                 self.phase = 'KEM'
             elif kind == MessageType.KEM_CIPHERTEXT and self.phase == 'KEM':
-                shared = self.kem.decaps(self.sk, body)
-                self.transcript, material = derive(shared, self.pk, self.hello, self.ack, message)
-                self.video_key, self.control_key = bytearray(material[:16]), bytearray(material[16:48])
-                self.epoch, self.session_id = struct.unpack('!II', material[48:])
+                shared = material = None
+                try:
+                    shared = self.kem.decaps(self.sk, body)
+                    self.transcript, material = derive(shared, self.pk, self.hello, self.ack, message)
+                    view = memoryview(material)
+                    self.video_key = bytearray(view[:16])
+                    self.control_key = bytearray(view[16:48])
+                    self.epoch, self.session_id = struct.unpack('!II', view[48:56])
+                finally:
+                    wipe_secret(shared)
+                    wipe_secret(material)
                 self._reply(MessageType.FINISHED_BOARD,
                             hmac.digest(self.control_key, b'board finished' + self.transcript, 'sha256'))
                 self.phase = 'FINISHED'

@@ -53,7 +53,7 @@ class Kem:
         pk, sk, seed = (ct.c_ubyte * PK)(), (ct.c_ubyte * SK)(), self._input(coins, 64)
         try:
             self._call(self.lib.eye_mlkem_keypair_derand, pk, sk, seed)
-            return bytes(pk), bytes(sk)
+            return bytes(pk), bytearray(sk)
         finally:
             ct.memset(seed, 0, 64)
             ct.memset(sk, 0, SK)
@@ -64,7 +64,7 @@ class Kem:
         try:
             self._call(self.lib.eye_mlkem_check_pk, public)
             self._call(self.lib.eye_mlkem_enc_derand, ciphertext, shared, public, seed)
-            return bytes(ciphertext), bytes(shared)
+            return bytes(ciphertext), bytearray(shared)
         finally:
             ct.memset(seed, 0, 32)
             ct.memset(shared, 0, SS)
@@ -74,7 +74,7 @@ class Kem:
         shared = (ct.c_ubyte * SS)()
         try:
             self._call(self.lib.eye_mlkem_dec, shared, encrypted, private)
-            return bytes(shared)
+            return bytearray(shared)
         finally:
             ct.memset(private, 0, SK)
             ct.memset(shared, 0, SS)
@@ -97,24 +97,44 @@ def main():
     if args.operation == "keygen":
         if (OUT / "private.bin").exists():
             raise FileExistsError("refusing to overwrite existing static board key")
-        pk, sk = kem.keygen(os.urandom(64))
-        (OUT / "private.bin").write_bytes(sk)
-        (OUT / "public.bin").write_bytes(pk)
-        (OUT / "public.sha256").write_text(hashlib.sha256(pk).hexdigest() + "\n")
+        seed = bytearray(os.urandom(64))
+        sk = None
+        try:
+            pk, sk = kem.keygen(seed)
+            (OUT / "private.bin").write_bytes(sk)
+            (OUT / "public.bin").write_bytes(pk)
+            (OUT / "public.sha256").write_text(hashlib.sha256(pk).hexdigest() + "\n")
+        finally:
+            seed[:] = bytes(len(seed))
+            if sk is not None:
+                sk[:] = bytes(len(sk))
         print("PK_SHA256", hashlib.sha256(pk).hexdigest())
     elif args.operation == "encaps":
         pk = (OUT / "public.bin").read_bytes()
         expected = (OUT / "public.sha256").read_text().strip()
         if hashlib.sha256(pk).hexdigest() != expected:
             raise ValueError("pinned public key hash mismatch")
-        ciphertext, shared = kem.encaps(pk, os.urandom(32))
-        (OUT / "ciphertext.bin").write_bytes(ciphertext)
-        (OUT / "expected_shared.bin").write_bytes(shared)
+        coins = bytearray(os.urandom(32))
+        shared = None
+        try:
+            ciphertext, shared = kem.encaps(pk, coins)
+            (OUT / "ciphertext.bin").write_bytes(ciphertext)
+            (OUT / "expected_shared.bin").write_bytes(shared)
+        finally:
+            coins[:] = bytes(len(coins))
+            if shared is not None:
+                shared[:] = bytes(len(shared))
         print("CT_SHA256", hashlib.sha256(ciphertext).hexdigest())
     else:
-        result = kem.decaps((OUT / "private.bin").read_bytes(),
-                            (OUT / "ciphertext.bin").read_bytes())
-        print("MATCH", result == (OUT / "expected_shared.bin").read_bytes())
+        private = bytearray((OUT / "private.bin").read_bytes())
+        result = None
+        try:
+            result = kem.decaps(private, (OUT / "ciphertext.bin").read_bytes())
+            print("MATCH", result == (OUT / "expected_shared.bin").read_bytes())
+        finally:
+            private[:] = bytes(len(private))
+            if result is not None:
+                result[:] = bytes(len(result))
 
 
 def board(workspace, tool_root):

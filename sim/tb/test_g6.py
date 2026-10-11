@@ -16,15 +16,17 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'src/host'))
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from PIL import Image
+import handshake as handshake_module
 from g6_board import (atomic_write, handshake, frames, require_minimum_frames, read_control,
                       drain_rekey, video_records)
-from handshake import HostSession
+from handshake import HostSession, wipe_secret
 from m09 import Kem, build
 from demo_recording import FrameRecording, recording_frames
 from protocol import (MessageType, USB_CONTROL, USB_VIDEO, UsbRecordDecoder,
@@ -67,8 +69,11 @@ class MemoryBoard:
                     self.pending.extend(encode_usb_record(USB_CONTROL, self.ack))
             elif kind == MessageType.KEM_CIPHERTEXT:
                 shared = self.kem.decaps(self.sk, body)
-                assert self.lib.eye_session_begin(ct.byref(self.session), array(shared), array(self.hello),
-                                                 array(self.ack), array(message)) == 0
+                try:
+                    assert self.lib.eye_session_begin(ct.byref(self.session), array(shared), array(self.hello),
+                                                     array(self.ack), array(message)) == 0
+                finally:
+                    wipe_secret(shared)
                 finished = (ct.c_ubyte * 44)()
                 assert self.lib.eye_session_board_finished(ct.byref(self.session), finished) == 0
                 self.pending.extend(encode_usb_record(USB_CONTROL, bytes(finished)))
@@ -203,6 +208,50 @@ class G6(unittest.TestCase):
     def create_pair(self, fault=None):
         return (MemoryBoard(self.lib, self.kem, self.pk, self.sk, fault),
                 HostSession(self.pk, hashlib.sha256(self.pk).digest(), self.kem))
+
+    def test_host_handshake_wipes_ephemeral_kem_and_kdf_buffers(self):
+        class TrackingKem:
+            def __init__(self, delegate):
+                self.delegate = delegate
+                self.shared_buffers = []
+                self.coin_buffers = []
+
+            def encaps(self, public_key, coins):
+                self.coin_buffers.append(coins)
+                ciphertext, shared = self.delegate.encaps(public_key, coins)
+                self.shared_buffers.append(shared)
+                return ciphertext, shared
+
+        observed_kem = TrackingKem(self.kem)
+        host = HostSession(self.pk, hashlib.sha256(self.pk).digest(), observed_kem)
+        material_buffers = []
+        original_derive = handshake_module.derive
+
+        def capture_material(*args):
+            transcript, material = original_derive(*args)
+            material_buffers.append(material)
+            return transcript, material
+
+        inputs = (bytes.fromhex('11' * 32), bytes.fromhex('22' * 32),
+                  bytes.fromhex('33' * 32))
+        with patch.object(handshake_module, 'derive', side_effect=capture_material):
+            host.begin(*inputs)
+        self.assertEqual(observed_kem.coin_buffers[-1], bytearray(32))
+        self.assertEqual(observed_kem.shared_buffers[-1], bytearray(32))
+        self.assertIsInstance(material_buffers[-1], bytearray)
+        self.assertEqual(material_buffers[-1], bytearray(56))
+        old_video, old_control = host.video_key, host.control_key
+        host.close()
+        self.assertEqual(old_video, bytearray(16))
+        self.assertEqual(old_control, bytearray(32))
+
+        with patch.object(handshake_module, 'derive', side_effect=capture_material):
+            with self.assertRaisesRegex(ValueError, 'replayed handshake transcript'):
+                host.begin(*inputs)
+        self.assertEqual(host.state, 'ERROR')
+        self.assertEqual(observed_kem.coin_buffers[-1], bytearray(32))
+        self.assertEqual(observed_kem.shared_buffers[-1], bytearray(32))
+        self.assertEqual(material_buffers[-1], bytearray(56))
 
     def test_twenty_authenticated_rekeys(self):
         board, host = self.create_pair()

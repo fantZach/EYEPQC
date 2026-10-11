@@ -8,7 +8,7 @@ from pathlib import Path
 import struct
 import subprocess
 
-from handshake import HostSession
+from handshake import HostSession, wipe_secret
 from m09 import Kem, LIB, OUT as M09_OUT, PK, SK
 from protocol import MessageType
 
@@ -86,7 +86,11 @@ def board(workspace, tool_root):
     loaded = False
 
     def handshake(label):
-        hello, ack, kem = host.begin(os.urandom(32), os.urandom(32), os.urandom(32))
+        coins = bytearray(os.urandom(32))
+        try:
+            hello, ack, kem = host.begin(os.urandom(32), os.urandom(32), coins)
+        finally:
+            wipe_secret(coins)
         response = exchange(workspace, tool_root, owned, label + "_begin", "begin",
                             hello + ack + kem)
         material = bytes(host.video_key + host.control_key) + struct.pack(

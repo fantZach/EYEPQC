@@ -20,7 +20,7 @@ from PIL import Image
 import serial
 from serial.tools import list_ports
 
-from handshake import HostSession
+from handshake import HostSession, wipe_secret
 from build_manifest import verify as verify_build
 from m09 import Kem, OUT, PK, SK
 from protocol import (MessageType, USB_CONTROL, USB_VIDEO, UsbRecordDecoder,
@@ -277,8 +277,11 @@ def handshake(ser, decoder, session, bad_finished=False, cancelled=None, debug_s
     kind, body = decode_control(ack)
     if kind != MessageType.HELLO_ACK or body[:4] != b"\x01\x01\x00\x01":
         raise ValueError("invalid board HELLO_ACK")
-    expected_hello, expected_ack, kem = session.begin(
-        host_random, body[4:], secrets.token_bytes(32))
+    coins = bytearray(secrets.token_bytes(32))
+    try:
+        expected_hello, expected_ack, kem = session.begin(host_random, body[4:], coins)
+    finally:
+        wipe_secret(coins)
     if (hello, ack) != (expected_hello, expected_ack):
         raise ValueError("handshake transcript mismatch")
     send_control(ser, kem, stage="kem")

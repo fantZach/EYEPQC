@@ -15,7 +15,7 @@
 | PL AES-GCM | `src/ps/src/g3_camera.c` 暴露 `g3_usb_zeroize()` 写 GCM 控制寄存器；每帧加密前、帧发送后以及 G6 STOP/REKEY、断连和 fail-closed 路径会调用。 | 控制寄存器命令与已有离线/局部证据不能证明全部寄存器/内部流水、异常中途复位和总线副本已清。当前没有 PL 全密钥状态读回验收，也没有侧信道/故障注入评估。 |
 | 摄像头明文与 DDR | G3/G6 用 `g3_frame` 保存 JPEG，`g3_sealed` 保存加密输出；DMA 重置、缓冲所有权和边界保护已实现。 | 正常 STOP、断连或清除 GCM key 不会对完整 `g3_frame`/`g3_sealed` 作全区写零。DMA/cache 停止与维护后的逐地址清零读回没有实现/证明。DDR 还有栈、堆、BSS 和共享 mailbox 等副本域。 |
 | USB 软件和 DMA 元数据 | `src/ps/include/usb_recovery.h` 对停止后的 dTD/QH 做 invalidate、清零和 flush，再重建端点；恢复路径管理环与所有权。 | 该操作是恢复正确性措施，不等于所有接收/发送数据、控制缓冲、主机控制器、USB PHY 或线缆副本均安全擦除。硬件卸载、缓存一致性和描述符逐项读回未形成安全验收。 |
-| 主机进程 | `src/host/handshake.py` 的 `HostSession.close()` 覆盖 bytearray 视频/控制密钥后释放字段。 | Python 不可变 `bytes`、ML-KEM/native 扩展、密码库、JPEG/GUI/崩溃转储和 allocator 副本没有全面擦除保证。该接口只说明两个 bytearray 的处理。 |
+| 主机进程 | `src/host/handshake.py` 的 `HostSession.close()` 覆盖 bytearray 视频/控制密钥后释放字段；2026-10-11 后续改动让 M09 shared/keygen 输出及 HKDF PRK/T1/T2/material 使用可覆写缓冲，成功/重放拒绝/异常退出均清本次拥有的 coins/shared/material；G6/M10 调用方也清 coins，离线 peer 清 decaps shared/material 与私钥缓冲。 | 这是应用可控缓冲的 best-effort 清理。Python `bytes`、`hmac.digest`、ML-KEM/native 扩展、密码库、JPEG/GUI/崩溃转储和 allocator 副本仍没有全面擦除保证；不能把它描述为 host 全进程清零或抗内存取证。 |
 
 现有证据仅支持“若干对象有显式清理路径”：M10 离线/既有证据覆盖指定会话对象和 PL 清除命令；G6 软件集成用例覆盖受控会话行为；candidate006d 同构建 40 轮是 USB/摄像头/DMA 恢复证据。它们都不是设备安全认证、全内存清零或生产密钥验收。具体阶段与状态见 [验收矩阵](acceptance_matrix_20261009.md)、[软件阶段交付](software_ready.md) 和 [006d 报告](g7_candidate006d_acceptance_20261010.md)。
 
