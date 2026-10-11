@@ -4,7 +4,8 @@ Synthetic JPEG/software GCM only; never opens a port or accesses a board.
 """
 import ctypes as ct
 import hashlib
-from io import BytesIO
+from contextlib import redirect_stdout
+from io import BytesIO, StringIO
 import json
 import os
 from pathlib import Path
@@ -231,6 +232,31 @@ class G6(unittest.TestCase):
         self.assertEqual(read_control(reader, decoder), ack)
         self.assertEqual(read_control(reader, decoder), finished)
         self.assertEqual(video_records(reader, decoder), [(USB_VIDEO, b'pending video')])
+
+    def test_control_timeout_diagnostic_reports_framing_metadata_only(self):
+        ack = encode_control(MessageType.HELLO_ACK,
+                             b'\x01\x01\x00\x01' + bytes(range(32)))
+        partial = encode_usb_record(USB_CONTROL, ack)[:4]
+
+        class PartialReader:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def read(self, size):
+                result, self.payload = self.payload, b''
+                return result
+
+        output = StringIO()
+        with redirect_stdout(output):
+            with self.assertRaisesRegex(TimeoutError, 'G6 control response timeout'):
+                read_control(PartialReader(partial), UsbRecordDecoder(),
+                             debug_stage=True, timeout=0.01)
+        diagnostic = output.getvalue()
+        self.assertIn('rx_bytes=4', diagnostic)
+        self.assertIn('decoder_buffer_bytes=4', diagnostic)
+        self.assertIn('decoder_channel=1', diagnostic)
+        self.assertIn('decoder_declared_length=48', diagnostic)
+        self.assertNotIn(ack.hex(), diagnostic)
 
     def test_rekey_drains_fragmented_old_video_before_new_handshake(self):
         board, host = self.create_pair()

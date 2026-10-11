@@ -4,9 +4,19 @@
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
 当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。
 
-## 2026-10-11：M02 传感器探针与 KX41 全量实板 KAT
+## 2026-10-11：candidate011 receiver-exit 实板单轮失败
 
-M02 Explore 候选在同一板卡会话完成 20/20 次传感器复位/配置探针，20 轮均读到 OV5640 ID `0x5640`、error=0；整板断电冷启动和无模组 fail-closed 仍待现场操作。KX41 新候选三个窗口各 60/60 ML-KEM-512 KAT 通过，硬件窗口的计时为软件的 88.6%；采集器已修正为等待真实的 `KX41_BENCH_DONE` 标记。两项临时测试后均恢复 candidate006d，视频 CDC `03FD:7020` 重新枚举 COM16。详细记录见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md) 和 [M02 实板探针](m02_sensor_reset_board_20261011.md)。
+用户重新插拔后 CDC COM16 与只读 JTAG 枚举恢复。candidate011 两个构建各自通过 JTAG 加载后的 2 帧认证视频基线。首个 receiver-exit 单轮在旧进程解出 7 帧后，新 receiver 等待 HELLO_ACK 超时；板端 HELLO/ACK 计数各增加 1、ACK send status=0、错误计数为 0。新增无载荷 RX/framing 诊断后重新构建，启动阶段再次超时：39 次串口读取共 0 字节，decoder 缓冲为 0；板端只读快照仍显示 HELLO/ACK send status=0。该结果排除主机收到半帧后卡在 decoder 的解释，但未确认 EP1 IN 实际数据交付。两批均 fail-stop，未跑 20 轮或物理拔插批次。详见 [candidate011 实板报告](g7_candidate011_receiver_exit_board_20261011.md) 和[机器摘要](g7_candidate011_receiver_exit_board_20261011.json)。
+
+板测后 candidate006d 已通过带成功标记的 JTAG 恢复且 COM16 在枚举；恢复过程中一次 FTDI I/O 错误后，只读 JTAG 检查恢复，再试成功。它的旧 manifest 与当前 `src/ps/src/g3_camera.c` 不一致，主机预检拒绝该旧 build，因此恢复后的认证视频未复测。RX/framing 诊断和新构建已完成；下一步核查 EP1 IN 完成事件与 `tx_ready` 来源、DTR 低电平端点 quiesce/rebuild 顺序，修正后从单轮门禁重新开始。G7 仍未通过。
+
+## 2026-10-11：M02 物理冷启动与无摄像头门禁完成
+
+在先前同会话 sensor reset/config 20/20 的基础上，用户逐轮确认 20 次整板完全断电/上电；每轮 JTAG 临时装载 Explore 候选并单次配置，20/20 返回 ID `0x5640`、状态 `00E95640`、error=0。独立的断电拔除摄像头模组测试返回 `configured=0`、`capture_resetn=0`、`failed=1`、`error=1`，fail-closed 通过。20 份独立日志和索引见 [M02 实板报告](m02_sensor_reset_board_20261011.md)。之后 candidate006d 恢复成功，JTAG 目标和 CDC COM16 可见；没有复测认证视频。此门禁不代表 SD/Flash 独立启动或 DVP/JPEG 实拍。
+
+## 2026-10-11：M02 同会话传感器探针与 KX41 全量实板 KAT（M02 后续冷启动见上节）
+
+M02 Explore 候选先在同一板卡会话完成 20/20 次传感器复位/配置探针；后续 20 次整板断电/上电和无模组 fail-closed 已完成，详见上节。KX41 新候选三个窗口各 60/60 ML-KEM-512 KAT 通过，硬件窗口的计时为软件的 88.6%；采集器已修正为等待真实的 `KX41_BENCH_DONE` 标记。两项临时测试后均恢复 candidate006d，视频 CDC `03FD:7020` 重新枚举 COM16。详细记录见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md) 和 [M02 实板报告](m02_sensor_reset_board_20261011.md)。
 
 ## 2026-10-10 续推进：身份核验优化、逐次 KAT 与 CPU 临时协议数据清理
 
@@ -119,7 +129,7 @@ XSim 构建受 Vivado 随附 GCC 6.2 无法启动影响，若干其他 Icarus 13
 | M00：协议与黄金参考 | 完成（主机离线验证） | C/Python 协议实现、标准/随机/篡改向量、独立 GHASH 中间值和复现脚本 |
 | M01 / G0 | 部分上板通过、门禁未通过 | UART、DDR、定时器已验证；USB0 从机独立探针 30 秒 16.37 MB/s、30016 块逐字节正确；LED/冷启动及 USB 视频整机仍待验收，见 [USB 探针](../doc/usb_probe.md) |
 | M06 / 固定图片 MVP | M06 判据完成；PS/PL 混合图片 MVP 已上板通过 | GitHub secworks/aes、AXI4-Lite、PL AES / PS GHASH；13 向量、同 Key 连续块/更新/硬复位通过，53 周期/块；IP 综合 2600 LUT/2566 FF/0 BRAM；完整 JPG/512 KiB PNG 认证往返通过；非 M08 全 PL |
-| M02：SCCB 摄像头配置 | RTL/仿真/实现及传感器复位探针通过；整板冷启动门禁待验收 | 已有 ID=5640 和本轮板上 20/20 sensor reset/config probe；仍需 20 次整板真实断电启动、无摄像头 fail-closed，JTAG 探针不代替 SD 独立启动 |
+| M02：SCCB 摄像头配置 | RTL/仿真/实现、同会话传感器复位 20/20、20 次整板断电/上电后的 JTAG 配置 20/20、无模组 fail-closed 均通过 | 用户逐轮确认全断电；每轮 ID=5640、error=0；负向结果保持 configured/capture_resetn=0。SD/Flash 独立启动和 DVP/JPEG 实拍仍未测；逐轮摘要见 [M02 报告](m02_sensor_reset_board_20261011.md) |
 | M03：DVP/JPEG 采集 | 独立仿真/OOC 综合通过，M05 集成实拍通过 | 仿真 1000 帧逐字节及故障恢复；与 M04/DMA 集成后上板实拍 1000 帧，未单独完成 DVP 输入 IO 时序验收 |
 | M04：异步 FIFO/AXIS | 原生仿真/OOC 综合通过，M05 集成实拍通过 | 三配置各 1000 帧仿真；与 M03/DMA 集成后上板实拍 1000 帧，无丢帧/溢出；默认 64 KiB 帧上限 |
 | M05 / G1 功能判据 | 完成 | 缓存开关各 10000 次 DMA 和错误恢复通过；OV5640 1000 帧实拍、末帧 JPEG 解码通过；平均 6277.23 bytes、最大 6331 bytes、约 7.48 fps |
@@ -470,7 +480,7 @@ JTAG 能枚举 xc7z020，但 DAP 报 transaction error，故不是 DMA 压测结
 平均 6277.23 bytes、最大 6331 bytes、约 7.48 fps，零错误/超时/丢帧/溢出。
 末帧 `data/captures/m05_20260928_103346_800362/frame.jpg`（6259 bytes）
 已按 320×240 JPEG 完整解码并目视确认，之后显式释放 SENDING 缓冲。
-M05 和 G1 列出的功能判据已通过；DVP input_delay、M02 20 次物理冷启动及完整 G0 未验收。
+M05 和 G1 列出的功能判据已通过；DVP input_delay 与完整 G0 未验收。M02 的 20 次物理断电/上电后配置和无模组 fail-closed 后续已完成，见 [M02 实板报告](m02_sensor_reset_board_20261011.md)。
 复现、接口与容量/IO 验收范围见 [M05](../doc/m05.md)。网络仍最后，不写 SD/Flash。
 
 ## G6：开发态 USB 动态会话

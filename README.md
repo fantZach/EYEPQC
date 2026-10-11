@@ -4,7 +4,7 @@
 目标见 [doc/goals.md](doc/goals.md)，最新进度见 [report/progress.md](report/progress.md)。
 比赛提交前的证据索引与未完成验收项见 [提交检查表](report/competition_submission.md)；
 该清单明确区分历史板测与当前工作副本验证。
-2026-10-11 实板续测：独立 KX41 候选 software、hardware、timeout fallback 三窗口各 60/60 KAT 通过，硬件窗口耗时为软件的 88.6%；M02 Explore 摄像头传感器复位探针 20/20 通过。M02 整板断电冷启动与无摄像头 fail-closed 仍待现场操作。KX41 和 M02 临时测试后均恢复 candidate006d，视频 CDC `03FD:7020` 重新枚举为 COM16。详见 [KX41 实板验收](report/keccak_sponge_x4_capture_fix_20261011.md) 和 [M02 探针记录](report/m02_sensor_reset_board_20261011.md)。G0/G7 整体仍未通过；candidate006d 的 PC 退出/DTR 20 次和物理 USB 拔插 20 次回归待测。独立 Keccak 结果不代表视频工程性能，也未集成到正式视频工程。历史数据见 [Benchmark 汇总](report/benchmark_summary_20261009.md) 和 [验收矩阵](report/acceptance_matrix_20261009.md)。
+2026-10-11 实板续测：独立 KX41 候选 software、hardware、timeout fallback 三窗口各 60/60 KAT 通过，硬件窗口耗时为软件的 88.6%；M02 Explore 的 20/20 整板断电/上电后 JTAG 配置探针及无摄像头 fail-closed 通过。M02 探针使用 JTAG 临时下载，不代表 SD/Flash 独立启动或 DVP/JPEG 实拍。测试后 candidate006d 已恢复，JTAG 目标可见，视频 CDC `03FD:7020` 为 COM16；恢复后的认证视频未复测。详见 [KX41 实板验收](report/keccak_sponge_x4_capture_fix_20261011.md) 和 [M02 实板验收](report/m02_sensor_reset_board_20261011.md)。G0/G7 整体仍未通过；candidate006d 的 PC 退出/DTR 20 次和物理 USB 拔插 20 次回归待测。独立 Keccak 结果不代表视频工程性能，也未集成到正式视频工程。历史数据见 [Benchmark 汇总](report/benchmark_summary_20261009.md) 和 [验收矩阵](report/acceptance_matrix_20261009.md)。
 
 2026-10-10 续测：Keccak 配置阶段核验身份的优化版完成 3 次独立实板启动，逐次 tcId 76 KAT/96 次硬件调用与 timeout fallback 通过，仍约慢 8.4%，暂不接入视频。CPU 本地控制缓冲清理已实现，独立 candidate007 双会话认证视频共 284 帧及坏 Finished 拒绝回归通过；这不证明全域清零或生产安全。实验后恢复冻结 006d 并复测 140 帧。见 [优化版板测](report/keccak_identity_cached_20261010.md) 和 [清理实施记录](report/security_cleanup_20261010.md)。
 生产安全缺口与材料审阅包见 [安全计划](report/production_security_plan_20261010.md) 和 [交付计划](report/submission_delivery_plan_20261010.md)；可信板端熵源、生产密钥存储和全域清零仍未完成。

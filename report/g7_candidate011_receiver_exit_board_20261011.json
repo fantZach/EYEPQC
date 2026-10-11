@@ -1,0 +1,92 @@
+{
+  "schema": "eyepqc-g7-candidate011-board-trial-v1",
+  "date": "2026-10-11",
+  "status": "failed_stop",
+  "initial_candidate": {
+    "workspace": "build/vitis/g6_secure_cleanup_20261010_candidate011_receiver_exit_diag_final",
+    "manifest_sha256": "e9953dcb3cd8e6a7383d1d5fa8ba8ab91d493146b76f0f9136e9429d1a987268",
+    "elf_sha256": "1f8ec0709104e54b74a8ade4844f0cae5e760ae711799ea16cdb0534bcff51e6",
+    "xsa_sha256": "46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024"
+  },
+  "diagnostic_candidate": {
+    "workspace": "build/vitis/g6_secure_cleanup_20261011_candidate011_rxdiag",
+    "manifest_sha256": "d91711e968ca780a88b24a945e472fa1a81d913f2b9f04a0c0b2f8fd4a503de5",
+    "elf_sha256": "32a952235c83214de271c84e464365dcf770b810d49840894c69c910feda64e4",
+    "xsa_sha256": "46de12fa970aaa203b5f99f875a158bf12f3a1bab6bc2b82faad294a40c01024",
+    "preflight_hashes": 197,
+    "batch_dry_run": "passed"
+  },
+  "enumeration": {
+    "cdc_vid_pid": "03FD:7020",
+    "cdc_port": "COM16",
+    "jtag_read_only_check": "passed",
+    "targets": ["APU", "Cortex-A9#0", "xc7z020"]
+  },
+  "candidate011_video_baselines": [
+    {"candidate": "initial_candidate", "status": "passed", "frames": 2, "jtag_load": true},
+    {"candidate": "diagnostic_candidate", "status": "passed", "frames": 2, "jtag_load": true}
+  ],
+  "receiver_exit_attempt": {
+    "status": "failed",
+    "stage": "read_post_recovery_rekey_diag",
+    "host_error": "TimeoutError: G6 control response timeout",
+    "interrupted_verified_frames": 7,
+    "jtag_reload_during_trial": false,
+    "hello_attempt_delta": 1,
+    "hello_ack_send_attempt_delta": 1,
+    "hello_ack_send_status": 0,
+    "cleanup_count_before": 6,
+    "cleanup_count_after": 10,
+    "connection_epoch_before": 10,
+    "connection_epoch_after": 14,
+    "control_errors_after": 0,
+    "fatal_errors_after": 0,
+    "transport_errors_after": 0,
+    "rx_bad_after": 0,
+    "rx_bytes_buffered_after": 0
+  },
+  "diagnostic_start_attempt": {
+    "status": "failed_before_receiver_exit_trial",
+    "stage": "start_interrupted_receiver",
+    "host_error": "TimeoutError: G6 control response timeout",
+    "serial_read_calls": 39,
+    "host_rx_bytes": 0,
+    "decoded_control_records": 0,
+    "decoded_video_records": 0,
+    "decoder_buffer_bytes": 0,
+    "board_snapshot": {
+      "phase": "WAIT_HELLO",
+      "hello_attempts": 2,
+      "hello_ack_send_attempts": 2,
+      "hello_ack_send_status": 0,
+      "tx_ready": 1,
+      "usb_dtr": 0,
+      "usb_configured": 1,
+      "rx_bad": 0,
+      "control_errors": 0,
+      "fatal_errors": 0,
+      "transport_errors": 0,
+      "cleanup_count": 7,
+      "ep1_prime": 0,
+      "ep1_ready": 0,
+      "ep1_completion": 0,
+      "ep1_flush": 0
+    },
+    "batch_evidence": "report/g7_runs/g7_batch_receiver_exit_20261011_091336_087_570b98ca/",
+    "post_timeout_snapshot": "report/g7_runs/g7_batch_receiver_exit_20261011_091336_087_570b98ca/post_timeout_rekey_diag.json"
+  },
+  "initial_batch_evidence": "report/g7_runs/g7_batch_receiver_exit_20261011_090352_015_a019b22d/",
+  "restoration": {
+    "candidate006d_jtag_restore": "success_marker_verified",
+    "cdc_com16_present": true,
+    "post_restore_video_validation": "not_run_current_preflight_rejected_stale_manifest",
+    "preflight_error": "Build changed; rebuild before board use: src/ps/src/g3_camera.c",
+    "one_interrupted_restore_attempt": "FT_Write io error; retried successfully after read-only JTAG check"
+  },
+  "g7_passed": false,
+  "receiver_exit_20_trials_started": false,
+  "physical_usb_unplug_trials_started": false,
+  "root_cause_confirmed": false,
+  "board_validated": false,
+  "next_action": "Audit EP1 IN DATA_TX completion correlation, tx_ready release/reset sources, and DTR-low endpoint quiesce/rebuild ordering."
+}

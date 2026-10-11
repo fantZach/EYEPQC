@@ -10,7 +10,7 @@ M04/M05 原生 XSim 已通过，软件修正与统一入口见 [软件阶段交�
 
 最新 USB 修复及同构建 40 轮恢复的审核见 [006d 报告](g7_candidate006d_acceptance_20261010.md) 与 [本轮同步](github_sync_20261010.md)。
 
-2026-10-11 新增：KX41 独立候选全 60 组三窗口实板 KAT 和性能结果见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md)；M02 Explore 候选传感器复位探针 20/20 见 [M02 实板报告](m02_sensor_reset_board_20261011.md)。M02 整板冷启动、无摄像头 fail-closed、G0/G7 未完成门禁仍按验收矩阵保留。
+2026-10-11 新增：KX41 独立候选全 60 组三窗口实板 KAT 和性能结果见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md)；M02 Explore 候选的 20 次整板断电/上电后 JTAG 配置和无摄像头 fail-closed 均完成，证据见 [M02 实板报告](m02_sensor_reset_board_20261011.md)。M02 的 SD/Flash 独立启动和 DVP/JPEG 实拍、G0/G7 其他未完成门禁仍按验收矩阵保留。
 
 ## 提交包索引
 

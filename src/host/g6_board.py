@@ -138,20 +138,42 @@ def send_control(ser, message, stage="control"):
         ser.flush()
 
 
-def read_control(ser, decoder, cancelled=None):
+def read_control(ser, decoder, cancelled=None, debug_stage=False, timeout=10.0):
     pending = pending_records(decoder)
-    deadline = time.monotonic() + 10
+    deadline = time.monotonic() + timeout
+    read_calls = raw_bytes = 0
+    decoded_channels = Counter()
     while time.monotonic() < deadline:
         if cancelled and cancelled():
             raise InterruptedError('handshake cancelled')
         if not pending:
-            pending.extend(decoder.feed(ser.read(4096)))
+            chunk = ser.read(4096)
+            read_calls += 1
+            raw_bytes += len(chunk)
+            records = decoder.feed(chunk)
+            for channel, _ in records:
+                decoded_channels[channel] += 1
+            pending.extend(records)
         if pending:
             channel, record = pending.popleft()
             if channel != USB_CONTROL:
+                if debug_stage:
+                    print(f"G6_HOST_DIAG stage=unexpected_control_channel channel={channel} "
+                          f"rx_bytes={raw_bytes} decoder_buffer_bytes={len(decoder.buffer)}",
+                          flush=True)
                 raise ValueError("unexpected response during handshake")
             decode_control(record)
             return record
+    if debug_stage:
+        buffer = decoder.buffer
+        channel = buffer[0] if buffer else -1
+        declared_length = int.from_bytes(buffer[1:3], 'big') if len(buffer) >= 3 else -1
+        print("G6_HOST_DIAG stage=control_response_timeout "
+              f"reads={read_calls} rx_bytes={raw_bytes} "
+              f"decoded_control={decoded_channels[USB_CONTROL]} "
+              f"decoded_video={decoded_channels[USB_VIDEO]} "
+              f"decoder_buffer_bytes={len(buffer)} decoder_channel={channel} "
+              f"decoder_declared_length={declared_length}", flush=True)
     raise TimeoutError("G6 control response timeout")
 
 
@@ -211,7 +233,7 @@ def handshake(ser, decoder, session, bad_finished=False, cancelled=None, debug_s
     send_control(ser, hello, stage="hello")
     if debug_stage:
         print("G6_HOST_STAGE stage=hello_ack_wait_begin", flush=True)
-    ack = read_control(ser, decoder, cancelled)
+    ack = read_control(ser, decoder, cancelled, debug_stage=debug_stage)
     if debug_stage:
         print("G6_HOST_STAGE stage=hello_ack_received", flush=True)
     kind, body = decode_control(ack)
@@ -224,7 +246,8 @@ def handshake(ser, decoder, session, bad_finished=False, cancelled=None, debug_s
     send_control(ser, kem, stage="kem")
     if debug_stage:
         print("G6_HOST_STAGE stage=board_finished_wait_begin", flush=True)
-    session.verify_board_finished(read_control(ser, decoder, cancelled))
+    session.verify_board_finished(read_control(ser, decoder, cancelled,
+                                               debug_stage=debug_stage))
     if debug_stage:
         print("G6_HOST_STAGE stage=board_finished_received", flush=True)
     finished = session.host_finished()

@@ -287,7 +287,7 @@ try {
         Write-JsonAtomic $casePath $case
         Save-Summary $runDir $identity 'running' $baselinePath $passed $trial
         $workerArgs = @('-u',$hostScript,'--workspace',$workspace,'--tool-root',$toolRoot,
-            '--no-jtag','--seconds',"$FaultSeconds",'--wait-cdc',"$WaitCdcSeconds",'--sessions','1','--report-key-fingerprint')
+            '--no-jtag','--seconds',"$FaultSeconds",'--wait-cdc',"$WaitCdcSeconds",'--sessions','1','--report-key-fingerprint','--debug-stage')
         $worker = $null
         $recovery = $null
         try {
@@ -362,7 +362,7 @@ try {
             $recoverOut = Join-Path $runDir ('trial_{0:d2}_try{1:d2}_recovery.stdout.log' -f $trial,$tryNumber)
             $recoverErr = Join-Path $runDir ('trial_{0:d2}_try{1:d2}_recovery.stderr.log' -f $trial,$tryNumber)
             $recoverArgs = @('-u',$hostScript,'--workspace',$workspace,'--tool-root',$toolRoot,
-                '--no-jtag','--seconds',"$RecoverySeconds",'--wait-cdc',"$WaitCdcSeconds",'--sessions','1','--report-key-fingerprint')
+                '--no-jtag','--seconds',"$RecoverySeconds",'--wait-cdc',"$WaitCdcSeconds",'--sessions','1','--report-key-fingerprint','--debug-stage')
             $recovery = Start-Process -FilePath $python -ArgumentList (Join-WindowsArguments $recoverArgs) -WorkingDirectory $hostSourceRoot `
                 -RedirectStandardOutput $recoverOut -RedirectStandardError $recoverErr -PassThru -WindowStyle Hidden
             $recoveryTimedOut=$false
