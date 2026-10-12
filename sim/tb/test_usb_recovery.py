@@ -435,7 +435,7 @@ class UsbRecoveryNativeTest(unittest.TestCase):
             env["PATH"] = str(Path(compiler).resolve().parent) + os.pathsep + env.get("PATH", "")
             build = subprocess.run(
                 [compiler, "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-pedantic",
-                 "-I", str(temp_path), "-I", str(ROOT / "src/ps/include"), str(source), "-o", str(exe)],
+                 "-I", str(temp_path), "-I", str(ROOT / "board/src/ps/include"), str(source), "-o", str(exe)],
                 text=True,
                 capture_output=True,
                 cwd=ROOT,

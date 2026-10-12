@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from prj.collect_benchmark_summary import (
+from board.prj.collect_benchmark_summary import (
     C_ROUTE4K, DEMO_CAPTURE, DEMO_RESULT, G0_LOG, G0_MANIFEST, G0_RESULT,
     G3_RESULTS, G6_RESULT, G7_RESULTS, VALIDATION_SNAPSHOT, build_summary, record,
 )

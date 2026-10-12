@@ -37,8 +37,8 @@ class M04(unittest.TestCase):
             work = Path(directory)
             fixture = work / 'jpeg.mem'
             fixture.write_text(''.join(f'{byte:02x}\n' for byte in JPEG))
-            sources = ['src/rtl/common/axis_byte_packer.sv', 'src/rtl/camera/camera_axis_bridge.sv',
-                       'src/rtl/camera/dvp_capture.sv', 'src/rtl/camera/jpeg_marker_check.sv',
+            sources = ['board/src/rtl/common/axis_byte_packer.sv', 'board/src/rtl/camera/camera_axis_bridge.sv',
+                       'board/src/rtl/camera/dvp_capture.sv', 'board/src/rtl/camera/jpeg_marker_check.sv',
                        'sim/tb/tb_camera_axis_bridge.sv']
             xvlog = vivado_tool('xvlog')
             glbl = Path(xvlog).parent.parent / 'data/verilog/src/glbl.v'

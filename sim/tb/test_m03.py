@@ -72,8 +72,8 @@ def simulate(jpeg, *, frames=1000, faults=True, limit=4096):
         data.write_text(''.join(f'{byte:02x}\n' for byte in jpeg))
         compile_iverilog([tool('iverilog'), '-g2012', '-Wall', '-s', 'tb_dvp_capture',
             f'-Ptb_dvp_capture.MAX_FRAME_BYTES={limit}', '-o', str(executable),
-            str(ROOT / 'src/rtl/camera/jpeg_marker_check.sv'),
-            str(ROOT / 'src/rtl/camera/dvp_capture.sv'), str(ROOT / 'sim/tb/tb_dvp_capture.sv')], executable)
+            str(ROOT / 'board/src/rtl/camera/jpeg_marker_check.sv'),
+            str(ROOT / 'board/src/rtl/camera/dvp_capture.sv'), str(ROOT / 'sim/tb/tb_dvp_capture.sv')], executable)
         result = subprocess.run([tool('vvp'), str(executable), f'+JPEG={data}', f'+JPEG_LENGTH={length}',
             f'+INPUT_LENGTH={len(jpeg)}',
             f'+FRAMES={frames}', f'+FAULTS={int(faults)}'], text=True, capture_output=True, timeout=60)

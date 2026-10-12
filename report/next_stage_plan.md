@@ -1,5 +1,10 @@
 # 下一阶段执行计划
 
+2026-10-12 路线更新：先按 [steps 第 22 节](../doc/steps.md#22-三端扩展pc-转发与移动端解密)
+推进 PC 密文桥与移动端局域网接收，再按需增加公网中转。源码已移至 `board/`、`pc/`、`mobile/`；
+下文保留旧硬件待办与历史命令，`prj/` 对应现 `board/prj/`，`src/host/` 对应现 `pc/src/host/`。
+所有旧构建须先按新路径重新构建并预检；旧 G0/G7 的未完成状态不因目录调整或新网络计划改变。
+
 更新：2026-10-11。M02 Explore 候选静态时序门禁、RTL 仿真 4/4、同会话传感器复位/配置 20/20、20 次用户确认的整板断电/上电后 JTAG 配置 20/20，以及无模组 fail-closed 均通过；探针不代表 SD/Flash 独立启动或 DVP/JPEG 采集。KX41 新候选 software/hardware/timeout fallback 三窗口全 60 组实板 KAT 通过，硬件窗口耗时为软件的 88.6%。candidate012 r3 的 receiver-exit 批次累计 13/20 个唯一轮次通过后，在 trial14 再次出现 HELLO_ACK 10 秒超时（COM16 已打开，39 次读取、0 字节）；此前 trial7 try01 也超时，try04 重试通过。ETW 无丢事件，但不含 USB 载荷/字节长度，根因仍未确认。candidate014 已完成同 HELLO 重试与缓存 ACK 重放修正，并在残留半帧时抑制重试；ARM GCC 构建、197 项哈希预检、dry-run、25 项 G6 测试和 9 项 batch runner 测试通过；`board_validated=false`，尚未下载到板卡，candidate012 旧轮次不能折算。candidate014 仍需新板上基线、ETW/AP0 单轮、20 轮 receiver-exit，之后另行完成物理 USB 拔插 20 轮。G0/G7 门禁彼此独立。官方 AMD 2026 赛道细则和格式尚未从公开官方渠道确认；已确认的其他赛道上传限制不套用。证据见 [M02 实板报告](m02_sensor_reset_board_20261011.md)、[candidate012 实板报告](g7_candidate012_tx_ownership_board_20261011.md)、[candidate014 离线候选报告](g7_candidate014_safe_hello_ack_retry_offline_20261011.md) 和[规则核验记录](contest_rules_review_20261011.md)。
 
 ## 本轮续推进（2026-10-11）

@@ -15,7 +15,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT / "src" / "host"), str(ROOT / "sim" / "scripts")]
+sys.path[:0] = [str(ROOT / "pc" / "src" / "host"), str(ROOT / "sim" / "scripts")]
 import protocol as p
 from crypto_ref import encrypt, decrypt, ghash_trace, aes_block, mlkem_vector, ML_KEM_512
 from cryptography.exceptions import InvalidTag
@@ -43,8 +43,8 @@ class M00(unittest.TestCase):
         library = Path(cls.temp.name) / ("protocol.dll" if os.name == "nt" else "protocol.so")
         compiler = shlex.split(os.environ.get("CC", "gcc"), posix=os.name != "nt")
         subprocess.run(compiler + ["-std=c99", "-Wall", "-Wextra", "-Werror", "-pedantic",
-                                   "-shared", "-fPIC", "-I", str(ROOT / "src/ps/include"),
-                                   str(ROOT / "src/ps/src/protocol.c"), "-o", str(library)], check=True)
+                                   "-shared", "-fPIC", "-I", str(ROOT / "board/src/ps/include"),
+                                   str(ROOT / "board/src/ps/src/protocol.c"), "-o", str(library)], check=True)
         cls.lib = ct.CDLL(str(library))
         ptr, size = ct.c_void_p, ct.c_size_t
         cls.lib.eye_video_encode.argtypes = [ptr, size, ct.POINTER(CHeader)]

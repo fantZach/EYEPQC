@@ -1,5 +1,9 @@
 # EYEPQC 编程与调试步骤
 
+2026-10-12：源码已按 `board/`、`pc/`、`mobile/` 拆分。下一阶段目标为 USB→PC→移动端，
+先局域网、后按需公网中转。架构与边界见 [architecture](architecture.md)，新增 M16～M19 / G8～G9 见第 22 节。
+旧 M00～M15 / G0～G7 保留为板卡到 PC 的开发基线及历史门禁，不能推定手机端已完成。
+
 ## 1. 执行原则
 
 - 每次只打通一条最短链路，不同时调试摄像头、DMA、密码和 USB。
@@ -8,10 +12,10 @@
 - 当前优先完成固定图片 AES-GCM MVP，再恢复摄像头明文链路和整机集成；先完成独立加密，再接入 ML-KEM 动态密钥。
 - 按用户最新要求，完整外部传输放在最后编程阶段（第 21 节）。2026-09-29 的 USB0 从机实测通过后，第一版改用 USB Slave；PS 以太网不再是验收前置。
 - 第一版使用 Vitis Standalone（裸机）+ PS USB0 `usbps` + CDC ACM，不安装 PetaLinux。
-- 第一版只在板端实现 AES-GCM 加密，解密、JPEG 解码、显示和录像均在主机完成。
+- 板端只实现 AES-GCM 加密。现有开发基线在 PC 解密；目标模式由移动端解密显示，PC/可选公网服务仅转发密文。
 - 每完成一个集成门禁点，保存可复现脚本、测试数据、ILA 截图和性能结果。
 
-## 2. 建议工程目录
+## 2. 工程目录
 
 ```text
 EYEPQC/
@@ -19,16 +23,17 @@ EYEPQC/
 ├── doc/
 │   ├── goals.md
 │   └── steps.md
-├── src/
-│   ├── rtl/
-│   │   ├── common/
-│   │   ├── camera/
-│   │   ├── crypto/
-│   │   └── top/
-│   ├── ps/
-│   │   ├── include/
-│   │   └── src/
-│   └── host/
+├── board/
+│   ├── src/rtl/
+│   ├── src/ps/
+│   ├── src/third_party/
+│   ├── prj/
+│   ├── xdc/
+│   ├── vendor/             # 本地官方资料，Git 忽略
+│   └── output/             # 本地生成/测试材料，Git 忽略
+├── pc/
+│   └── src/host/
+├── mobile/                 # 接入契约与计划，应用待实现
 ├── sim/
 │   ├── tb/
 │   ├── vectors/
@@ -40,14 +45,13 @@ EYEPQC/
 │   ├── jpeg/
 │   ├── kat/
 │   └── captures/
-├── board/
-│   ├── xdc/
-│   └── output/
 ├── report/
 └── skill/
 ```
 
 目录名和文件名使用英文。Vivado 生成目录、日志和大体积中间文件不要直接混入源码目录。
+`sim/` 是跨端共享测试，`requirements.txt` 与根目录 PowerShell 入口保持共享。
+旧路径映射及构建清单失效说明见 [README](../README.md#目录迁移与构建注意事项)。
 
 ## 3. 模块依赖与集成顺序
 
@@ -74,7 +78,7 @@ M15 可靠性测试、报告和竞赛交付
 用户随后要求以太网配置放到最后；2026-09-29 板载 USB Slave 实测后，决定第一版
 改用 USB0：先完成摄像头、DMA、离线 AES-GCM、ML-KEM/会话参考及主机离线回放，
 再执行 M11 和 USB 整机验收。G0 的外部传输子项仍后置，不能因独立 USB 吞吐测试通过
-就将完整 G0 标为通过；M14 仍为全部门禁通过后的可选优化。
+就将完整 G0 标为通过；M14 正式集成仍需完整门禁，后续授权的独立加速实验见第 18 节。
 
 ## 4. M00：协议、数据格式与软件黄金参考
 
@@ -183,9 +187,9 @@ heartbeat 测试按用户最新要求统一放回 `sim/tb/`，保留 M01 回归�
 
 ### 建议文件
 
-- `src/rtl/camera/sccb_master.sv`
-- `src/rtl/camera/ov5640_reg_table.sv`
-- `src/rtl/camera/ov5640_ctrl.sv`
+- `board/src/rtl/camera/sccb_master.sv`
+- `board/src/rtl/camera/ov5640_reg_table.sv`
+- `board/src/rtl/camera/ov5640_ctrl.sv`
 - `sim/tb/tb_sccb_master.sv`
 
 ### 编程任务
@@ -218,8 +222,8 @@ PCLK 域采样、JPEG 段长度/标记检查、2 MiB 帧长保护和错误统计
 
 ### 建议文件
 
-- `src/rtl/camera/dvp_capture.sv`
-- `src/rtl/camera/jpeg_marker_check.sv`
+- `board/src/rtl/camera/dvp_capture.sv`
+- `board/src/rtl/camera/jpeg_marker_check.sv`
 - `sim/tb/tb_dvp_capture.sv`
 
 ### 接口
@@ -257,8 +261,8 @@ PCLK 域采样、JPEG 段长度/标记检查、2 MiB 帧长保护和错误统计
 
 ### 建议文件
 
-- `src/rtl/common/axis_byte_packer.sv`
-- `src/rtl/camera/camera_axis_bridge.sv`
+- `board/src/rtl/common/axis_byte_packer.sv`
+- `board/src/rtl/camera/camera_axis_bridge.sv`
 - `sim/tb/tb_camera_axis_bridge.sv`
 
 ### 编程任务
@@ -319,8 +323,8 @@ M05 原工程的 `dma_crypto` 以 MM2S→S2MM 回环验证传输，回环不当�
 
 ### 建议文件
 
-- `src/rtl/crypto/secworks_aes/`：固定版本的开源 RTL 与 LICENSE。
-- `src/rtl/crypto/aes_axi_lite.sv`：最小寄存器接口、忙状态和零化。
+- `board/src/rtl/crypto/secworks_aes/`：固定版本的开源 RTL 与 LICENSE。
+- `board/src/rtl/crypto/aes_axi_lite.sv`：最小寄存器接口、忙状态和零化。
 - `sim/tb/tb_aes_axi_lite.sv`：使用实际开源核验证。
 
 ### 编程任务
@@ -345,8 +349,8 @@ M05 原工程的 `dma_crypto` 以 MM2S→S2MM 回环验证传输，回环不当�
 
 ### 建议文件
 
-- `src/rtl/crypto/gf128_mul.sv`
-- `src/rtl/crypto/ghash.sv`
+- `board/src/rtl/crypto/gf128_mul.sv`
+- `board/src/rtl/crypto/ghash.sv`
 - `sim/tb/tb_ghash.sv`
 
 ### 编程任务
@@ -370,9 +374,9 @@ M07 独立 IP 不单独标记板级门禁。
 
 ### 建议文件
 
-- `src/rtl/crypto/aes_gcm_encrypt.sv`
-- `src/rtl/crypto/aes_gcm_axis.sv`
-- `src/rtl/crypto/aes_gcm_regs.sv`
+- `board/src/rtl/crypto/aes_gcm_encrypt.sv`
+- `board/src/rtl/crypto/aes_gcm_axis.sv`
+- `board/src/rtl/crypto/aes_gcm_regs.sv`
 - `sim/tb/tb_aes_gcm_axis.sv`
 
 ### 接口约定
@@ -464,11 +468,11 @@ M07 独立 IP 不单独标记板级门禁。
 
 ### 建议文件
 
-- `src/host/protocol.py`
-- `src/host/handshake.py`
-- `src/host/receiver.py`
-- `src/host/display.py`
-- `src/host/record.py`
+- `pc/src/host/protocol.py`
+- `pc/src/host/handshake.py`
+- `pc/src/host/receiver.py`
+- `pc/src/host/display.py`
+- `pc/src/host/record.py`
 
 第一版可使用 Python 快速验证；吞吐不足时再将接收和解密部分迁移到 C/C++。
 先实现本地文件/JTAG 输出的认证解密、JPEG 显示和离线回放；USB 流解析、重放窗口
@@ -590,7 +594,8 @@ START/REKEY/STOP、ML-KEM 派生的 PL 视频 Key、逐包认证与重放窗口�
 
 ## 18. M14：ML-KEM PL 加速与性能优化
 
-只有 G0～G7 全部通过后再开始，避免加速模块阻塞系统功能交付。
+正式视频工程接入加速器仍需完整验收。后续已授权的独立 Keccak 实验可与 G0/G7 补证并行，
+独立实验结果不等于正式视频工程已集成，当前证据见 [进度](../report/progress.md)。
 
 ### 优化顺序
 
@@ -640,7 +645,7 @@ START/REKEY/STOP、ML-KEM 派生的 PL 视频 Key、逐包认证与重放窗口�
 - 分辨率、帧率、码率、加密吞吐率、延迟和稳定性数据。
 - 大模型协作记录、自我纠错轨迹和 `skill/` 技能包。
 
-## 20. 立即开始的工作清单
+## 20. 原 USB 基线实施顺序（保留）
 
 按用户调整后的以下顺序执行：
 
@@ -656,7 +661,7 @@ START/REKEY/STOP、ML-KEM 派生的 PL 视频 Key、逐包认证与重放窗口�
 10. 按依赖通过 G1 → G2 → G3 离线验收；USB 视频门禁未完成时不宣称整机通过。
 11. 最后执行下节 PS USB0、M11、M12 USB 接入和 G4～G7；验收后整理 M15 交付材料。M14 属于全部门禁通过后的可选后续优化。
 
-## 21. 最后编程阶段：PS USB0 与 M11 视频流封装和发送
+## 21. USB 基线最后阶段：PS USB0 与 M11 视频流封装和发送
 
 前置为已验证的板级基础、摄像头/DMA/离线加密链路及主机离线回放。
 M09/M10 可先以本地向量验证，真实 USB 握手与视频会话在本阶段接入。
@@ -668,12 +673,12 @@ USB Slave 已连接并通过独立探针：CF7020B P4 跳帽为从机模式，US
 
 ### 建议文件
 
-- `src/ps/src/usb_control.c`
-- `src/ps/src/video_packet.c`
-- `src/ps/src/video_sender.c`
-- `src/ps/src/dma_manager.c`
-- `src/ps/src/session.c`
-- `src/host/receiver.py`
+- `board/src/ps/src/usb_control.c`
+- `board/src/ps/src/video_packet.c`
+- `board/src/ps/src/video_sender.c`
+- `board/src/ps/src/dma_manager.c`
+- `board/src/ps/src/session.c`
+- `pc/src/host/receiver.py`
 
 ### 配置与编程任务
 
@@ -703,3 +708,36 @@ USB Slave 已连接并通过独立探针：CF7020B P4 跳帽为从机模式，US
 - 加密阶段每包 Nonce 唯一，Tag 全部可验证。
 - USB 发送背压时采用明确的整帧丢弃策略，不覆盖 DMA 正在使用的缓冲区。
 - G0 全部子项与 G4～G7 实际通过后，才宣称 USB 整机验收完成；M15 文档整理不替代实测。
+
+## 22. 三端扩展：PC 转发与移动端解密
+
+2026-10-12 已完成目录与职责调整，以下运行功能均待实现。保留裸机 USB0，不迁移 PetaLinux。
+先单板、单移动观看端和局域网；可选公网中转服务放在 PC 子项目维护，不要求预先租服务器。
+
+| 步骤 | 所属子项目 / 依赖 | 编程与离线验证 | 实机完成判据 |
+|---|---|---|---|
+| M16：USB↔网络密文桥 | PC；依赖现有 USB 记录协议 | 双向控制与单向视频转发、长度/方向检查、单观看端授权、有界队列；用碎片 USB 流和模拟客户端验证字节不变、超限断开、无会话密钥派生 | 与 PC 参考接收端经网络连接真实板卡，完成握手、换钥、认证视频；独占 USB，断连能重新建立新会话 |
+| M17：移动端接收 MVP | 移动端；协议向量可与 M16 并行，实机依赖 M16 | 确定目标手机平台；移植 ML-KEM-512/HKDF/AES-GCM、公钥 pin、控制状态机、反重放与 JPEG 重组；通过标准向量及篡改/缺片负测 | 真实手机经局域网与板卡握手、认证解密显示，完成 G8；PC 仅转发 |
+| M18：可选公网中转 | PC 服务与移动端；依赖 G8 | PC/手机主动连接 WSS 中转，认证设备/观看者、配对和资源限额；测试断线、慢消费者、错误设备及未授权接入 | 不同网络下完成握手和视频，服务器只接触密文；没有异地需求时可暂缓 |
+| M19：新链路验收与说明 | 三端；依赖对应传输实现 | 固定版本、部署配置、延迟/帧率/码率/错误统计；补齐三端运行说明 | 局域网 G8；公网启用时再完成 G9，并独立记录旧 G0/G7 未完成项 |
+
+### G8：局域网三端门禁
+
+- 板端、PC 转发器、手机分别记录版本和时间；手机校验固定板卡公钥，完成双向 Finished 和认证 START。
+- 手机解出的 JPEG 与参考接收端对同一组密文离线解出的 JPEG 一致，篡改/旧会话/重放包均被拒绝。
+- 真实手机连续运行至少 10 分钟；同时记录采集帧率、接收字节率、认证解码显示帧率、丢帧、延迟与队列上限。
+- 45 fps 是待验证的手机显示目标；若低于目标，记录实测与瓶颈，不能套用 PC 端历史数据标记性能通过。
+- 网络断开、手机退出、慢消费者后关闭旧会话并成功重建；不出现旧画面跨会话输出或持续无界积压。
+- 核对 PC 运行的是纯转发路径，未经授权客户端被拒绝；JTAG 开发密钥可信边界仍须明确注明。
+
+### G9：公网门禁（启用公网时）
+
+- G8 先通过；板端/PC 和手机使用不同外网，WSS 证书检查、设备/观看者授权与路由正确。
+- 双向握手、单向密文视频、换钥、断网重连均通过；篡改包不进入 JPEG 显示。
+- 记录实际公网吞吐、延迟、手机帧率、流量和资源使用；网络不足时明确降帧/断开策略。
+- 服务器无业务 AES key、共享秘密或解密 JPEG；当前开发态限制仍保留，G9 不是生产安全验收。
+
+## 23. 可选最后项：板端以太网
+
+PS GEM/lwIP 直连网络继续放在三端主链路之后，不是 M16～M19 或 G8/G9 的前置。
+当前路线使用 USB Slave + PC 联网；只有明确需要板卡脱离 PC 时再安排以太网实现与独立验收。

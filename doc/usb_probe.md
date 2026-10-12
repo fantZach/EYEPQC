@@ -14,11 +14,11 @@
 
 ```powershell
 $env:EYEPQC_USB_PROBE_XSA=(Resolve-Path 'build/vivado/usb_probe_repro_1/m01.xsa').Path
-& 'D:/AmdDesignTools/2026.1/Vivado/bin/vivado.bat' -mode batch -source prj/build_m01.tcl -tclargs build/vivado/usb_probe_repro_1
+& 'D:/AmdDesignTools/2026.1/Vivado/bin/vivado.bat' -mode batch -source board/prj/build_m01.tcl -tclargs build/vivado/usb_probe_repro_1
 $env:EYEPQC_USB_PROBE_VITIS=(Resolve-Path 'build/vitis/usb_probe_repro_1').Path
-& 'D:/AmdDesignTools/2026.1/Vitis/bin/vitis.bat' -s prj/build_usb_probe.py
-& 'D:/AmdDesignTools/2026.1/Vivado/bin/xsdb.bat' prj/run_usb_probe_jtag.tcl $env:EYEPQC_USB_PROBE_VITIS
-python prj/test_usb_probe.py --seconds 30
+& 'D:/AmdDesignTools/2026.1/Vitis/bin/vitis.bat' -s board/prj/build_usb_probe.py
+& 'D:/AmdDesignTools/2026.1/Vivado/bin/xsdb.bat' board/prj/run_usb_probe_jtag.tcl $env:EYEPQC_USB_PROBE_VITIS
+python board/prj/test_usb_probe.py --seconds 30
 ```
 
 第一次逐块读取并同步校验的主机探针在接近满速时偶发块错位；改为大块连续接收、
@@ -36,8 +36,8 @@ python prj/test_usb_probe.py --seconds 30
 320×240 的 4181 字节文件 3 包同样通过。USB 设备标识仍仅供临时实验。
 
 ```powershell
-python prj/test_usb_records.py --seconds 30
-python prj/test_usb_jpeg.py data/captures/g3_20260928_191037_572878/frame_000
+python board/prj/test_usb_records.py --seconds 30
+python board/prj/test_usb_jpeg.py data/captures/g3_20260928_191037_572878/frame_000
 ```
 
 这完成了 M11 的固定数据与固定 JPEG 两项中间测试；`J` 的 JPEG 来自主机上传，

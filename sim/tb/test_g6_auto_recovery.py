@@ -9,11 +9,11 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 run_spec = importlib.util.spec_from_file_location(
-    'run_g7_auto_recovery', ROOT / 'prj/run_g7_auto_recovery.py')
+    'run_g7_auto_recovery', ROOT / 'board/prj/run_g7_auto_recovery.py')
 runner = importlib.util.module_from_spec(run_spec)
 run_spec.loader.exec_module(runner)
 build_spec = importlib.util.spec_from_file_location(
-    'build_g6_auto_recovery', ROOT / 'prj/build_g6_auto_recovery.py')
+    'build_g6_auto_recovery', ROOT / 'board/prj/build_g6_auto_recovery.py')
 builder = importlib.util.module_from_spec(build_spec)
 build_spec.loader.exec_module(builder)
 
@@ -37,7 +37,7 @@ class G6AutoRecovery(unittest.TestCase):
         self.assertEqual(action(99), 'fail_closed')
 
     def test_candidate_waits_real_busy_deadline_and_records_irq_vs_timeout(self):
-        source = (ROOT / 'src/ps/diag/g3_camera_auto_recovery.c').read_text(encoding='utf-8')
+        source = (ROOT / 'board/src/ps/diag/g3_camera_auto_recovery.c').read_text(encoding='utf-8')
         self.assertIn('#define CAMERA_AUTO_DEADLINE_US 3000000U', source)
         self.assertIn('XAxiDma_SimpleTransfer(&capture', source)
         self.assertIn('XAxiDma_Busy(&capture, XAXIDMA_DEVICE_TO_DMA)', source)
@@ -58,7 +58,7 @@ class G6AutoRecovery(unittest.TestCase):
         self.assertIn('Xil_DCacheFlushRange((UINTPTR)g3_frame', source)
 
     def test_success_retires_old_session_before_waiting_for_hello(self):
-        source = (ROOT / 'src/ps/diag/g6_usb_auto_recovery_tail.inc').read_text(encoding='utf-8')
+        source = (ROOT / 'board/src/ps/diag/g6_usb_auto_recovery_tail.inc').read_text(encoding='utf-8')
         recovery = source.split('g6_auto_recovery_diag.recovery_status =', 1)[1]
         self.assertLess(recovery.index('g6_candidate_recover_camera()'),
                         recovery.index('eye_session_error(&session)'))
@@ -71,16 +71,16 @@ class G6AutoRecovery(unittest.TestCase):
         self.assertIn('g6_auto_recovery_diag.state = 3;', recovery)
         self.assertIn('return 16U;', recovery)
         self.assertNotIn('g6_auto_recovery_diag.state = 2;', recovery)
-        usb = (ROOT / 'prj/usb_probe_auto_recovery.c').read_text(encoding='utf-8')
+        usb = (ROOT / 'board/prj/usb_probe_auto_recovery.c').read_text(encoding='utf-8')
         self.assertIn('XUsbPs_BoundedQuiesceInEndpointWithStatusWithLimit', usb)
         self.assertIn('XUsbPs_BoundedClearEndpointCompletion', usb)
         self.assertIn('eye_usb_rebuild_direction(u, 1U, XUSBPS_EP_DIRECTION_IN)', usb)
-        camera = (ROOT / 'src/ps/diag/g3_camera_auto_recovery.c').read_text(encoding='utf-8')
+        camera = (ROOT / 'board/src/ps/diag/g3_camera_auto_recovery.c').read_text(encoding='utf-8')
         reset = camera.split('int g6_candidate_recover_camera(void)', 1)[1]
         for evidence in ('configure_camera(CAMERA_AUTO_CFG)', 'route(1, 0)',
                          'g6_auto_recovery_diag.stage = 5;'):
             self.assertIn(evidence, reset)
-        g6 = (ROOT / 'src/ps/src/g6_usb.c').read_text(encoding='utf-8')
+        g6 = (ROOT / 'board/src/ps/src/g6_usb.c').read_text(encoding='utf-8')
         status14 = g6.split('if (status == 14U)', 1)[1].split('if (status == 15U)', 1)[0]
         self.assertLess(status14.index('secure_cleanup()'),
                         status14.index('g6_candidate_recover_camera()'))
@@ -88,7 +88,7 @@ class G6AutoRecovery(unittest.TestCase):
         self.assertIn('g3_usb_cleanup_wipe_frame_and_sealed', g6)
 
     def test_candidate_cleanup_integration_preserves_auto_recovery_gates(self):
-        source = (ROOT / 'src/ps/src/g6_usb.c').read_text(encoding='utf-8')
+        source = (ROOT / 'board/src/ps/src/g6_usb.c').read_text(encoding='utf-8')
         self.assertIn('#ifdef G6_SECURE_CLEANUP', source)
         status14 = source.split('if (status == 14U)', 1)[1].split('if (status == 15U)', 1)[0]
         self.assertLess(status14.index('g6_auto_recovery_diag.state = 1U'),
@@ -153,7 +153,7 @@ class G6AutoRecovery(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 runner.validate_trigger(changed, 1)
         self.assertEqual(runner.TRIGGER_NAMES, {'camera-reset': 1, 'routing-stall': 2})
-        route = (ROOT / 'src/rtl/common/axis_capture_route.sv').read_text(encoding='utf-8')
+        route = (ROOT / 'board/src/rtl/common/axis_capture_route.sv').read_text(encoding='utf-8')
         self.assertIn('Mode 3 disables all routes.', route)
 
     def test_recovery_receiver_is_no_jtag_and_has_fresh_session_checks(self):
@@ -162,7 +162,7 @@ class G6AutoRecovery(unittest.TestCase):
         self.assertIn('--no-jtag', command)
         self.assertIn('--report-key-fingerprint', command)
         self.assertIn('--drain-stop', command)
-        source = (ROOT / 'prj/run_g7_auto_recovery.py').read_text(encoding='utf-8')
+        source = (ROOT / 'board/prj/run_g7_auto_recovery.py').read_text(encoding='utf-8')
         self.assertIn("new.get('session_id') == old_sid", source)
         self.assertIn("new.get('video_key_sha256') == old_fp", source)
         self.assertIn('jtag_reload_for_recovery', source)
@@ -171,7 +171,7 @@ class G6AutoRecovery(unittest.TestCase):
         self.assertIn('verify_external_sources', source)
 
     def test_stop_drain_is_explicit_and_ordered_after_authenticated_stop(self):
-        board_spec = importlib.util.spec_from_file_location('g6_board_test', ROOT / 'src/host/g6_board.py')
+        board_spec = importlib.util.spec_from_file_location('g6_board_test', ROOT / 'pc/src/host/g6_board.py')
         board = importlib.util.module_from_spec(board_spec)
         board_spec.loader.exec_module(board)
         ser, decoder = object(), object()
@@ -188,7 +188,7 @@ class G6AutoRecovery(unittest.TestCase):
         drain.assert_called_once_with(ser, decoder, timeout=5.0, quiet=0.1)
 
     def test_quiet_drain_consumes_video_and_rejects_bad_final_framing(self):
-        board_spec = importlib.util.spec_from_file_location('g6_board_drain_test', ROOT / 'src/host/g6_board.py')
+        board_spec = importlib.util.spec_from_file_location('g6_board_drain_test', ROOT / 'pc/src/host/g6_board.py')
         board = importlib.util.module_from_spec(board_spec)
         board_spec.loader.exec_module(board)
 

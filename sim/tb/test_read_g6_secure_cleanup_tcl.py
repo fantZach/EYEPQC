@@ -6,7 +6,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "prj" / "read_g6_secure_cleanup.tcl"
+SCRIPT = ROOT / "board/prj" / "read_g6_secure_cleanup.tcl"
 VALID_ARGS = [
     "0x100000", "120",
     "0x100100", "64",

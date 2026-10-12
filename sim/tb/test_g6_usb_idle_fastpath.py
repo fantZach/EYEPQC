@@ -15,12 +15,12 @@ NATIVE_GCC_CANDIDATES = [
     r"C:\msys64\ucrt64\bin\gcc.exe",
 ]
 INCLUDES = [
-    ROOT / "src" / "ps" / "diag",
+    ROOT / "board" / "src" / "ps" / "diag",
     PINNED / "usb_bounded_sdk" / "src",
     PINNED / "bsp_inputs" / "ps7_cortexa9_0" / "include",
-    ROOT / "src" / "ps" / "include",
-    ROOT / "src" / "third_party",
-    ROOT / "prj",
+    ROOT / "board" / "src" / "ps" / "include",
+    ROOT / "board" / "src" / "third_party",
+    ROOT / "board/prj",
     Path(r"E:\fpg\2026.1\data\embeddedsw\XilinxProcessorIPLib\drivers\usbps_v2_11\examples"),
     Path(r"E:\fpg\2026.1\data\embeddedsw\lib\bsp\standalone_v9_5\src\common\intr"),
 ]

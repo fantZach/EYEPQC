@@ -37,9 +37,9 @@ class G7BatchHostSourceTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="eyepqc g7 host source ")
         self.temp_root = Path(self.temp.name)
         self.host_root = self.temp_root / "isolated host source root with spaces"
-        for relative in ("src/host", "data/captures", "report"):
+        for relative in ("pc/src/host", "data/captures", "report"):
             (self.host_root / relative).mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / "src/host/g6_board.py", self.host_root / "src/host/g6_board.py")
+        shutil.copy2(ROOT / "pc/src/host/g6_board.py", self.host_root / "pc/src/host/g6_board.py")
 
         self.workspace = self.temp_root / "workspace with spaces"
         (self.workspace / "g6_usb/build").mkdir(parents=True)
@@ -87,7 +87,7 @@ class G7BatchHostSourceTests(unittest.TestCase):
         self.assertIn("$case.rekey_hello_attempt_delta", source)
         self.assertIn("$case.rekey_ack_attempt_delta", source)
         self.assertIn("$postRekeyDiag.hello_ack_send_status -ne 0", source)
-        self.assertTrue((ROOT / "prj/capture_g6_rekey_diag.py").is_file())
+        self.assertTrue((ROOT / "board/prj/capture_g6_rekey_diag.py").is_file())
 
     def test_retry_number_ignores_diagnostic_json_sidecars(self) -> None:
         run_dir = self.temp_root / "batch evidence"

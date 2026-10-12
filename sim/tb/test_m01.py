@@ -11,13 +11,13 @@ import unittest
 from iverilog_runner import compile_iverilog
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "src/host"))
+sys.path.insert(0, str(ROOT / "pc/src/host"))
 from m01_probe import check_echo, run
 
 
 class M01(unittest.TestCase):
     def test_board_reset_polarity(self):
-        script = (ROOT / "prj/build_m01.tcl").read_text()
+        script = (ROOT / "board/prj/build_m01.tcl").read_text()
         self.assertIn("CONFIG.C_EXT_RESET_HIGH 0 CONFIG.C_AUX_RESET_HIGH 1", script)
         self.assertIn("[get_bd_pins ps7/FCLK_RESET0_N] [get_bd_pins reset_0/ext_reset_in]", script)
         self.assertIn("[get_bd_pins zero/dout] [get_bd_pins reset_0/aux_reset_in]", script)
@@ -32,7 +32,7 @@ class M01(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             output = str(Path(tmp) / "phy_check.exe")
             subprocess.run([gcc, "-Wall", "-Wextra", "-Werror",
-                            "-I", str(ROOT / "src/ps/src"),
+                            "-I", str(ROOT / "board/src/ps/src"),
                             str(ROOT / "sim/tb/test_yt8521.c"), "-o", output], check=True)
             subprocess.run([output], check=True, capture_output=True)
 
@@ -48,7 +48,7 @@ class M01(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "heartbeat.vvp"
             compile_iverilog([iverilog, "-g2012", "-s", "tb_heartbeat", "-o", str(output),
-                              str(ROOT / "src/rtl/common/heartbeat.sv"),
+                              str(ROOT / "board/src/rtl/common/heartbeat.sv"),
                               str(ROOT / "sim/tb/tb_heartbeat.sv")], output)
             result = subprocess.run([vvp, str(output)], check=True, capture_output=True, text=True)
             self.assertIn("HEARTBEAT_PASS", result.stdout)

@@ -1,8 +1,39 @@
 # Implementation progress
 
-更新：2026-10-11。实施依据 `doc/steps.md`，采用 Ponytail：复用密码库与标准库，
+更新：2026-10-12。实施依据 `doc/steps.md`，采用 Ponytail：复用密码库与标准库，
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
 当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。
+
+## 2026-10-12：开发板 / PC / 移动端目录拆分
+
+用户确认 USB Slave→PC 联网→移动端解密路线。源码归属调整为：`board/src/{rtl,ps,third_party}`、
+`board/prj/` 和 `pc/src/host/`，新增 `mobile/README.md` 定义接入职责与验收。
+根 README、三子项目说明、`doc/goals.md`、`doc/steps.md`、`doc/protocol.md` 与新 `doc/architecture.md`
+明确局域网先行、可选公网中转（归 PC 子项目维护）、单观看端、手机端握手与解密、PC 原样转发以及开发密钥边界。
+新增 M16～M19 / G8～G9 计划，板端以太网保持最后可选项。
+
+本次没有实现网络服务或移动端应用，也没有访问板卡。保留 PC 解密演示作为互操作参考；
+`sim/`、标准向量、Python 环境和根 PowerShell 入口共享。同步修正 Python 导入/仓库根定位、
+PowerShell/Tcl 源码路径、RTL 初始化文件路径及测试/文档命令；审阅包包含新目录的源码，仍拒绝本地密钥、
+output/vendor 等材料。第三方库和开源 AES 核只移动位置，未修改内容或许可证。
+
+历史报告内的旧路径与哈希保留，不改写旧构建清单或板测证据；旧 XSA/ELF/manifest 需在新输出目录重建并预检，
+不得将旧候选直接标为新布局已上板。G0/G7 及生产安全的待验状态保持不变。
+
+验证记录：
+
+- 首次广回归（`sim/tb` 加 3 个 Keccak 解析/runner 测试文件）在第 6 个失败处停止：151 passed、9 skipped、99 subtests passed，281.26 秒。
+  原因分别为 candidate009 本地 SDK/BSP 缺失（1 项）、两项 Keccak 仿真的默认工具路径仍指向旧机器 E 盘、
+  三项 USB SDK 测试缺少本地临时根目录。9 个 skip 为 candidate006d 本地构建不存在，不能视作通过。
+- 显式使用本机 `EYEPQC_TOOL_ROOT=D:/AmdDesignTools/2026.1`，补跑两项 Keccak XSim、USB recovery 和三个解析/runner 文件：
+  22 passed、7 subtests passed，11.71 秒；补齐忽略目录后 USB SDK 的 3 项测试通过（1.09 秒），未放宽哈希检查。
+- 审阅包三目录准入/敏感文件排除回归：9 passed、41 subtests passed（0.13 秒）。
+- Python 编译检查、所有仓库入口/板端 PowerShell 语法检查、固定依赖检查和 G6 `--help` 通过；
+  构建/主机源码中 276 个完整字面量路径引用存在，29 份当前说明中的相对 Markdown 链接均存在。
+
+本轮未完成全绿的全量回归：candidate009 fixture 检查仍受本地缺失产物阻塞；未重建 bitstream/ELF、未上板、未测试手机或公网。
+提交前快速 hook 仍仅 M00/M10/M12/G5，不增加全量回归到每次提交。
+本轮 `git hook run pre-commit` 四项全部通过（约 3.4 秒），暂存空白检查通过。
 
 ## 2026-10-11：G6 生产 profile 软件隔离
 

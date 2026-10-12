@@ -10,14 +10,14 @@ MVP 独立验收，不将 M01/G0、M07/M08 全 PL 或完整视频链路标为通
 
 AES 使用 [secworks/aes](https://github.com/secworks/aes)，固定提交
 `80dc4718e1dcbbdb4b0dd1bdb393d8f7b98981dc`。六份上游 RTL 原样保留，
-BSD-2-Clause 许可证在 `src/rtl/crypto/secworks_aes/LICENSE`，版权头不移除。
+BSD-2-Clause 许可证在 `board/src/rtl/crypto/secworks_aes/LICENSE`，版权头不移除。
 本地接口固定 AES-128 Encrypt，解密由主机负责；不自行实现 AES 算法。
 
-- `src/rtl/crypto/aes_axi_lite.sv`：独立 AW/W，单笔事务，背压与非法访问响应；
+- `board/src/rtl/crypto/aes_axi_lite.sv`：独立 AW/W，单笔事务，背压与非法访问响应；
   busy 时拒写，允许 ZEROIZE 中止操作，零化上游轮密钥与状态。
-- `src/ps/src/aes_image_mvp.c`：512 KiB 自有 DDR 自检、有界 AES 轮询、异常处理、密钥零化。
-- `src/ps/src/mvp_gcm.c`：可移植 GHASH/GCM；96-bit Nonce、完整 Tag、尾块与 AAD。
-- `src/host/aes_image_mvp.py`：新随机 key/nonce、构建哈希检查、原生 XSDB 传输、独立认证比对。
+- `board/src/ps/src/aes_image_mvp.c`：512 KiB 自有 DDR 自检、有界 AES 轮询、异常处理、密钥零化。
+- `board/src/ps/src/mvp_gcm.c`：可移植 GHASH/GCM；96-bit Nonce、完整 Tag、尾块与 AAD。
+- `pc/src/host/aes_image_mvp.py`：新随机 key/nonce、构建哈希检查、原生 XSDB 传输、独立认证比对。
 
 PL 时钟 100 MHz，AES 地址 `0x43c00000`；32-bit 寄存器按高字在先传递 AES 字节。
 `0x00` CTRL：1=初始化密钥、2=加密块、4=零化；`0x04` STATUS：bit0 busy、bit1 key-ready、
@@ -37,16 +37,16 @@ JTAG 处理期间只能读取未变化的 state，不读写正在由 PS 处理�
 
 ```powershell
 & ./.venv/Scripts/python.exe sim/tb/test_aes_mvp.py
-& ./prj/build_aes_mvp.ps1 -BuildName aes_mvp_demo
-& ./prj/capture_uart.ps1 -Port COM4 -Seconds 60
+& ./board/prj/build_aes_mvp.ps1 -BuildName aes_mvp_demo
+& ./board/prj/capture_uart.ps1 -Port COM4 -Seconds 60
 ```
 
 串口捕获运行期间，在另一个终端执行（COM4 仅用于日志，图片传输走 JTAG）：
 
 ```powershell
-& ./.venv/Scripts/python.exe src/host/aes_image_mvp.py --workspace build/vitis/aes_mvp_demo
+& ./.venv/Scripts/python.exe pc/src/host/aes_image_mvp.py --workspace build/vitis/aes_mvp_demo
 # 自选图片：在脚本后加文件路径，PNG/JPEG 均按原始文件字节处理。
-& ./.venv/Scripts/python.exe src/host/aes_image_mvp.py 'D:/pictures/test.jpg' --workspace build/vitis/aes_mvp_demo
+& ./.venv/Scripts/python.exe pc/src/host/aes_image_mvp.py 'D:/pictures/test.jpg' --workspace build/vitis/aes_mvp_demo
 ```
 
 工具默认位于 `D:/AmdDesignTools/2026.1`；构建使用 `-ToolRoot`，主机使用 `--tool-root` 修改。
@@ -100,7 +100,7 @@ Key/Nonce/AAD/密文/Tag 五类篡改均被主机拒绝，回读的板端 key/no
 首次 MVP 的历史实测命令与本地证据（图片、密钥和日志不提交 Git，当前优化版复测见下节）：
 
 ```powershell
-& ./.venv/Scripts/python.exe src/host/aes_image_mvp.py 'D:/pictures/camera_sample.jpg' --workspace build/vitis/aes_mvp_3 --output data/captures/aes_mvp_userjpg_1
+& ./.venv/Scripts/python.exe pc/src/host/aes_image_mvp.py 'D:/pictures/camera_sample.jpg' --workspace build/vitis/aes_mvp_3 --output data/captures/aes_mvp_userjpg_1
 ```
 
 已存在的输出不可覆盖；复测须省略 `--output` 或改用新目录。
@@ -169,7 +169,7 @@ MVP RESULT bytes=524288 status=0 elapsed_us=6820005
 当前优化版复测：在另一终端先运行 `capture_uart.ps1`，再执行：
 
 ```powershell
-& ./.venv/Scripts/python.exe src/host/aes_image_mvp.py 'D:/pictures/camera_sample.jpg' --workspace build/vitis/aes_mvp_o3_word_1
+& ./.venv/Scripts/python.exe pc/src/host/aes_image_mvp.py 'D:/pictures/camera_sample.jpg' --workspace build/vitis/aes_mvp_o3_word_1
 ```
 
 新机器可直接按前文完整构建；本次复用已验证 XSA，只重建了软件，原生 Vitis 命令为：
@@ -178,7 +178,7 @@ MVP RESULT bytes=524288 status=0 elapsed_us=6820005
 $env:EYEPQC_MVP_XSA = (Resolve-Path build/vivado/aes_mvp_2/m01.xsa).Path
 $env:EYEPQC_MVP_VITIS = Join-Path (Get-Location).Path 'build/vitis/aes_mvp_optimized_new'
 $env:EYEPQC_TOOL_ROOT = 'D:/AmdDesignTools/2026.1'
-& 'D:/AmdDesignTools/2026.1/Vitis/bin/vitis.bat' -s prj/build_aes_mvp.py
+& 'D:/AmdDesignTools/2026.1/Vitis/bin/vitis.bat' -s board/prj/build_aes_mvp.py
 ```
 
 须使用全新软件目录，并检查 `AES_MVP_ELF_OK` 和新 `build_manifest.json`，不能只相信 batch 退出码。

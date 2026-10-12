@@ -19,7 +19,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'src/host'))
+sys.path.insert(0, str(ROOT / 'pc/src/host'))
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from PIL import Image
@@ -184,12 +184,12 @@ class G6(unittest.TestCase):
         folder = Path(cls.temp.name)
         cls.kem = Kem(build(folder / 'kem.dll'))
         library = folder / 'session.dll'
-        sources = ['src/ps/src/session.c', 'src/ps/src/protocol.c',
-                   'src/third_party/tinycrypt/lib/source/sha256.c',
-                   'src/third_party/tinycrypt/lib/source/utils.c']
+        sources = ['board/src/ps/src/session.c', 'board/src/ps/src/protocol.c',
+                   'board/src/third_party/tinycrypt/lib/source/sha256.c',
+                   'board/src/third_party/tinycrypt/lib/source/utils.c']
         subprocess.run([os.environ.get('CC', 'gcc'), '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
-                        '-shared', '-fPIC', '-I', str(ROOT / 'src/ps/include'), '-I',
-                        str(ROOT / 'src/third_party/tinycrypt/lib/include'),
+                        '-shared', '-fPIC', '-I', str(ROOT / 'board/src/ps/include'), '-I',
+                        str(ROOT / 'board/src/third_party/tinycrypt/lib/include'),
                         *[str(ROOT / p) for p in sources], '-o', str(library)], check=True)
         cls.lib = ct.CDLL(str(library))
         setup(cls.lib)

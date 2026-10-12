@@ -14,9 +14,9 @@ class M05(unittest.TestCase):
     def test_native_integration_reset(self):
         with tempfile.TemporaryDirectory() as directory:
             work=Path(directory)
-            shutil.copyfile(ROOT/'src/rtl/camera/ov5640_jpeg.mem',work/'ov5640_jpeg.mem')
-            sources=[*sorted((ROOT/'src/rtl/camera').glob('*.sv')),
-                     ROOT/'src/rtl/common/axis_byte_packer.sv',ROOT/'src/rtl/common/axis_capture_route.sv',
+            shutil.copyfile(ROOT/'board/src/rtl/camera/ov5640_jpeg.mem',work/'ov5640_jpeg.mem')
+            sources=[*sorted((ROOT/'board/src/rtl/camera').glob('*.sv')),
+                     ROOT/'board/src/rtl/common/axis_byte_packer.sv',ROOT/'board/src/rtl/common/axis_capture_route.sv',
                      ROOT/'sim/tb/tb_camera_dma_top.sv']
             xvlog=vivado_tool('xvlog')
             glbl=Path(xvlog).parent.parent/'data/verilog/src/glbl.v'
@@ -27,7 +27,7 @@ class M05(unittest.TestCase):
             print(next(line for line in output.splitlines() if 'M05_NATIVE_PASS' in line))
 
     def test_completed_owned_frame(self):
-        spec=importlib.util.spec_from_file_location('m05_dma',ROOT/'src/host/m05_dma.py')
+        spec=importlib.util.spec_from_file_location('m05_dma',ROOT/'pc/src/host/m05_dma.py')
         host=importlib.util.module_from_spec(spec)
         spec.loader.exec_module(host)
         image=b'\xff\xd8\x01\x02\xff\xd9'
@@ -51,13 +51,13 @@ class M05(unittest.TestCase):
             work=Path(directory)
             executable=work/'route.vvp'
             compile_iverilog([tool('iverilog'),'-g2012','-s','tb_axis_capture_route','-o',str(executable),
-                str(ROOT/'src/rtl/common/axis_capture_route.sv'),str(ROOT/'sim/tb/tb_axis_capture_route.sv')], executable)
+                str(ROOT/'board/src/rtl/common/axis_capture_route.sv'),str(ROOT/'sim/tb/tb_axis_capture_route.sv')], executable)
             out=subprocess.check_output([tool('vvp'),str(executable)],text=True,timeout=10)
             self.assertIn('AXIS_ROUTE_PASS',out)
             gcc=shutil.which('gcc') or 'C:/msys64/ucrt64/bin/gcc.exe'
             executable=work/'buffers.exe'
             subprocess.run([gcc,'-std=c99','-Wall','-Wextra','-Werror','-pedantic',
-                '-I',str(ROOT/'src/ps/include'),str(ROOT/'sim/tb/test_dma_buffers.c'),'-o',str(executable)],check=True)
+                '-I',str(ROOT/'board/src/ps/include'),str(ROOT/'sim/tb/test_dma_buffers.c'),'-o',str(executable)],check=True)
             out+=subprocess.check_output([str(executable)],text=True,timeout=10)
             self.assertIn('DMA_BUFFERS_PASS rounds=10000',out)
             print(out,end='')

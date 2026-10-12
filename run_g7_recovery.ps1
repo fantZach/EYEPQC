@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$Workspace = 'build/vitis/usbfix3_20261007',
     [string]$ToolRoot = $(if ($env:EYEPQC_TOOL_ROOT) { $env:EYEPQC_TOOL_ROOT } else { 'E:/fpg/2026.1' }),
     [int]$Seconds = 10,
@@ -29,7 +29,7 @@ Push-Location $root
 try {
     $env:EYEPQC_TOOL_ROOT = $toolPath
     if (Test-Path -LiteralPath 'C:/msys64/ucrt64/bin') { $env:PATH = 'C:/msys64/ucrt64/bin;' + $env:PATH }
-    & $python prj/verify_software.py $workspacePath
+    & $python board/prj/verify_software.py $workspacePath
     if ($LASTEXITCODE -ne 0) { throw 'G7_NOT_RUN: software preflight failed.' }
     if ($CheckOnly) {
         'G7_PROMPT_PREFLIGHT_OK board_accessed=false physical_action=false'
@@ -106,7 +106,7 @@ try {
     }
     function Invoke-G6Fresh([string]$Label, [switch]$LoadFirmware) {
         $started = [DateTime]::UtcNow
-        $nativeArgs = @('src/host/g6_board.py','--workspace',$workspacePath,'--tool-root',$toolPath,
+        $nativeArgs = @('pc/src/host/g6_board.py','--workspace',$workspacePath,'--tool-root',$toolPath,
                         '--sessions','1','--seconds',"$Seconds",'--wait-cdc',"$WaitTimeoutSeconds")
         if ($Label -eq 'baseline') { $nativeArgs += '--fault-check' }
         if (!$LoadFirmware) { $nativeArgs += '--no-jtag' }
@@ -127,7 +127,7 @@ try {
         $stamp = Get-Date -Format 'yyyyMMdd_HHmmss_fff'
         $stdout = Join-Path $logDir "$Label`_$stamp.stdout.log"
         $stderr = Join-Path $logDir "$Label`_$stamp.stderr.log"
-        $args = @('src/host/g6_board.py','--workspace',$workspacePath,'--tool-root',$toolPath,
+        $args = @('pc/src/host/g6_board.py','--workspace',$workspacePath,'--tool-root',$toolPath,
                   '--no-jtag','--sessions','1','--seconds','600','--wait-cdc',"$WaitTimeoutSeconds")
         $p = Start-Process -FilePath $python -ArgumentList $args -WorkingDirectory $root `
             -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr

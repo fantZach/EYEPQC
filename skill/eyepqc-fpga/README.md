@@ -16,7 +16,7 @@
 3. **核对构建身份。** 使用项目 manifest 验证脚本对源输入和产物做 SHA-256 核对，再核对器件 part、匹配 XSA/BSP 和候选 manifest。`board_validated=false` 是构建状态，不得由哈希通过自动改成 `true`。
 
    ```powershell
-   .venv\Scripts\python.exe src/host/g6_board.py `
+   .venv\Scripts\python.exe pc/src/host/g6_board.py `
      --workspace build/vitis/g6_secure_cleanup_20261011_candidate012_tx_ownership_r3 `
      --verify-only
    ```
@@ -24,7 +24,7 @@
    示例输出：`G6_PREFLIGHT_OK hashes=197 board_accessed=false`。该命令只验证文件，不连接板卡。
 
 4. **审阅实现时序。** 阅读与目标 XSA 对应的 implementation timing summary，确认 WNS、WHS、TNS、THS 和 failing endpoints；记录报告对应的构建身份。仅凭 bitstream 存在或工具返回成功不能判定时序闭合。
-5. **处理 DMA/DDR 所有权。** 先确认每个 buffer 的生产者/消费者和缓存属性，再按该驱动的 DMA 方向、对齐、缓存行和完成语义安排 flush/invalidate 与内存屏障。检查数据 buffer、guard 和描述符等元数据的所有权交接；CPU 只有在设备完成并完成必要的 cache 同步后才读取数据。项目实例位于 `src/ps/src/camera_dma.c` 与 `src/ps/include/usb_recovery.h`。这些例子不能直接替代目标 BSP/驱动文档。
+5. **处理 DMA/DDR 所有权。** 先确认每个 buffer 的生产者/消费者和缓存属性，再按该驱动的 DMA 方向、对齐、缓存行和完成语义安排 flush/invalidate 与内存屏障。检查数据 buffer、guard 和描述符等元数据的所有权交接；CPU 只有在设备完成并完成必要的 cache 同步后才读取数据。项目实例位于 `board/src/ps/src/camera_dma.c` 与 `board/src/ps/include/usb_recovery.h`。这些例子不能直接替代目标 BSP/驱动文档。
 6. **分层安排板测。** 先跑单次、可恢复的基线，再跑具体故障单轮；单轮通过后才进入重复批次。写明是否下载 JTAG、是否有断电或物理拔插、是否写入 SD/Flash/eFuse。失败保留在汇总中。
 7. **报告限制。** 把主机应用层接收、USB 控制器完成、设备端 dTD 完成和帧认证作为不同证据。对照同构建的正常基线有助于缩小故障范围，但不等于故障场景通过。
 
@@ -32,10 +32,10 @@
 
 | 可复用方法 | 本项目证据 | 结果与边界 |
 |---|---|---|
-| 构建哈希预检 | candidate012 r3，`src/host/g6_board.py --verify-only` | 197 项检查通过，工具报告 `board_accessed=false`。这证明选定输入/产物与 manifest 一致，不证明板测通过。 |
+| 构建哈希预检 | candidate012 r3，`pc/src/host/g6_board.py --verify-only` | 197 项检查通过，工具报告 `board_accessed=false`。这证明选定输入/产物与 manifest 一致，不证明板测通过。 |
 | implementation timing 核对 | `report/keccak_sponge_x4_capture_fix_20261011.md` 的独立 KX41 候选 XSA | fully routed，WNS `+0.029 ns`、WHS `+0.082 ns`、失败端点 0。只适用于该独立候选，不能外推到视频工程。 |
 | 设备端与主机端分层诊断 | `report/g7_candidate012_tx_ownership_board_20261011.md` | receiver-exit 单轮中 51 字节 EP1 IN dTD 报告完成而主机 39 次读取仍为 0 字节；同构建普通 CDC 重连后认证 141 帧。故障根因仍未知，不能把 dTD 完成或普通重连当成 G7 通过。 |
-| DMA/DDR 所有权审阅 | `src/ps/src/camera_dma.c`、`src/ps/include/usb_recovery.h`；受控恢复证据见 `report/g7_candidate006d_acceptance_20261010.md` | 源码中的缓存维护与受控故障恢复记录可作为审阅案例；不能代替新板型上的缓存一致性测试，也不能外推到未测的 DMA 错误场景。 |
+| DMA/DDR 所有权审阅 | `board/src/ps/src/camera_dma.c`、`board/src/ps/include/usb_recovery.h`；受控恢复证据见 `report/g7_candidate006d_acceptance_20261010.md` | 源码中的缓存维护与受控故障恢复记录可作为审阅案例；不能代替新板型上的缓存一致性测试，也不能外推到未测的 DMA 错误场景。 |
 
 ## 复用时的输入与输出
 
@@ -52,7 +52,7 @@
 
 ## 在本仓库复核
 
-- 构建身份：`src/host/build_manifest.py`、`src/host/g6_board.py --verify-only`
-- DMA/缓存：`src/ps/src/camera_dma.c`、`src/ps/include/usb_recovery.h`
-- 时序检查：`prj/keccak_sponge_x4_system_build.py`、`prj/keccak_sponge_x4_firmware_build.py`
+- 构建身份：`pc/src/host/build_manifest.py`、`pc/src/host/g6_board.py --verify-only`
+- DMA/缓存：`board/src/ps/src/camera_dma.c`、`board/src/ps/include/usb_recovery.h`
+- 时序检查：`board/prj/keccak_sponge_x4_system_build.py`、`board/prj/keccak_sponge_x4_firmware_build.py`
 - 验收口径：`report/acceptance_matrix_20261009.md`

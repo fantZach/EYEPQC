@@ -25,8 +25,8 @@ def tool(name):
 class M02(unittest.TestCase):
     def test_register_facts(self):
         self.assertIn("set_property synth_checkpoint_mode None [get_files system.bd]",
-                      (ROOT / "prj/build_m01.tcl").read_text())
-        words = [line.strip() for line in (ROOT / "src/rtl/camera/ov5640_jpeg.mem").read_text().splitlines()
+                      (ROOT / "board/prj/build_m01.tcl").read_text())
+        words = [line.strip() for line in (ROOT / "board/src/rtl/camera/ov5640_jpeg.mem").read_text().splitlines()
                  if line.strip() and not line.startswith("//")]
         self.assertEqual(len(words), 251)
         self.assertEqual(words[:3], ["300882", "300802", "310302"])
@@ -51,7 +51,7 @@ class M02(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "test.vvp"
             compile_iverilog([tool("iverilog"), "-g2012", "-Wall", "-s", name,
-                "-o", str(output), *map(str, sorted((ROOT / "src/rtl/camera").glob("*.sv"))),
+                "-o", str(output), *map(str, sorted((ROOT / "board/src/rtl/camera").glob("*.sv"))),
                 str(ROOT / "sim/tb/ov5640_model.sv"), str(ROOT / f"sim/tb/{name}.sv")], output)
             result = subprocess.run([tool("vvp"), str(output)], check=True,
                                     capture_output=True, text=True, timeout=60, cwd=ROOT)
@@ -73,23 +73,23 @@ class M02(unittest.TestCase):
                 fake = work / "Vivado/bin/xsdb.bat"
                 fake.parent.mkdir(parents=True)
                 fake.write_text("@echo off\necho M02 camera configuration failed\nexit /b 0\n")
-                result = subprocess.run([shell, "-NoProfile", "-File", str(ROOT / "prj/run_m02_jtag.ps1"),
+                result = subprocess.run([shell, "-NoProfile", "-File", str(ROOT / "board/prj/run_m02_jtag.ps1"),
                     "-ToolRoot", str(work), "-LogPath", str(work / "failure.log")], capture_output=True, text=True)
                 self.assertNotEqual(result.returncode, 0, "Do not accept xsdb's zero exit after a Tcl error")
                 fake.write_text("@echo off\necho M02_JTAG_OK sensor_resets=1 test\nexit /b 0\n")
-                result = subprocess.run([shell, "-NoProfile", "-File", str(ROOT / "prj/run_m02_jtag.ps1"),
+                result = subprocess.run([shell, "-NoProfile", "-File", str(ROOT / "board/prj/run_m02_jtag.ps1"),
                     "-ToolRoot", str(work), "-SensorResets", "1", "-LogPath", str(work / "one_reset.log")],
                     capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn("M02_JTAG_OK sensor_resets=1", (work / "one_reset.log").read_text())
                 fake.write_text("@echo off\necho M02_JTAG_EXPECTED_FAILURE sensor_resets=1 configured=0 capture_resetn=0 failed=1 error=2 status=02020000\nexit /b 0\n")
-                result = subprocess.run([shell, "-NoProfile", "-File", str(ROOT / "prj/run_m02_jtag.ps1"),
+                result = subprocess.run([shell, "-NoProfile", "-File", str(ROOT / "board/prj/run_m02_jtag.ps1"),
                     "-ToolRoot", str(work), "-SensorResets", "1", "-ExpectCameraFailure",
                     "-LogPath", str(work / "expected_failure.log")], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn("M02_JTAG_EXPECTED_FAILURE", (work / "expected_failure.log").read_text())
                 fake.write_text("@echo off\necho M02_JTAG_EXPECTED_FAILURE sensor_resets=1 configured=0 capture_resetn=0 failed=1 error=0 status=02020000\nexit /b 0\n")
-                result = subprocess.run([shell, "-NoProfile", "-File", str(ROOT / "prj/run_m02_jtag.ps1"),
+                result = subprocess.run([shell, "-NoProfile", "-File", str(ROOT / "board/prj/run_m02_jtag.ps1"),
                     "-ToolRoot", str(work), "-SensorResets", "1", "-ExpectCameraFailure",
                     "-LogPath", str(work / "invalid_expected_failure.log")], capture_output=True, text=True)
                 self.assertNotEqual(result.returncode, 0, "Reject an expected failure without a controller error code")

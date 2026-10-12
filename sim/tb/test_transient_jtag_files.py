@@ -10,8 +10,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "src/host"))
-sys.path.insert(0, str(ROOT / "prj"))
+sys.path.insert(0, str(ROOT / "pc/src/host"))
+sys.path.insert(0, str(ROOT / "board/prj"))
 
 import m09
 import m10_board

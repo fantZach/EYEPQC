@@ -11,17 +11,17 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = ROOT / "sim" / "tb" / "test_g6_production_profile.c"
 INCLUDES = [
-    ROOT / "src" / "ps" / "include",
-    ROOT / "src" / "third_party",
-    ROOT / "src" / "third_party" / "tinycrypt" / "lib" / "include",
+    ROOT / "board" / "src" / "ps" / "include",
+    ROOT / "board" / "src" / "third_party",
+    ROOT / "board" / "src" / "third_party" / "tinycrypt" / "lib" / "include",
 ]
 SOURCES = [
     HARNESS,
-    ROOT / "src" / "ps" / "src" / "session.c",
-    ROOT / "src" / "ps" / "src" / "g6_hmac_drbg.c",
-    ROOT / "src" / "ps" / "src" / "protocol.c",
-    ROOT / "src" / "third_party" / "tinycrypt" / "lib" / "source" / "sha256.c",
-    ROOT / "src" / "third_party" / "tinycrypt" / "lib" / "source" / "utils.c",
+    ROOT / "board" / "src" / "ps" / "src" / "session.c",
+    ROOT / "board" / "src" / "ps" / "src" / "g6_hmac_drbg.c",
+    ROOT / "board" / "src" / "ps" / "src" / "protocol.c",
+    ROOT / "board" / "src" / "third_party" / "tinycrypt" / "lib" / "source" / "sha256.c",
+    ROOT / "board" / "src" / "third_party" / "tinycrypt" / "lib" / "source" / "utils.c",
 ]
 GCC_CANDIDATES = [
     os.environ.get("CC", ""),

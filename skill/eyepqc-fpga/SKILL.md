@@ -18,7 +18,7 @@
 ## 项目入口
 
 - 规则与阶段依赖：`doc/steps.md`
-- 构建/板卡输入：`board/README.md`、`prj/`
+- 构建/板卡输入：`board/README.md`、`board/prj/`
 - 主机测试：`sim/tb/`；提交钩子：`.githooks/pre-commit`
 - 当前证据和未完成项：`report/progress.md`、`report/competition_submission.md`
 - G3 首次 JTAG 验收：`report/pc_build.md`

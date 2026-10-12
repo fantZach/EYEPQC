@@ -11,7 +11,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-RTL = ROOT / "src/rtl/crypto"
+RTL = ROOT / "board/src/rtl/crypto"
 TB = ROOT / "sim/tb"
 sys.path.insert(0, str(TB))
 from iverilog_runner import compile_iverilog

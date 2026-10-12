@@ -50,7 +50,7 @@ USB 是内存字节流，GCM 和图像是软件生成，帧率不是 FPGA/实机
 ```powershell
 & ./.venv/Scripts/python.exe sim/tb/test_demo.py
 & ./.venv/Scripts/python.exe sim/tb/test_g6.py
-& ./.venv/Scripts/python.exe prj/check_demo_gui.py
+& ./.venv/Scripts/python.exe board/prj/check_demo_gui.py
 ```
 
 前两项验证控制器、记录完整性及认证回调，GUI 检查需要可用桌面和 Tk，会临时打开离线窗口，
@@ -66,12 +66,12 @@ USB 是内存字节流，GCM 和图像是软件生成，帧率不是 FPGA/实机
 
 ```powershell
 $env:PATH = "C:/msys64/ucrt64/bin;$env:PATH"
-& ./.venv/Scripts/python.exe prj/check_demo_live.py --offline-smoke --record-seconds 10 --output build/demo-live-smoke
+& ./.venv/Scripts/python.exe board/prj/check_demo_live.py --offline-smoke --record-seconds 10 --output build/demo-live-smoke
 ```
 
 只有去掉 `--offline-smoke` 才会打开板卡 USB CDC；该实机验收命令独立运行，不属于 `-Mode Check`，并应在 USB/JTAG 测试串行交接后执行：
 
 ```powershell
 $env:PATH = "C:/msys64/ucrt64/bin;$env:PATH"
-& ./.venv/Scripts/python.exe prj/check_demo_live.py --workspace build/vitis/usbfix3_20261007 --record-seconds 15
+& ./.venv/Scripts/python.exe board/prj/check_demo_live.py --workspace build/vitis/usbfix3_20261007 --record-seconds 15
 ```

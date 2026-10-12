@@ -42,15 +42,15 @@ class SessionFailClosedTests(unittest.TestCase):
         suffix = ".dll" if os.name == "nt" else ".so"
         cls.library_path = Path(cls.temp.name) / ("session" + suffix)
         sources = [
-            "src/ps/src/session.c",
-            "src/ps/src/protocol.c",
-            "src/third_party/tinycrypt/lib/source/sha256.c",
-            "src/third_party/tinycrypt/lib/source/utils.c",
+            "board/src/ps/src/session.c",
+            "board/src/ps/src/protocol.c",
+            "board/src/third_party/tinycrypt/lib/source/sha256.c",
+            "board/src/third_party/tinycrypt/lib/source/utils.c",
         ]
         command = [
             os.environ.get("CC", "gcc"), "-std=c11", "-O2", "-Wall", "-Wextra",
-            "-Werror", "-shared", "-fPIC", "-I", str(ROOT / "src/ps/include"),
-            "-I", str(ROOT / "src/third_party/tinycrypt/lib/include"),
+            "-Werror", "-shared", "-fPIC", "-I", str(ROOT / "board/src/ps/include"),
+            "-I", str(ROOT / "board/src/third_party/tinycrypt/lib/include"),
             *(str(ROOT / source) for source in sources), "-o", str(cls.library_path),
         ]
         subprocess.run(command, check=True, capture_output=True, text=True)

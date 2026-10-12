@@ -11,7 +11,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location(
-    "capture_g6_rekey_diag", ROOT / "prj/capture_g6_rekey_diag.py")
+    "capture_g6_rekey_diag", ROOT / "board/prj/capture_g6_rekey_diag.py")
 capture_tool = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(capture_tool)
 

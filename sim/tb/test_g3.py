@@ -7,7 +7,7 @@ import sys
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src/host"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "pc/src/host"))
 from g3_board import CHUNK, verify
 
 key, prefix = bytes(range(16)), bytes(range(8))
@@ -29,7 +29,7 @@ for n in (4, 1399, 1400, 1401, 2801, 65536):
         pass
     else:
         raise AssertionError("G3 accepted a modified Tag")
-assert subprocess.run([sys.executable, str(Path(__file__).resolve().parents[2] / "src/host/g3_board.py"),
+assert subprocess.run([sys.executable, str(Path(__file__).resolve().parents[2] / "pc/src/host/g3_board.py"),
                        "unused", "--fast", "--vts", "976"],
                       capture_output=True).returncode == 2
 print("G3_HOST_PASS lengths=6 tamper=6 vts_floor=1000")

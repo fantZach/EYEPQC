@@ -8,7 +8,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "sim" / "tb" / "test_g6_control_dispatch.c"
-INCLUDE = ROOT / "src" / "ps" / "include"
+INCLUDE = ROOT / "board" / "src" / "ps" / "include"
 
 
 def test_g6_control_dispatch_real_header_harness():

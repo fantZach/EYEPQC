@@ -15,7 +15,7 @@ import imageio_ffmpeg
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'src/host'))
+sys.path.insert(0, str(ROOT / 'pc/src/host'))
 from PIL import Image
 from demo_controller import DemoController
 from demo_offline import OfflineBoard

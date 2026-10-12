@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DRIVER_ROOT = Path(os.environ.get("EYEPQC_TOOL_ROOT", "E:/fpg/2026.1")) / (
     "Vitis/data/embeddedsw/XilinxProcessorIPLib/drivers/usbps_v2_11"
 )
-GENERATOR = ROOT / "prj" / "prepare_usb_bounded_sdk.py"
+GENERATOR = ROOT / "board/prj" / "prepare_usb_bounded_sdk.py"
 MOCK_C = ROOT / "sim" / "tb" / "test_usb_bounded_sdk_mock.c"
 CH9_MOCK_C = ROOT / "sim" / "tb" / "test_usb_bounded_ch9_mock.c"
 INTR_MOCK_C = ROOT / "sim" / "tb" / "test_usb_bounded_intr_mock.c"
@@ -384,7 +384,7 @@ void XUsbPs_SetInterfaceHandler(XUsbPs *, XUsbPs_SetupData *);
             [gcc, "-std=c11", "-w", "-ffunction-sections", "-fdata-sections",
              "-Wl,--gc-sections", "-DSDT", "-DUSB_LIBRARY", "-DG6_USB",
              "-I", str(overlay), "-I", str(temp), "-I", str(stubs),
-             "-I", str(ROOT / "src/ps/include"), "-I", str(ROOT / "prj"),
+             "-I", str(ROOT / "board/src/ps/include"), "-I", str(ROOT / "board/prj"),
              str(INTR_MOCK_C), "-o", str(exe)],
             capture_output=True, text=True,
         )

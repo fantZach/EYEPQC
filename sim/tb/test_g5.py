@@ -6,7 +6,7 @@ import unittest
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src/host"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "pc/src/host"))
 from protocol import encode_video, make_nonce, packet_header
 from usb_live import G5_TEST_KEY, decrypt_g5_packet
 

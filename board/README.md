@@ -1,4 +1,32 @@
-# Board inputs for M01
+# 开发板子项目
+
+负责领航者 CF7020B（XC7Z020）的 PL/PS 实现及构建调试。板端继续使用 Vitis Standalone + USB0 Slave，
+采集 OV5640 JPEG、完成 ML-KEM Decaps 和 AES-GCM 加密，将密文交给 PC 转发。
+目标架构见 [三端架构](../doc/architecture.md)，共享协议见 [protocol](../doc/protocol.md)。
+
+| 目录 | 内容 |
+|---|---|
+| `src/rtl/` | 摄像头、异步 FIFO、AXIS、AES-GCM 与独立 Keccak 实验 |
+| `src/ps/` | 裸机固件、协议、会话、DMA/USB 驱动适配与诊断 |
+| `src/third_party/` | 固定版本 ML-KEM / 哈希库及许可证；PC 黄金参考也复用这些源码 |
+| `prj/` | Vivado/Vitis、JTAG、构建预检、板测和交付辅助脚本 |
+| `xdc/` | 板级引脚与时序约束 |
+| `vendor/`、`output/` | 本地官方资料和生成/测试材料，Git 忽略 |
+
+从仓库根目录执行：
+
+```powershell
+& ./sim/scripts/run_m01.ps1
+& ./board/prj/check_environment.ps1 -ToolRoot 'D:/AmdDesignTools/2026.1'
+# 构建不等于上板验收，使用新的输出名称：
+& ./board/prj/build_m01.ps1 -ToolRoot 'D:/AmdDesignTools/2026.1' -BuildName m01_layout
+```
+
+迁移前 `build/` 中的 manifest 与工程包含旧路径，需按新目录重新构建和预检。
+板测、生产安全、G0/G7 状态以 [最新进度](../report/progress.md) 为准；以下为早期硬件资料研究，
+其中设备枚举描述只代表记录当时，不代表当前连接状态。
+
+## M01 硬件资料
 
 官方硬件资料目录需由使用者自行提供；例程源码位于该目录的 `4_Source_Code` 子目录，包含
 `1_FPGA_Design/ZYNQ_7020_FPGA.rar`、`2_Embedded_Vitis/ZYNQ_Vitis_7020.rar`。
@@ -7,7 +35,7 @@
 来源 SHA-256、摄像头引脚、PS 参数、完整数据链路和问题见 [官方例程研究](../report/vendor_examples.md)。
 
 原始源码位于本地 `board/vendor/`（Git 忽略），清单保存在 `board/vendor/manifest.json`。
-导入脚本为 `prj/import_vendor.ps1`；仅在空目录使用，现有文件不会被覆盖。
+导入脚本为 `board/prj/import_vendor.ps1`；仅在空目录使用，现有文件不会被覆盖。
 用户提供的实物照片可读到底板 `ATK-DIY7010/7020P`、核心板 `CF7010B/7020B`，并有 `ZYNQ 7020` 标签；摄像头模组标记为 `ATK-MC5640 V1.2`。照片未显示 Zynq 芯片顶面完整激光料号，首次下载前仍以 JTAG IDCODE 和核心板修订资料核对 `xc7z020clg400-2`。当前设备枚举未发现 JTAG 下载器，因此新 G3 镜像尚未在这块实物上验证。
 特别注意：hello/echo 等工程配置 DDR3L `MT41K256M16`，摄像头工程配置 DDR3 `MT41J256M16`；
 未核对核心板丝印/供电前不能混用这两套 DDR 参数。
@@ -51,7 +79,7 @@ CLI 示例位于安装目录的 `Vitis/cli/examples`；不使用旧 XSCT 项目�
 运行环境预检（返回 2 表示工具或官方资料待补齐）：
 
 ```powershell
-& ./prj/check_environment.ps1 -ToolRoot 'D:/AmdDesignTools/2026.1'
+& ./board/prj/check_environment.ps1 -ToolRoot 'D:/AmdDesignTools/2026.1'
 ```
 
 预检只列出工具、候选资料和串口，不下载固件、不改写板卡，也不能替代 G0 上板测试。

@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
-    'run_g7_camera_reset_dma', ROOT / 'prj/run_g7_camera_reset_dma.py')
+    'run_g7_camera_reset_dma', ROOT / 'board/prj/run_g7_camera_reset_dma.py')
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
 

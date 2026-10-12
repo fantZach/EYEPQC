@@ -18,20 +18,20 @@ try {
     if ($Offline -and $Mode -ne 'Demo') { throw '-Offline is available only for Demo.' }
     if (Test-Path -LiteralPath 'C:/msys64/ucrt64/bin') { $env:PATH = 'C:/msys64/ucrt64/bin;' + $env:PATH }
     switch ($Mode) {
-        'Check' { & $python prj/check_software.py --tool-root $ToolRoot }
-        'Build' { & $python prj/build_software.py --xsa $Xsa --output $Workspace --tool-root $ToolRoot --boot-images }
-        'Prepare' { & $python prj/prepare_demo.py }
-        'Preflight' { & $python prj/verify_software.py $Workspace }
-        'JtagCheck' { & $python prj/check_jtag.py --tool-root $ToolRoot }
+        'Check' { & $python board/prj/check_software.py --tool-root $ToolRoot }
+        'Build' { & $python board/prj/build_software.py --xsa $Xsa --output $Workspace --tool-root $ToolRoot --boot-images }
+        'Prepare' { & $python board/prj/prepare_demo.py }
+        'Preflight' { & $python board/prj/verify_software.py $Workspace }
+        'JtagCheck' { & $python board/prj/check_jtag.py --tool-root $ToolRoot }
         'G3' {
-            & $python prj/verify_software.py $Workspace
+            & $python board/prj/verify_software.py $Workspace
             if ($LASTEXITCODE -ne 0) { throw 'Software preflight failed' }
-            & $python src/host/g3_board.py $Workspace --boot --count 1 --tool-root $ToolRoot
+            & $python pc/src/host/g3_board.py $Workspace --boot --count 1 --tool-root $ToolRoot
         }
         'G6' {
-            & $python prj/verify_software.py $Workspace
+            & $python board/prj/verify_software.py $Workspace
             if ($LASTEXITCODE -ne 0) { throw 'Software preflight failed' }
-            $arguments = @('src/host/g6_board.py', '--workspace', $Workspace, '--tool-root', $ToolRoot,
+            $arguments = @('pc/src/host/g6_board.py', '--workspace', $Workspace, '--tool-root', $ToolRoot,
                            '--seconds', $Seconds, '--sessions', '2', '--fault-check')
             if ($Show) { $arguments += '--show' }
             & $python @arguments
@@ -41,7 +41,7 @@ try {
                 -Seconds ([Math]::Max(2, [Math]::Ceiling($Seconds)))
         }
         'Demo' {
-            $arguments = @('src/host/demo_window.py', '--workspace', $Workspace)
+            $arguments = @('pc/src/host/demo_window.py', '--workspace', $Workspace)
             if ($Offline) { $arguments += '--offline' }
             & $python @arguments
         }

@@ -17,15 +17,15 @@ $root = $PSScriptRoot
 $hostSourceRoot = [IO.Path]::GetFullPath($HostSourceRoot)
 $workspace = if ([IO.Path]::IsPathRooted($Workspace)) { [IO.Path]::GetFullPath($Workspace) } else { [IO.Path]::GetFullPath((Join-Path $root $Workspace)) }
 $python = Join-Path $root '.venv/Scripts/python.exe'
-$diagScript = Join-Path $root 'prj/capture_g6_rekey_diag.py'
-$hostScript = Join-Path $hostSourceRoot 'src/host/g6_board.py'
+$diagScript = Join-Path $root 'board/prj/capture_g6_rekey_diag.py'
+$hostScript = Join-Path $hostSourceRoot 'pc/src/host/g6_board.py'
 $toolRoot = if ($env:EYEPQC_TOOL_ROOT) { $env:EYEPQC_TOOL_ROOT } else { 'E:/fpg/2026.1' }
 if ($Attempts -lt 1 -or $Attempts -gt 20 -or $RecoverySeconds -lt 2 -or
     $FaultSeconds -lt 30 -or $WaitCdcSeconds -lt 10) {
     throw 'Use Attempts=1..20, RecoverySeconds>=2, FaultSeconds>=30, WaitCdcSeconds>=10.'
 }
 if (!(Test-Path -LiteralPath $python)) { throw 'Project .venv Python is missing.' }
-if (!(Test-Path -LiteralPath $hostScript)) { throw "HostSourceRoot does not contain src/host/g6_board.py: $hostSourceRoot" }
+if (!(Test-Path -LiteralPath $hostScript)) { throw "HostSourceRoot does not contain pc/src/host/g6_board.py: $hostSourceRoot" }
 if (!(Test-Path -LiteralPath (Join-Path $hostSourceRoot 'data/captures'))) { throw "HostSourceRoot has no data/captures directory: $hostSourceRoot" }
 if (!(Test-Path -LiteralPath (Join-Path $hostSourceRoot 'report'))) { throw "HostSourceRoot has no report directory: $hostSourceRoot" }
 

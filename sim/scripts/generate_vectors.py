@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "src" / "host"))
+sys.path.insert(0, str(ROOT / "pc" / "src" / "host"))
 from crypto_ref import encrypt, ghash_trace, mlkem_vector
 from protocol import packet_header, make_nonce
 

@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "src/host"))
+sys.path.insert(0, str(ROOT / "pc/src/host"))
 from g3_board import CHUNK, MAGIC, decrypt_g3
 from protocol import USB_VIDEO, UsbRecordDecoder, encode_usb_record
 from receiver import replay_frame

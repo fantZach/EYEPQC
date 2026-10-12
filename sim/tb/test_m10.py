@@ -10,7 +10,7 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "src/host"))
+sys.path.insert(0, str(ROOT / "pc/src/host"))
 from handshake import HostSession, ROTATE_AT, derive, wipe_secret
 from m09 import Kem, build as build_kem
 from protocol import MessageType
@@ -50,12 +50,12 @@ def main():
         library = Path(temp) / ("m10.dll" if os.name == "nt" else "m10.so")
         kem_library = Path(temp) / ("kem.dll" if os.name == "nt" else "kem.so")
         subprocess.run([os.environ.get("CC", "gcc"), "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
-                        "-shared", "-fPIC", "-I", str(ROOT / "src/ps/include"), "-I",
-                        str(ROOT / "src/third_party/tinycrypt/lib/include"),
+                        "-shared", "-fPIC", "-I", str(ROOT / "board/src/ps/include"), "-I",
+                        str(ROOT / "board/src/third_party/tinycrypt/lib/include"),
                         *[str(ROOT / name) for name in (
-                            "src/ps/src/session.c", "src/ps/src/protocol.c",
-                            "src/third_party/tinycrypt/lib/source/sha256.c",
-                            "src/third_party/tinycrypt/lib/source/utils.c")], "-o", str(library)], check=True)
+                            "board/src/ps/src/session.c", "board/src/ps/src/protocol.c",
+                            "board/src/third_party/tinycrypt/lib/source/sha256.c",
+                            "board/src/third_party/tinycrypt/lib/source/utils.c")], "-o", str(library)], check=True)
         kem = Kem(build_kem(kem_library))
         lib = ct.CDLL(str(library))
         setup(lib)

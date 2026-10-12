@@ -14,7 +14,7 @@
 #endif
 
 #define main g6_usb_firmware_main
-#include "../../src/ps/src/g6_usb.c"
+#include "../../board/src/ps/src/g6_usb.c"
 #undef main
 
 volatile struct g6_secure_cleanup_diag g6_secure_cleanup_diag;

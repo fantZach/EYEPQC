@@ -196,7 +196,7 @@ function Get-ValidatedPassedRecords([string]$Directory,[object]$Identity,[int]$R
     return ,$passed
 }
 function Start-G6Process([string]$Out,[string]$Err,[int]$Seconds) {
-    $args=@('-u','src/host/g6_board.py','--workspace',$workspace,'--tool-root',$toolRoot,'--no-jtag',
+    $args=@('-u','pc/src/host/g6_board.py','--workspace',$workspace,'--tool-root',$toolRoot,'--no-jtag',
         '--seconds',"$Seconds",'--wait-cdc',"$WaitTimeoutSeconds",'--sessions','1','--report-key-fingerprint')
     Start-Process -FilePath $python -ArgumentList ($args -join ' ') -WorkingDirectory $root `
         -RedirectStandardOutput $Out -RedirectStandardError $Err -PassThru -WindowStyle Hidden
@@ -344,7 +344,7 @@ try {
     $transcriptStarted=$true
     $env:EYEPQC_TOOL_ROOT=$toolRoot
     if (Test-Path 'C:/msys64/ucrt64/bin') {$env:PATH='C:/msys64/ucrt64/bin;'+$env:PATH}
-    & $python 'src/host/g6_board.py' --workspace $workspace --tool-root $toolRoot --verify-only
+    & $python 'pc/src/host/g6_board.py' --workspace $workspace --tool-root $toolRoot --verify-only
     if ($LASTEXITCODE -ne 0) {throw 'G6 host/build preflight failed.'}
     $selfPid=$PID
     $selfProcess=Get-CimInstance Win32_Process -Filter "ProcessId=$selfPid" -ErrorAction SilentlyContinue

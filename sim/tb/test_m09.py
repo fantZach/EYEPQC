@@ -6,7 +6,7 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "src/host"))
+sys.path.insert(0, str(ROOT / "pc/src/host"))
 from m09 import Kem, build
 from handshake import wipe_secret
 

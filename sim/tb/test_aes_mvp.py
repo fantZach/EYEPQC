@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from iverilog_runner import compile_iverilog
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "src/host"))
+sys.path.insert(0, str(ROOT / "pc/src/host"))
 from crypto_ref import aes_block
 from aes_image_mvp import LIMIT, JOB_SIZE, demo_png, pack_job, verify_reply
 
@@ -58,11 +58,11 @@ class AesMvp(unittest.TestCase):
             work = Path(directory)
             data = work / "blocks.txt"
             data.write_text("".join(f"{k.hex()} {b.hex()} {aes_block(k, b).hex()}\n" for k, b in vectors))
-            rtl = sorted((ROOT / "src/rtl/crypto/secworks_aes").glob("*.v"))
+            rtl = sorted((ROOT / "board/src/rtl/crypto/secworks_aes").glob("*.v"))
             executable = work / "test.vvp"
             compile_iverilog([tool("iverilog", "C:/iverilog/bin/iverilog.exe"), "-g2012",
                 "-s", "tb_aes_axi_lite", "-o", str(executable),
-                str(ROOT / "src/rtl/crypto/aes_axi_lite.sv"),
+                str(ROOT / "board/src/rtl/crypto/aes_axi_lite.sv"),
                 str(ROOT / "sim/tb/tb_aes_axi_lite.sv"), *map(str, rtl)], executable)
             result = subprocess.run([tool("vvp", "C:/iverilog/bin/vvp.exe"),
                 str(executable), f"+VECTORS={data}"], check=True,
@@ -77,8 +77,8 @@ class AesMvp(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as cleanup:
             library = Path(directory) / ("gcm.dll" if os.name == "nt" else "gcm.so")
             subprocess.run([tool("gcc", "C:/msys64/ucrt64/bin/gcc.exe"), "-shared", "-fPIC",
-                "-O3", "-Wall", "-Wextra", "-Werror", "-I", str(ROOT / "src/ps/include"),
-                str(ROOT / "src/ps/src/mvp_gcm.c"), "-o", str(library)], check=True)
+                "-O3", "-Wall", "-Wextra", "-Werror", "-I", str(ROOT / "board/src/ps/include"),
+                str(ROOT / "board/src/ps/src/mvp_gcm.c"), "-o", str(library)], check=True)
             lib = ctypes.CDLL(str(library))
             if os.name == "nt":
                 cleanup.callback(ctypes.windll.kernel32.FreeLibrary, ctypes.c_void_p(lib._handle))

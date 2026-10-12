@@ -8,7 +8,7 @@
 #include "g6_secure_cleanup.h"
 
 #define main g6_usb_firmware_main
-#include "../../src/ps/src/g6_usb.c"
+#include "../../board/src/ps/src/g6_usb.c"
 #undef main
 
 static int provider_init_status;

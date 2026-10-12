@@ -1,7 +1,7 @@
 /* Exercises the real probe cleanup path with the pinned XUsbPs SDK types/macros. */
 #define G6_USB 1
 #define USB_LIBRARY 1
-#include "../../prj/usb_probe_auto_recovery.c"
+#include "../../board/prj/usb_probe_auto_recovery.c"
 
 #include <stdio.h>
 #include <stdlib.h>

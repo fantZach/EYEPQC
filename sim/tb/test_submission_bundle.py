@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from prj.prepare_submission_bundle import (
+from board.prj.prepare_submission_bundle import (
     BundleError,
     EVIDENCE_STATUS,
     INDEX_NAME,
@@ -62,9 +62,20 @@ class SubmissionBundlePolicyTests(unittest.TestCase):
         self.assertIn("report/contest_rules_review_20261011.md", selected_set)
         self.assertIn("report/software_regression_20261011.md", selected_set)
         self.assertIn("report/production_security_profile_20261011.md", selected_set)
-        self.assertIn("src/ps/src/g6_hmac_drbg.c", selected_set)
-        self.assertIn("src/ps/include/g6_hmac_drbg.h", selected_set)
+        self.assertIn("board/src/ps/src/g6_hmac_drbg.c", selected_set)
+        self.assertIn("board/src/ps/include/g6_hmac_drbg.h", selected_set)
         self.assertIn("sim/tb/test_g6_hmac_drbg.c", selected_set)
+
+    def test_three_project_sources_and_private_exclusions(self):
+        for path in ("board/src/rtl/camera/ov5640_ctrl.sv",
+                     "board/prj/build_m01.tcl", "pc/src/host/handshake.py",
+                     "mobile/README.md"):
+            with self.subTest(path=path):
+                self.assertTrue(is_public_candidate(path))
+        for path in ("board/vendor/example.c", "pc/output/session.json",
+                     "mobile/secrets/key.json", "board/output/m09/key.txt"):
+            with self.subTest(path=path):
+                self.assertFalse(is_public_candidate(path))
 
     def test_review_bundle_names_are_current_and_not_formal_submission_names(self):
         self.assertEqual(BUNDLE_NAME, "EYEPQC_submission_review_candidate014_20261011.zip")
@@ -77,7 +88,7 @@ class SubmissionBundlePolicyTests(unittest.TestCase):
             "report/g7_runs/raw.json",
             ".venv/lib/site.py",
             "local/localkey.bin",
-            "prj/g6_seed.bin",
+            "board/prj/g6_seed.bin",
             "src/private/device_private_key.txt",
             "camera/session.mp4",
         )
@@ -103,10 +114,10 @@ class SubmissionBundlePolicyTests(unittest.TestCase):
                 self.assertTrue(is_forbidden_path(path))
                 self.assertFalse(is_public_candidate(path))
 
-        with patch("prj.prepare_submission_bundle.git_tracked_paths",
-                   return_value=generated_files | {"src/host/handshake.py"}):
+        with patch("board.prj.prepare_submission_bundle.git_tracked_paths",
+                   return_value=generated_files | {"pc/src/host/handshake.py"}):
             selected, _, _ = selected_paths(ROOT, [])
-        self.assertIn("src/host/handshake.py", selected)
+        self.assertIn("pc/src/host/handshake.py", selected)
         self.assertTrue(generated_files.isdisjoint(selected))
 
     def test_zip_verifier_rejects_board_output_member(self):
@@ -125,11 +136,11 @@ class SubmissionBundlePolicyTests(unittest.TestCase):
 
     def test_future_files_need_safe_explicit_allowlist_shape(self):
         self.assertTrue(is_explicit_extra_candidate("report/keccak_board_acceptance.md"))
-        self.assertTrue(is_explicit_extra_candidate("prj/parse_keccak_board_result.py"))
-        self.assertTrue(is_explicit_extra_candidate("prj/run_keccak_benchmark_jtag.tcl"))
-        self.assertFalse(is_explicit_extra_candidate("prj/private/seed.tcl"))
+        self.assertTrue(is_explicit_extra_candidate("board/prj/parse_keccak_board_result.py"))
+        self.assertTrue(is_explicit_extra_candidate("board/prj/run_keccak_benchmark_jtag.tcl"))
+        self.assertFalse(is_explicit_extra_candidate("board/prj/private/seed.tcl"))
         self.assertFalse(is_explicit_extra_candidate("report/g7_runs/raw.json"))
-        self.assertFalse(is_explicit_extra_candidate("src/ps/new_secret.c"))
+        self.assertFalse(is_explicit_extra_candidate("board/src/ps/new_secret.c"))
 
     def test_rejects_traversal_and_absolute_paths(self):
         for path in ("../outside.txt", "src/../../outside.txt", r"..\outside.txt", r"C:\outside.txt", "/outside.txt"):

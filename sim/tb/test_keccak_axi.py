@@ -10,8 +10,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 TB = ROOT / "sim/tb"
-RTL = ROOT / "src/rtl/crypto"
-PS = ROOT / "src/ps/experimental"
+RTL = ROOT / "board/src/rtl/crypto"
+PS = ROOT / "board/src/ps/experimental"
 sys.path.insert(0, str(TB))
 from test_keccak import keccak_f1600, run_xsim
 

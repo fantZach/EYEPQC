@@ -8,7 +8,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from prj import capture_g6_secure_cleanup as capture
+from board.prj import capture_g6_secure_cleanup as capture
 
 
 OWNED = {
