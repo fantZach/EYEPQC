@@ -4,6 +4,16 @@
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
 当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。
 
+## 2026-10-12：Windows / Android 平台条件与三 agent 协作
+
+用户确认 PC 为 Windows、移动端为 Android，并授权三个 agent 并行协作。
+板端 agent 只读核对 USB/会话接口，PC agent 负责 `pc/README.md`，Android agent 负责 `mobile/README.md`；
+主协调者统一修改 README、architecture、goals、steps 与本记录，集中检查和提交。
+平台约束已落实到 M16/M17：Windows CDC/网络桥、Android 前台单观看端认证解密显示，
+Android 框架、最低版本和密码库仍待实施时确定。组网 VPN 保留为可选路径，供应商和校园网连通/吞吐未验证。
+板端继续 Standalone/USB Slave，共享 v1 格式不变；未新增网络服务、Android 应用或硬件操作。
+本次仅说明与计划更新，执行文档差异/链接检查及既有提交 hook；不重复全量 RTL/板测回归。
+
 ## 2026-10-12：开发板 / PC / 移动端目录拆分
 
 用户确认 USB Slave→PC 联网→移动端解密路线。源码归属调整为：`board/src/{rtl,ps,third_party}`、

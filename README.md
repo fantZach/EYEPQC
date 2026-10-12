@@ -3,6 +3,7 @@
 基于领航者 CF7020B / Zynq-7020 与 OV5640 的 JPEG 加密视频系统。
 板端使用 Vitis Standalone、ML-KEM-512 和 AES-128-GCM，保留已验证的 USB Slave 传输。
 目标链路为 **开发板 → USB → PC → 网络 → 移动端**，远程服务器可选。
+平台已确认：**PC 使用 Windows，移动端使用 Android**。
 
 ```text
 OV5640 → 开发板：采集 JPEG / AES-GCM 加密
@@ -25,7 +26,7 @@ OV5640 → 开发板：采集 JPEG / AES-GCM 加密
 
 可选远程中转服务归 PC 子项目维护、独立部署，不另设第四个源码子项目。
 目前可运行的是原有 **板卡↔PC 本地解密演示**；目录拆分不代表手机或公网链路已经通过。
-移动端平台与框架尚未锁定。
+移动端目标为 Android 应用，开发框架、最低 Android 版本及密码库待实现阶段确定。
 
 ```text
 EYEPQC/
