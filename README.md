@@ -21,12 +21,12 @@ OV5640 → 开发板：采集 JPEG / AES-GCM 加密
 | 子项目 | 目录 | 职责与当前状态 |
 |---|---|---|
 | 开发板 | [board/](board/README.md) | 已有 PL RTL、PS 裸机代码、第三方密码核、约束、构建及板测工具 |
-| PC | [pc/](pc/README.md) | 已有 USB 接收、握手解密和演示工具；新增目标是 USB↔网络双向密文转发，转发功能待实现 |
-| 移动端 | [mobile/](mobile/README.md) | 负责终端握手、认证解密、重组与显示；目前只有接入契约和实施计划，尚无可安装应用 |
+| PC | [pc/](pc/README.md) | 原有调试端与新 USB↔WebSocket 纯密文桥；桥已通过软件回环测试，真实 USB 联调待做 |
+| 移动端 | [mobile/](mobile/README.md) | Android 调试 APK 已构建并验签，Java/网络互操作通过；实际手机/板卡待验 |
 
 可选远程中转服务归 PC 子项目维护、独立部署，不另设第四个源码子项目。
-目前可运行的是原有 **板卡↔PC 本地解密演示**；目录拆分不代表手机或公网链路已经通过。
-移动端目标为 Android 应用，开发框架、最低 Android 版本及密码库待实现阶段确定。
+原有 **板卡↔PC 本地解密演示** 保留；新桥与 Android 核心已通过软件互操作，手机/板卡实机和公网链路尚待验收。
+移动端采用原生 Java Activity、OkHttp 4.12.0、Bouncy Castle 1.81 lightweight ML-KEM；最低 Android 8.0/API 26，目标 API 35。
 
 ```text
 EYEPQC/
@@ -86,7 +86,7 @@ PC/中转服务只路由原样控制记录和加密视频，不持有业务会�
 - 历史 G6 开发态 USB 动态握手、认证视频与换钥通过，视频约 47 fps；不代表手机端帧率。
 - G7 原 2 小时长期子项由用户对约 50 分钟实测作例外验收，未实测满 2 小时；G0/G7 整体仍未通过。
 - candidate014 仅离线候选，板测与故障恢复门禁待做；独立 Keccak 加速实验未集成到正式视频工程。
-- PC 密文转发、移动端播放器和可选公网中转尚未实现；先完成局域网单板单观看端 MVP，再扩展公网。
+- PC 密文桥与 Android 调试 APK 已有，局域网三端软件互操作已验证；真实板卡/手机和 45 fps 待验，可选公网中转未实现。
 
 最新变更与验证见 [progress](report/progress.md)，板测细节见 [下一阶段计划](report/next_stage_plan.md)、
 [验收矩阵](report/acceptance_matrix_20261009.md) 和 [G6](doc/g6.md)。历史报告只对其记录的构建有效。

@@ -1,5 +1,10 @@
 # 下一阶段执行计划
 
+2026-10-13：三端软件 MVP 已编写并通过 Java/OkHttp→WebSocket 密文桥→板端 C 会话的合成 JPEG 互操作，
+含重连、REKEY 和 STOP；开发态 G6 软件新布局构建、Android 调试 APK 构建及验签完成。下一步核对实际视频 CDC，
+再按 [三端 MVP 指南](../doc/three_end_mvp.md) 进行真实板卡/手机联调。软件互操作不代表 G8/G9 实机通过，
+下文旧硬件 G0/G7 待办继续保留。准确证据见 [本轮记录](three_end_mvp.md)。
+
 2026-10-12 路线更新：先按 [steps 第 22 节](../doc/steps.md#22-三端扩展pc-转发与移动端解密)
 推进 PC 密文桥与移动端局域网接收，再按需增加公网中转。源码已移至 `board/`、`pc/`、`mobile/`；
 下文保留旧硬件待办与历史命令，`prj/` 对应现 `board/prj/`，`src/host/` 对应现 `pc/src/host/`。

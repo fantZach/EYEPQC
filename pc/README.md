@@ -1,6 +1,6 @@
 # PC 子项目
 
-负责开发板的 USB 接入、主机调试和未来的网络密文转发。可选远程中转服务也由本子项目维护，
+负责开发板的 USB 接入、主机调试和网络密文转发。可选远程中转服务也由本子项目维护，
 服务可部署在 PC 或远程主机；局域网 MVP 不需要购买服务器。
 
 用户已确认 PC 使用 **Windows**，观看端使用 **Android**。PC 接入服务首先供同一局域网内的
@@ -16,9 +16,10 @@ VPN 产品尚未选定，校园网直连或中继的可达性、吞吐与延迟�
 - `demo_window.py`、`demo_controller.py`：PC 本地预览、换钥、录像与回放。
 - `m09.py`：ML-KEM C 库适配及开发测试密钥工具；库源码共享 `../board/src/third_party/mlkem/`。
 - `build_manifest.py` 与其他模块工具：构建预检和离线/板级验证。
+- `relay.py`：Windows USB CDC 与二进制 WebSocket 双向纯密文桥，不导入握手、密钥派生或解密模块。
 
-这些程序当前会在 PC 持有密钥并解密，是测试接收端。未来的纯转发模式须单独实现，
-不能调用现有 `HostSession` 替手机执行握手后仍宣称 PC 看不到视频。
+原有 G6/演示程序在 PC 持有密钥并解密，是测试接收端；新 `relay.py` 单独执行纯转发。
+不要同时运行这两种接收路径，也不能调用 `HostSession` 替手机执行握手后仍宣称 PC 看不到视频。
 
 ## 运行
 
@@ -38,16 +39,42 @@ VPN 产品尚未选定，校园网直连或中继的可达性、吞吐与延迟�
 Windows 分配的 COM 编号可能改变，应区分视频 CDC 与板卡调试串口。
 视频 CDC 只能由一个程序独占，启动转发器前须关闭占用它的演示或测试接收程序。
 
-网络服务实现后，Android 使用 PC 的局域网地址或组网 VPN 地址接入；`localhost` 仅供 PC 本机。
+Android 使用 PC 的局域网地址或组网 VPN 地址接入；`localhost` 仅供 PC 本机。
 须确认服务监听该网络接口，并在 Windows 防火墙中仅放行所需程序/端口与访问范围。
 校园 Wi-Fi 的客户端隔离也可能阻止同网段连接，届时分别验证局域网和 VPN 路径。
 
-## 下一步：单观看端密文转发
+## 单观看端密文转发
 
-1. 独占一个 USB CDC 端口，按原协议检查通道和长度，保留记录字节。
-2. 向移动端转发视频/板端控制，向板卡转发移动端控制；PC 不参与 ML-KEM 密钥派生或视频解密。
-3. 首先提供 Android 的局域网接入，再验证可选组网 VPN；如仍需要公网中转，PC 主动连接中转服务。
-4. 实现连接授权、单观看端占用、队列上限、超时与断线重建；日志只记录非秘密统计。
+先关闭现有 G6/演示接收器。从根目录执行：
 
-网络适配、监听服务和公网部署目前均未实现。二进制 WebSocket 是拟定的最小传输方案，
-公网须使用 WSS；实现与依赖选型在后续步骤落实。详细约束见 [三端架构](../doc/architecture.md)。
+```powershell
+& ./.venv/Scripts/python.exe -m pip install -r pc/requirements.txt
+# 只在首次配对时生成；文件包含接入凭据，勿提交或公开。
+& ./.venv/Scripts/python.exe -c "from pathlib import Path; import secrets; p=Path('tmp/relay.token'); p.parent.mkdir(exist_ok=True); p.write_text(secrets.token_urlsafe(32), encoding='ascii')"
+# 默认仅监听127.0.0.1；将地址替换为本机实际局域网或VPN地址。
+& ./.venv/Scripts/python.exe pc/src/host/relay.py --token-file tmp/relay.token --host 192.168.1.10
+# 仅软件回环检查，不打开实际USB。
+& ./.venv/Scripts/python.exe -m unittest discover -s pc/tests -v
+```
+
+板卡须已运行对应固件并完成开发态 provisioning，转发器不烧录或注入板端密钥。
+`--serial-port COM16` 可覆盖视频 CDC 自动发现，须使用实际枚举号。默认端口 `8765`，
+Android 连接 `ws://<PC地址>:8765/stream`，HTTP 握手携带 `Authorization: Bearer <文件中的token>`。
+手机通过可信途径导入该接入 token 和独立的板卡公钥；token 不是视频密钥。
+纯 WS 会明文传输接入 token，仅在可信局域网或已建立的受保护组网 VPN 中使用。
+WSS 可通过 `--tls-cert <证书.pem> --tls-key <私钥.pem>` 启用，Android 须信任有效证书。
+
+每个二进制消息只承载一条完整 USB 外层记录；手机只可发送合法的 HELLO、KEM_CIPHERTEXT、
+FINISHED_HOST、START、STOP、REKEY 控制。板端控制与视频原字节转发，PC 不参与业务密钥派生或解密。
+路径错误返回 HTTP 404，token 缺失/错误返回 401，已占用返回 503；同时升级竞争时第二连接关闭 1013。
+文本、越界、非法控制方向或半包超时关闭连接，单条 WS 消息上限 1459 字节。
+
+应用发送队列最多 64 条记录（单条最多 1459 字节），USB 未完成记录超时 2 秒，
+网络发送超时 5 秒，串口写超时 250 毫秒。超限关闭整个会话，不抽取控制消息丢弃后继续播放。
+每次接入先拉低 DTR 250 毫秒、清除旧缓冲，再拉高开始转发；断连拉低 DTR、清空缓冲并释放串口。
+Android 重连须重新完成握手；实际板端 DTR/故障恢复仍待 G7 验证。
+
+桥已通过真实 WebSocket 与模拟串口离线测试；Windows 实际 USB、Android 真机、45 fps 与校园网/VPN
+吞吐尚待联合验收。可选公网中转配对、部署及 PC 主动连接中转仍未实现。
+实现使用 [websockets 15.0.1 asyncio 服务端 API](https://websockets.readthedocs.io/en/15.0.1/reference/asyncio/server.html)。
+详细约束见 [三端架构](../doc/architecture.md)。

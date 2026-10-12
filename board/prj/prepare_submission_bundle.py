@@ -29,7 +29,7 @@ INDEX_NAME = "evidence_index_candidate014_20261011.json"
 TEXT_SUFFIXES = {
     ".c", ".h", ".inc", ".s", ".sv", ".v", ".vh", ".xdc", ".ld",
     ".py", ".ps1", ".tcl", ".md", ".rst", ".txt", ".json", ".toml",
-    ".yaml", ".yml", ".xml", ".csv", ".license",
+    ".yaml", ".yml", ".xml", ".csv", ".license", ".java", ".gradle",
 }
 MEDIA_SUFFIXES = {
     ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tif", ".tiff",
@@ -37,7 +37,7 @@ MEDIA_SUFFIXES = {
 }
 DENIED_PARTS = {
     "build", "captures", "g7_runs", ".venv", "venv", "__pycache__",
-    "secrets", "private", "localkeys", "output", "vendor",
+    "secrets", "private", "localkeys", "output", "vendor", ".gradle",
 }
 DENIED_NAME_MARKERS = (
     "localkey", "local_key", "privatekey", "private_key", "privkey", "seed",
@@ -80,6 +80,7 @@ PUBLIC_REPORT_FILES = {
     "report/parallel_B_20261009.md",
     "report/parallel_C_20261009.md",
     "report/progress.md",
+    "report/three_end_mvp.md",
     "report/reuse_license_audit_20261011.md",
     "report/security_gap_audit.md",
     "report/security_cleanup_20261010.md",

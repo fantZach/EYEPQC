@@ -72,8 +72,11 @@ class SubmissionBundlePolicyTests(unittest.TestCase):
                      "mobile/README.md"):
             with self.subTest(path=path):
                 self.assertTrue(is_public_candidate(path))
+        self.assertTrue(is_public_candidate("mobile/app/src/main/java/org/eyepqc/mobile/Session.java"))
+        self.assertTrue(is_public_candidate("mobile/app/build.gradle"))
         for path in ("board/vendor/example.c", "pc/output/session.json",
-                     "mobile/secrets/key.json", "board/output/m09/key.txt"):
+                     "mobile/secrets/key.json", "board/output/m09/key.txt",
+                     "mobile/.gradle/cache.json"):
             with self.subTest(path=path):
                 self.assertFalse(is_public_candidate(path))
 

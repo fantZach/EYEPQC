@@ -26,6 +26,25 @@
 板测、生产安全、G0/G7 状态以 [最新进度](../report/progress.md) 为准；以下为早期硬件资料研究，
 其中设备枚举描述只代表记录当时，不代表当前连接状态。
 
+## 三端 MVP 固件与准备入口
+
+本轮按新目录构建 `build/vitis/g6_mobile_bridge_20261012_1`，开发态 G6 ELF 与 73 项清单预检通过。
+复用历史 `build/vivado/g4_usb_1/m01.xsa`，其内置 bit 与本机历史 G6 所用 bit 相同；未重新实现 PL，未上板。
+新软件采用 `development_jtag_mailbox_secure_cleanup`，不代表 production provider/熵源已完成。
+
+```powershell
+# 在新输出目录重新构建软件；输入 XSA 需来自匹配的完整硬件工程。
+& ./.venv/Scripts/python.exe board/prj/build_software.py --xsa build/vivado/g4_usb_1/m01.xsa --output build/vitis/g6_mobile_bridge_new --tool-root D:/AmdDesignTools/2026.1 --apps g6_usb --g6-dev-secure-cleanup
+# 默认仅检查固件并导出公开身份，不访问 JTAG/CDC；必须使用新的导出目录。
+& ./.venv/Scripts/python.exe board/prj/prepare_mobile.py --workspace build/vitis/g6_mobile_bridge_20261012_1 --identity-output board/output/mobile_identity_new
+# 板卡连接时加 --provision：临时 JTAG boot/provision，不发 HELLO/START、不打开视频口。
+# 手机只接收导出目录里的 public.bin 与独立核对的 public.sha256，绝不复制 board/output/m09/private.bin。
+```
+
+准备入口保留固件哈希、开发态私钥与公钥一致性检查，退出时覆盖本次拥有的私钥缓冲。
+PC 经 JTAG 装载测试私钥仍属于可信开发环境；准备与公开身份导出不能算认证视频已通过。
+板端 6 项无硬件 mock 测试通过，完整链路步骤见 [三端 MVP](../doc/three_end_mvp.md)。
+
 ## M01 硬件资料
 
 官方硬件资料目录需由使用者自行提供；例程源码位于该目录的 `4_Source_Code` 子目录，包含

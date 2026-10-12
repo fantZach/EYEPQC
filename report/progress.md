@@ -1,8 +1,18 @@
 # Implementation progress
 
-更新：2026-10-12。实施依据 `doc/steps.md`，采用 Ponytail：复用密码库与标准库，
+更新：2026-10-13。实施依据 `doc/steps.md`，采用 Ponytail：复用密码库与标准库，
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
 当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。
+
+## 2026-10-13：三端 MVP 源码与软件互操作
+
+三 agent 并行实现：板端新布局 G6 软件重建和公开身份/provision-only 入口，Windows 密文 WebSocket 桥，
+Android 原生 Java 应用与 ML-KEM/GCM 会话内核。板端 73 项预检、6 项 mock；PC 桥 9 项回环测试；
+Android 内核 147 项断言（含 25 ML-KEM 与 20 GCM KAT）通过。主协调者跨真实 Java/OkHttp、WebSocket 桥和
+板端 C 会话/ML-KEM 的四次合成 JPEG 认证互操作通过，含新连接、重连、认证 REKEY 与 STOP，图像 SHA-256 与参考一致。
+修正换钥窗口中旧视频排队导致新握手被关闭的问题，STOP 流程确认实际发送后关闭。
+Android 调试 APK 正式构建与签名/清单核验通过；当前未访问板卡或安装手机，真机与 G8/G9 待验。
+准确版本、哈希、证据与工具构建状态见 [推进记录](three_end_mvp.md)，准备/启动见 [运行指南](../doc/three_end_mvp.md)。
 
 ## 2026-10-12：Windows / Android 平台条件与三 agent 协作
 
