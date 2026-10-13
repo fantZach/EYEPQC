@@ -295,7 +295,7 @@ def capture(args):
                     if (args.scenario in ("sd_cold_start_30m", "jtag_led_probe") and stat and
                             int(stat.group(1)) >= args.minimum_seconds):
                         break
-                    if args.scenario == "reset_probe" and BOOT_RE.match(line):
+                    if args.scenario == "reset_probe" and STAT_RE.match(line):
                         observed_boots = sum(1 for saved in read_log(output)
                                              if BOOT_RE.match(str(saved.get("line", ""))))
                         if observed_boots >= 2:
