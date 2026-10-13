@@ -107,11 +107,39 @@ UTF-16 字符和 `INDEXE~1`，但仅据此不能确定 SD 卡、读卡器、缓�
 原样副本保存于 `board/output/sd_deploy_20261013_2/BOOT.after_reinsert.bin`，摘要已核对。
 不带 `/F` 或 `/R` 的只读 `chkdsk E:` 输出文件/目录检查未发现问题（同时有 Access is denied 提示）；
 这不证明介质和读卡器可靠，不以此跳过持久性失败。
-当前暂停 SD 上板，不再反复覆盖、不格式化；下一步优先换读卡器/直连电脑口隔离读写链路，必要时另用空卡。
+该阶段暂停 SD 上板，不再反复覆盖原卡；随后改用用户提供的另一空卡（见下节）。
 不写 BOOT_MODE 寄存器，不以 JTAG 暖启动作为 SD 证据。
 
 复位采集器原先在第二次 BOOT 后立即停止，漏第二次 READY/STAT，已改为第二次 STAT 后停止。
 `board/prj/tests/test_g0_capture.py` 用模拟 UART 复现并验证完整第二次启动证据；该 1 项测试和原 7 项日志解析测试通过。
+
+## 新卡重建与真实 SD 启动
+
+用户另提供一张卡，同读卡器容量仍为 31,266,439,168 字节，但最初为 GPT/两个 Windows 不可读分区。
+用户先自行格式化为 FAT32，GPT 分区表未改变；匹配 BSP 的 `FF_LBA64=0` 不启用 GPT 路径，因此未直接写入。
+用户明确授权“那你重建把”，重建前复核 Disk 1 非系统/启动盘、USB 读卡器序列号、GPT GUID
+`e15a0b60-a013-8a4c-86a9-af49524c4746`、单个 20 GiB 分区及卷序列号 `2CC7F6B3`，
+根目录只有 System Volume Information。管理员脚本仅清除这张新卡，原卡与电脑 NVMe 盘未改动。
+
+初次 Clear-Disk 后 Windows 仍呈空 GPT，Initialize-Disk 报已初始化；保留日志后用 Set-Disk 转换 MBR。
+旧 E: 访问路径仍被系统保留，New-Partition 指定 E 失败；再次核对为空 MBR 后改用空闲 F:，未重复清除。
+19:26:07（UTC+8）完成新分区/FAT32 和 BOOT 写入；MBR signature=3282445593，分区 offset=1048576、
+size=31265390592、type=0x0c，F: 卷序列号 `9AA2764D`。镜像长度/摘要与第二次构建一致。
+用户安全弹出并拔插整个读卡器后重新核对磁盘 signature/卷身份，BOOT 摘要仍一致，**新卡持久性复核通过**。
+这证明本轮新卡路径成功，不证明原卡问题根因或长期可靠性。
+重建失败过程/成功元数据分别保留在 `board/output/sd_new_card_20261013_1/`、
+`sd_new_card_20261013_1_resume/` 和 `sd_new_card_20261013_1_resume2/`。
+
+用户确认准备好新卡、BOOT_CFG 两位 OFF、K1 完全断电、核心板灯灭且仅保留 COM4，采集就绪后确认上电。
+19:29:41.87（UTC+8）日志捕获 `SUCCESSFUL_HANDOFF`、G0 BOOT build=`47f571a09684` / boot_mode=`0x05`、
+DDR PASS、TIMER PASS 和 READY；随后连续 STAT 的故障计数为零，用户另确认“LED正常闪烁”。
+采集 session=93273，日志 `data/captures/g0/new_sd_cold_20261013_1.jsonl`，只读 COM4，不访问 JTAG、不写 UART。
+**SD 独立进入 G0 已实测；运行时长及物理复位验收尚未完成。**
+
+用户随后要求“10分钟就行”，本轮目标改为 uptime >=600 秒的用户例外，不宣称原 1800 秒/30 分钟已测。
+既有 collector 的 CLI 仍是 minimum_seconds=1800；临时自动回查 `eyepqc-sd` 在首次有效 600 秒样本后
+只停止主机采集器并保留日志，再用 minimum_seconds=600 复核和注明例外。原正式门禁要求/历史证据不被改写。
+本轮只做 G0 自检，不装载业务私钥/seed，也不能替代 G6 视频自主启动。
 
 ## G6 独立视频限制
 
