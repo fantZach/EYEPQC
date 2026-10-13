@@ -82,6 +82,7 @@ PUBLIC_REPORT_FILES = {
     "report/progress.md",
     "report/three_end_mvp.md",
     "report/mobile_live_bringup_20261013.md",
+    "report/mobile_json_pairing_20261013.md",
     "report/reuse_license_audit_20261011.md",
     "report/security_gap_audit.md",
     "report/security_cleanup_20261010.md",
@@ -249,6 +250,8 @@ def is_forbidden_path(relative_path: str) -> bool:
     if path.suffix.lower() in MEDIA_SUFFIXES:
         return True
     filename = path.name.lower()
+    if filename == "pairing.json":
+        return True
     return any(marker in filename for marker in DENIED_NAME_MARKERS)
 
 

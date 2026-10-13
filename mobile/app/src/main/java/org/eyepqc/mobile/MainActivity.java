@@ -7,10 +7,8 @@ import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.InputType;
 import android.view.WindowManager;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -22,10 +20,10 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class MainActivity extends Activity {
     private final Handler ui=new Handler(Looper.getMainLooper());
     private final AtomicReference<Bitmap> pending=new AtomicReference<>();
-    private EditText endpoint,token,pin;
+    private PairingConfig config;
+    private TextView configSummary;
     private TextView status;
     private ImageView image;
-    private byte[] publicKey;
     private StreamClient client;
     private Bitmap displayed;
     private volatile long generation;
@@ -41,30 +39,28 @@ public final class MainActivity extends Activity {
         super.onCreate(saved);getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,WindowManager.LayoutParams.FLAG_SECURE);
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(16,16,16,16);
         layout.setOnApplyWindowInsetsListener((view,insets)->{view.setPadding(16+insets.getSystemWindowInsetLeft(),16+insets.getSystemWindowInsetTop(),16+insets.getSystemWindowInsetRight(),16+insets.getSystemWindowInsetBottom());return insets;});
-        endpoint=field(layout,"ws://PC局域网或VPN地址:8765/stream",false);
-        token=field(layout,"PC访问令牌",true);pin=field(layout,"可信板卡公钥 SHA-256（64位hex）",false);
-        button(layout,"选择板卡公钥文件（800字节）",()->{Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/octet-stream").addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(intent,1);});
+        configSummary=new TextView(this);configSummary.setText("尚未导入连接配置");layout.addView(configSummary);
+        button(layout,"导入连接配置 JSON",()->{Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"application/json","text/plain","application/octet-stream"}).addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(intent,1);});
         button(layout,"连接",this::connect);
         LinearLayout controls=new LinearLayout(this);layout.addView(controls);button(controls,"停止",()->{if(client!=null)client.stop();});button(controls,"换钥",()->{if(client!=null)client.rekey();});button(controls,"关闭",this::disconnect);
-        status=new TextView(this);status.setText("选择公钥并输入可信指纹；录像/后台播放未启用");layout.addView(status);
+        status=new TextView(this);status.setText("导入可信 PC 生成的 JSON，然后点击连接");layout.addView(status);
         image=new ImageView(this);image.setAdjustViewBounds(true);image.setScaleType(ImageView.ScaleType.FIT_CENTER);layout.addView(image,new LinearLayout.LayoutParams(-1,0,1));setContentView(layout);
     }
-    private EditText field(LinearLayout layout,String hint,boolean secret){EditText e=new EditText(this);e.setHint(hint);e.setSingleLine(true);e.setSaveEnabled(false);e.setInputType(secret?InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD:InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);layout.addView(e);return e;}
     private void button(LinearLayout layout,String label,Runnable task){Button b=new Button(this);b.setText(label);b.setOnClickListener(v->task.run());layout.addView(b);}
     @Override protected void onActivityResult(int request,int result,Intent data){
-        super.onActivityResult(request,result,data);if(request!=1||result!=RESULT_OK||data==null)return;
+        super.onActivityResult(request,result,data);if(request!=1||result!=RESULT_OK||data==null||data.getData()==null)return;
         try(InputStream in=getContentResolver().openInputStream(data.getData());ByteArrayOutputStream out=new ByteArrayOutputStream()){
-            if(in==null)throw new IllegalArgumentException("file");byte[] buf=new byte[801];int n;
-            while((n=in.read(buf))!=-1){out.write(buf,0,n);if(out.size()>800)throw new IllegalArgumentException("key length");}
-            if(out.size()!=800)throw new IllegalArgumentException("key length");publicKey=out.toByteArray();status.setText("公钥已载入；请独立确认指纹");
-        }catch(Exception e){publicKey=null;status.setText("公钥文件必须恰好800字节");}
+            if(in==null)throw new IllegalArgumentException("file");byte[] buf=new byte[1024];int n;
+            while((n=in.read(buf))!=-1){if(out.size()+n>PairingConfig.MAX_BYTES)throw new IllegalArgumentException("configuration size");out.write(buf,0,n);}
+            config=PairingConfig.parse(out.toByteArray());configSummary.setText("已导入："+config.endpoint);status.setText("配置已校验，点击连接即可");
+        }catch(Exception e){config=null;configSummary.setText("尚未导入有效配置");status.setText("JSON 配置无效或超过8 KiB，请从可信 PC 重新导出");}
     }
     private void connect(){
         disconnect();final long active=generation;
         try{
-            if(publicKey==null)throw new IllegalArgumentException("missing key");
-            final byte[] pinned=Protocol.hex(pin.getText().toString().trim());rendered=0;started=System.nanoTime();
-            client=new StreamClient(publicKey,pinned,new StreamClient.Listener(){
+            if(config==null)throw new IllegalArgumentException("missing configuration");
+            rendered=0;started=System.nanoTime();
+            client=new StreamClient(config.publicKey,config.pin,new StreamClient.Listener(){
                 public void status(String message){ui.post(()->{if(active==generation)status.setText(message+" / 显示 "+String.format(java.util.Locale.ROOT,"%.1f",rendered/Math.max(0.001,(System.nanoTime()-started)/1e9))+" fps");});}
                 public void frame(byte[] jpeg){
                     if(active!=generation)return;
@@ -74,8 +70,8 @@ public final class MainActivity extends Activity {
                     synchronized(pending){if(active!=generation){bitmap.recycle();return;}Bitmap old=pending.getAndSet(bitmap);if(old!=null)old.recycle();ui.removeCallbacks(render);ui.post(render);}
                 }
             });
-            client.connect(endpoint.getText().toString().trim(),token.getText().toString());
-        }catch(Exception e){status.setText("连接参数无效；检查800字节公钥、64位指纹及访问令牌");}
+            client.connect(config.endpoint,config.token);
+        }catch(Exception e){status.setText("请先导入有效的连接配置 JSON");}
     }
     private void disconnect(){
         synchronized(pending){generation++;if(client!=null){client.close();client=null;}ui.removeCallbacks(render);Bitmap b=pending.getAndSet(null);if(b!=null)b.recycle();}

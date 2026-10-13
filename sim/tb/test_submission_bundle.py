@@ -76,7 +76,7 @@ class SubmissionBundlePolicyTests(unittest.TestCase):
         self.assertTrue(is_public_candidate("mobile/app/build.gradle"))
         for path in ("board/vendor/example.c", "pc/output/session.json",
                      "mobile/secrets/key.json", "board/output/m09/key.txt",
-                     "mobile/.gradle/cache.json"):
+                     "mobile/.gradle/cache.json", "pc/pairing.json", "mobile/pairing.json"):
             with self.subTest(path=path):
                 self.assertFalse(is_public_candidate(path))
 

@@ -34,3 +34,5 @@ $classpath = $jars -join ';'
 if ($LASTEXITCODE -ne 0) { throw 'Java compilation failed.' }
 & (Join-Path $Jdk 'bin/java.exe') -cp "$classes;$classpath" org.eyepqc.mobile.CoreTest $repo
 if ($LASTEXITCODE -ne 0) { throw 'Android core tests failed.' }
+& (Join-Path $Jdk 'bin/java.exe') -cp "$classes;$classpath" org.eyepqc.mobile.PairingConfigTest
+if ($LASTEXITCODE -ne 0) { throw 'Pairing JSON tests failed.' }

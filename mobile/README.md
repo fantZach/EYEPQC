@@ -3,7 +3,7 @@
 目标：Android 手机连接 Windows PC 的局域网服务，在手机本机完成握手、认证解密与 JPEG 视频显示。
 跨网可选择组网 VPN 连接 PC 与手机，或连接可选公网中转服务；VPN 供应商尚未选定，校园网可达性与吞吐须实测。
 已有最小 Android 应用源码：原生 Java Activity、OkHttp 4.12.0 二进制 WebSocket、Bouncy Castle 1.81 lightweight ML-KEM-512。
-最低 Android 8.0（API 26），编译/目标 API 35；不依赖系统提供 ML-KEM，不需 NDK/JNI。
+最低 Android 8.0（API 26），编译/目标 API 35；不依赖系统提供 ML-KEM，不需 NDK/JNI。0.3 使用 Gson 2.11.0 严格解析单文件配对配置。
 当前已通过纯 Java 离线测试并生成签名调试 APK，**手机/板卡实测仍待完成**。
 
 ## 必须实现的功能
@@ -47,13 +47,22 @@ ML-KEM 使用 Bouncy Castle lightweight API；HKDF-SHA-256、Finished/控制 HMA
    ```
 
    输出为 `mobile/app/build/outputs/apk/debug/app-debug.apk`。调试 APK 供开发验证，不代表发布版本。
-3. 启动 Windows PC 接入服务后，在应用输入 `ws://PC局域网或VPN数字地址:8765/stream` 和服务访问令牌。
-   公网地址必须使用 `wss`；明文 `ws` 只接受局域网、回环或 VPN 地址。此限制不提供 TLS 或观看者身份认证。
-4. 通过系统文件选择器载入板卡的 800 字节公钥，再独立核对并输入可信 SHA-256 指纹。
-   公钥、指纹和接入令牌均为本次使用的内存配置，不从未认证桥自动取得，不保存到应用设置。
-5. 点击连接，应用执行 Encaps/Finished/START 后显示认证 JPEG；可停止、换钥和关闭。
+3. 安装 0.3 后，将可信 PC 生成的 `pairing.json` 传到手机，点击“导入连接配置 JSON”选择该文件。
+   应用一次读取地址、令牌、800 字节公钥 hex 和 SHA-256 指纹，无需逐项填写或单独选择公钥文件。
+   配置包含接入令牌，只能通过可信方式传给自己的手机，不放入公开 HTTP 下载目录。
+4. 导入校验成功后显示连接地址，点击“连接”，应用执行 Encaps/Finished/START 后显示认证 JPEG；可停止、换钥和关闭。
+   配置只在当前进程内存保留，不保存到应用设置；重新启动应用需再次选择 JSON。
+   公钥与摘要在同一 JSON 中的匹配只能证明文件一致性，文件来源本身必须可信。
    离开前台会关闭连接；返回后需再次连接。接收队列上限 512 条、单条 1459 字节，
    组帧缓冲上限 2 MiB，界面只保留最近待显示图像；队列超限、协议/Tag/重放错误会断开并要求重新握手。
+
+## 单文件配置格式
+
+JSON 版本为 1，固定五个字段：`version`（整数 1）、`endpoint`、`token`、`public_key_hex`、`public_key_sha256`。
+公钥使用 1600 位 ASCII hex，指纹 64 位 hex；令牌为 32～256 个非空格可打印 ASCII 字符。
+最大文件 8 KiB，严格 UTF-8/JSON，拒绝重复/缺失/未知字段、尾随内容、格式错误和摘要不一致。
+公网地址使用 WSS；明文 WS 只允许显式局域网/回环/VPN 数字地址。
+PC 导出命令见 [配对工具](../pc/README.md)，首次导入后点击连接，导入本身不自动发起网络请求。
    显式换钥时，在新 HELLO_ACK 到来前排空旧会话的完整视频记录，不显示、不计入认证帧；普通握手前视频仍拒绝。
    等待 HELLO_ACK 时每隔 3 秒原样重发 HELLO，最多 2 次；不生成新随机数或延长 15 秒握手期限。
    仅在等待 Finished 阶段忽略逐字节相同的缓存 HELLO_ACK；不同 ACK、其他状态和认证失败仍拒绝。
@@ -84,14 +93,16 @@ ImageIO 独立解码并保存首/末 JPEG 与结果 JSON，不把令牌放入进
 初版 31 项 Gradle 任务执行，构建耗时 2 分 28 秒；修正版 0.2 缓存构建耗时 25 秒（10 执行、21 已是最新）。官方主下载地址曾 TLS 失败，后通过已有本地代理和官方
 `dl-ssl.google.com`/Google CDN 取得工具与依赖；工具缓存与临时仓库 init 脚本位于 ignored 目录，未修改系统代理。
 
-调试 APK：`app/build/outputs/apk/debug/app-debug.apk`，4,633,646 字节，SHA-256：
-`0aa8afe434e9631661330e8d2739f3b82e152473b0c9acc8eaba0d9191a9c06d`。
+当前 0.3 APK 完整构建通过（55 秒、31 tasks），单 JSON 导入 UI 已进入 APK。
+调试 APK：`app/build/outputs/apk/debug/app-debug.apk`，4,742,774 字节，SHA-256：
+`8d335e7d673bb57c4d5dd9bf88c7eaa8baaa06dcdc5682e39f1a012e60ce88f8`。
 `apksigner verify --min-sdk-version 26` 通过 APK v2 签名验证；`aapt dump badging` 确认包名 `org.eyepqc.mobile`、
-版本 0.2 / versionCode 2、最低 API 26、目标 API 35、启动 Activity 与 INTERNET 权限。
-沿用初版 Android Debug 证书，可更新已安装的 0.1；APK 保留为本地构建产物。
+版本 0.3 / versionCode 3、最低 API 26、目标 API 35、启动 Activity 与 INTERNET 权限。
+沿用初版 Android Debug 证书，可覆盖 0.1/0.2；APK 保留为本地构建产物。
 
 离线内核共 158 项断言通过（包含上述 25/20 个 KAT），另覆盖换钥后旧帧排空、新 ACK/Finished 与新视频、
 HELLO 重发不耗新随机数及重复/不同 ACK 的状态约束。
+JSON 导入另有 30 项解析检查，PC 当前实际配置的跨语言解析也通过；手机系统文件选择器/导入运行仍待真机验证。
 真实 OkHttp/回环 WebSocket/板端 C 会话及 ML-KEM mock 的握手、视频和重连/换钥互操作见共享 `sim/tb/test_three_end.py`；
 这些检查运行在 PC，未执行 Android Activity 的手机运行测试。
 手机安装修正版后实际认证显示、校园网/VPN 连通、完整板端异常恢复和手机显示 45 fps 门禁仍需实测。

@@ -72,8 +72,16 @@ SHA-256 pin，只读取 `public.bin` 与 `public.sha256`，输出目录必须不
 & ./.venv/Scripts/python.exe pc/src/host/relay.py --token-file tmp/mobile_pairing/relay.token --host 10.179.236.247
 ```
 
-将示例身份目录和 PC 地址换成当前实际值。`tmp/mobile_pairing/pairing.txt` 包含 endpoint/token/pin，
-供本机查看和手机配对；`relay.token` 供桥读取。两者都属于接入凭据，不能通过公钥下载服务公开。
+将示例身份目录和 PC 地址换成当前实际值。`tmp/mobile_pairing/pairing.json` 集成地址、token、公钥 hex 与 pin，
+Android 0.3 选择这一个文件后自动读取所有参数。`pairing.txt` 保留供本机查看，`relay.token` 供桥读取；
+这些都属于接入凭据，不能通过公钥下载服务公开，也不提交 Git。
+已有服务运行时，可导出 JSON 并沿用原 token，无需重启服务或重新配对：
+
+```powershell
+& ./.venv/Scripts/python.exe pc/src/host/prepare_pairing.py --identity-dir board/output/mobile_identity_live_20261013_3 --endpoint ws://10.179.236.247:8765/stream --token-file tmp/mobile_pairing/relay.token --config-file tmp/mobile_pairing/pairing.json
+```
+
+导出文件必须不存在，避免覆盖已有凭据；通过可信文件传输交给自己的手机。
 只有 `tmp/mobile_pairing/public/` 包含可公开的公钥和摘要；如临时开启 HTTP 下载，文档根目录必须精确
 指向这个 `public/` 子目录，绝不能服务配对父目录或板端身份目录。pin 仍须经可信途径确认，不能只信任
 同一未认证 HTTP 下载的摘要。工具 stdout 只显示文件路径，不打印 token。

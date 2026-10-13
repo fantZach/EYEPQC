@@ -3,7 +3,7 @@
 Windows PC ↔ Android 的校园网基本 TCP 连通由用户报告验证成功。
 本轮已实现软件链路，实际板卡/Android 视频、帧率、断连恢复须按 G8 单独测量。
 已临时装载 G6 并完成真实板卡→PC 密文桥→Java 客户端的短窗口认证解码，约 47.26 fps；不是手机显示结果。
-手机安装初版后，请用 [mobile README](../mobile/README.md) 中的 0.2 修正版覆盖更新，包含 HELLO 容错。
+手机安装旧版后，请用 [mobile README](../mobile/README.md) 中的 0.3 覆盖更新，包含 HELLO 容错和单 JSON 配置导入。
 共享协议保持不变，纯密文桥与原 G6 解密演示必须独占运行，不能同时打开视频 CDC。
 
 ## 已有实现
@@ -44,8 +44,8 @@ Android 最低 API 26，目标/编译 API 35。源码、离线内核、Java 网�
    该 IPv4 只是本轮读取值，运行前用 `ipconfig` 重新确认。视频 CDC 自动发现唯一 VID03FD/PID7020，
    可用 `--serial-port` 指定实际视频口。只放行 Windows 防火墙中所需服务及访问范围。
 
-4. 构建/安装 Android 调试 APK后，在应用输入 `ws://<PC地址>:8765/stream`、接入令牌，选择 800 字节公钥文件并输入可信指纹。
-   点击连接，只有完成板卡 Finished 与认证 START 才显示完整 JPEG。
+4. 将 PC 生成的私有 `pairing.json` 通过可信方式传到手机，在 0.3 应用点击“导入连接配置 JSON”。
+   地址、令牌、公钥及指纹一次读取，校验成功后点击连接；只有完成板卡 Finished 与认证 START 才显示完整 JPEG。
    明文 WS 会传输接入令牌，仅用于受信任的局域网或受保护 VPN；公网需 WSS 和有效证书。
 
 5. 验证显示、STOP、关闭重连及 REKEY，记录实际手机认证/显示帧率、丢帧、网络吞吐和延迟。
@@ -55,10 +55,10 @@ Android 最低 API 26，目标/编译 API 35。源码、离线内核、Java 网�
 
 ## 本机已准备的配对资料
 
-`prepare_pairing.py` 可从公开身份生成独立 token、私有 `pairing.txt` 和只含公开材料的 `public/` 子目录。
-本轮生成位置为 `tmp/mobile_pairing/`（Git 忽略），参数写在本地 `pairing.txt`，不从未认证 HTTP 服务暴露 token。
+`prepare_pairing.py` 可从公开身份生成独立 token、私有 `pairing.json`/`pairing.txt` 和只含公开材料的 `public/` 子目录。
+本轮生成位置为 `tmp/mobile_pairing/`（Git 忽略），JSON 已沿用当前服务 token 导出，绝不公开配置文件或配对父目录。
 手机浏览器可从 `http://10.179.236.247:8766/public.bin` 下载公钥，从
-`http://10.179.236.247:8766/EYEPQC-0.2.apk` 下载修正版。网络地址与服务存活状态仅对本轮有效。
+`http://10.179.236.247:8766/EYEPQC-0.3.apk` 下载新版。0.3 已不需要单独下载公钥；网络地址与服务存活状态仅对本轮有效。
 APK/pin/token 的校验与测试流程见 [实机准备记录](../report/mobile_live_bringup_20261013.md)。
 使用时保持手机应用前台亮屏，结束优先点“停止”，再关闭；网络异常、退出/拔插等完整 G7 场景仍待验收。
 

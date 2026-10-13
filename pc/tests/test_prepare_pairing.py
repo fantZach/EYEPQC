@@ -1,6 +1,7 @@
 import contextlib
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import sys
@@ -9,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src/host"))
-from prepare_pairing import main, prepare_pairing
+from prepare_pairing import export_config, main, prepare_pairing
 from relay import read_token
 
 
@@ -37,9 +38,27 @@ class PairingTests(unittest.TestCase):
         pairing = (output / "pairing.txt").read_text(encoding="ascii")
         self.assertEqual(pairing, f"endpoint={self.endpoint}\ntoken={token}\npin={self.pin}\n")
         self.assertGreaterEqual(len(token), 32)
+        config = json.loads((output / "pairing.json").read_text())
+        self.assertEqual(config, dict(version=1, endpoint=self.endpoint, token=token,
+                                     public_key_hex=self.public.hex(), public_key_sha256=self.pin))
+        self.assertFalse((output / "public/pairing.json").exists())
         if os.name != "nt":
             self.assertEqual((output / "relay.token").stat().st_mode & 0o777, 0o600)
             self.assertEqual((output / "pairing.txt").stat().st_mode & 0o777, 0o600)
+            self.assertEqual((output / "pairing.json").stat().st_mode & 0o777, 0o600)
+
+    def test_export_existing_token_without_rotation_or_private_key(self):
+        prepare_pairing(self.identity, self.endpoint, self.output)
+        token_file = self.output / "relay.token"
+        before = token_file.read_bytes()
+        path = export_config(self.identity, self.endpoint, token_file, self.output / 'existing.json')
+        config = json.loads(path.read_text())
+        self.assertEqual(config['token'], read_token(token_file))
+        self.assertEqual(token_file.read_bytes(), before)
+        self.assertEqual(config['public_key_hex'], self.public.hex())
+        self.assertFalse((self.identity / 'private.bin').exists())
+        with self.assertRaises(FileExistsError):
+            export_config(self.identity, self.endpoint, token_file, path)
 
     def test_mismatched_or_malformed_pin_rejected_before_output(self):
         for pin in ("0" * 64, "x" * 64, "1234"):
