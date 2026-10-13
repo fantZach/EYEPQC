@@ -14,7 +14,12 @@
 #endif
 
 #define main g6_usb_firmware_main
+/* Mock the legacy identity only; ephemeral.c links the real ML-KEM implementation. */
+#define eye_mlkem_dec fixture_identity_dec
+#define eye_mlkem_check_sk fixture_identity_check_sk
 #include "../../board/src/ps/src/g6_usb.c"
+#undef eye_mlkem_dec
+#undef eye_mlkem_check_sk
 #undef main
 
 volatile struct g6_secure_cleanup_diag g6_secure_cleanup_diag;
@@ -224,7 +229,7 @@ int xil_printf(const char *format, ...)
     return 0;
 }
 
-int eye_mlkem_check_sk(const uint8_t sk[1632])
+int fixture_identity_check_sk(const uint8_t sk[1632])
 {
     (void)sk;
     return 0;
@@ -245,7 +250,7 @@ uint32_t usb_cdc_connection_epoch(void)
     return fake_connection_epoch;
 }
 
-int eye_mlkem_dec(uint8_t ss[32], const uint8_t ct[768], const uint8_t sk[1632])
+int fixture_identity_dec(uint8_t ss[32], const uint8_t ct[768], const uint8_t sk[1632])
 {
     (void)ss;
     (void)ct;

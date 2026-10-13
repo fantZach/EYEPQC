@@ -6,6 +6,10 @@
 
 ## 2026-10-13：SD 部署与三聊天协调
 
+本轮新增账号与临时 KEM 软件：PC WSS/scrypt/显式接管、Android 登录/schema2/1785秒提前换钥、
+Board suite2/临时私钥清理已实现；实际 C→模拟CDC→WSS→Java 五窗口通过，ARM 75哈希及672输入预检通过。
+用户仅授权软件验证，未部署账号/CA/服务、未更新SD或实板。详情见 [软件联测](account_ephemeral_software.md)。
+
 用户报告手机约 40 fps 正常并接受，45 fps 改为可选优化；不替代 G8 十分钟/故障完整验收。
 三个独立聊天分别完成 Android 0.4 旧画面清理、Windows relay 部署诊断、G0 复位采集器修正，均提交所属文件。
 板卡 SD 用读卡器识别为非系统 FAT32 卡，根目录原无 BOOT.BIN；首轮写入后摘要读回一致，未格式化或改分区。

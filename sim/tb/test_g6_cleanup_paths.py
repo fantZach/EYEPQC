@@ -12,11 +12,14 @@ HARNESS = ROOT / "sim" / "tb" / "test_g6_cleanup_paths.c"
 INCLUDES = [
     ROOT / "board" / "src" / "ps" / "include",
     ROOT / "board" / "src" / "third_party",
+    ROOT / "board" / "src" / "third_party" / "mlkem",
     ROOT / "board" / "src" / "third_party" / "tinycrypt" / "lib" / "include",
 ]
 SOURCES = [
     HARNESS,
     ROOT / "board" / "src" / "ps" / "src" / "session.c",
+    ROOT / "board" / "src" / "ps" / "src" / "ephemeral.c",
+    ROOT / "board" / "src" / "ps" / "src" / "m09_mlkem.c",
     ROOT / "board" / "src" / "ps" / "src" / "protocol.c",
     ROOT / "board" / "src" / "third_party" / "tinycrypt" / "lib" / "source" / "sha256.c",
     ROOT / "board" / "src" / "third_party" / "tinycrypt" / "lib" / "source" / "utils.c",

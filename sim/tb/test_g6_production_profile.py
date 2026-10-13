@@ -13,11 +13,14 @@ HARNESS = ROOT / "sim" / "tb" / "test_g6_production_profile.c"
 INCLUDES = [
     ROOT / "board" / "src" / "ps" / "include",
     ROOT / "board" / "src" / "third_party",
+    ROOT / "board" / "src" / "third_party" / "mlkem",
     ROOT / "board" / "src" / "third_party" / "tinycrypt" / "lib" / "include",
 ]
 SOURCES = [
     HARNESS,
     ROOT / "board" / "src" / "ps" / "src" / "session.c",
+    ROOT / "board" / "src" / "ps" / "src" / "ephemeral.c",
+    ROOT / "board" / "src" / "ps" / "src" / "m09_mlkem.c",
     ROOT / "board" / "src" / "ps" / "src" / "g6_hmac_drbg.c",
     ROOT / "board" / "src" / "ps" / "src" / "protocol.c",
     ROOT / "board" / "src" / "third_party" / "tinycrypt" / "lib" / "source" / "sha256.c",
@@ -85,7 +88,7 @@ class G6ProductionProfileTests(unittest.TestCase):
                                              capture_output=True, text=True).stdout
                     for forbidden_symbol in (
                             "g6_sk_load", "g6_seed_load", "g6_ready", "random_seed",
-                            "g6_production_read_mlkem512_private_key", "eye_mlkem_dec"):
+                            "g6_production_read_mlkem512_private_key"):
                         self.assertNotIn(forbidden_symbol, symbols)
 
 

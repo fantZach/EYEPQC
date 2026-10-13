@@ -303,10 +303,13 @@ class Relay:
     async def start(self, host="127.0.0.1", port=8765, *, tls=None):
         if self.accounts and tls is None:
             raise ValueError("account mode requires TLS")
+        logger = logging.getLogger("eyepqc.relay.websocket")
+        # Protocol DEBUG dumps Authorization headers, even if parent logging enables it.
+        logger.setLevel(logging.INFO)
         return await serve(self.handle, host, port, process_request=self.authorize,
                            compression=None, max_size=1459, max_queue=16,
                            write_limit=32768, close_timeout=2, ssl=tls,
-                           logger=logging.getLogger("eyepqc.relay.websocket"))
+                           logger=logger)
 
 
 async def run(args):

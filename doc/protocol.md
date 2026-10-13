@@ -95,6 +95,11 @@ ERROR 只用于诊断，无认证，不触发控制状态变化；已建立会�
 
 ## 黄金参考与测试数据
 
+账号新链路使用 suite 2：固定身份 bootstrap 后认证临时 ML-KEM，重新 Finished 后才能 START。
+type10/11 长度、MAC 域、business transcript 和明确降级拒绝见
+[临时 KEM 冻结契约](account_ephemeral_protocol.md)。原 suite1 只作显式开发兼容。
+本节扩展正在实现，不改变已有历史 suite1 的实测范围。
+
 `pc/src/host/crypto_ref.py` 使用 cryptography==48.0.0 的 AESGCM，
 独立 GF(2^128)/GHASH 模型输出 H、J0、输入块和每块累加值。
 GHASH 使用 SP 800-38D 的 MSB-first 位序、约简常量 e1 || 0^120；

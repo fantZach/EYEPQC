@@ -1,6 +1,6 @@
-import asyncio, base64, datetime, ipaddress, json, ssl, sys, tempfile, threading, time, unittest
+import asyncio, base64, datetime, ipaddress, json, logging, ssl, sys, tempfile, threading, time, unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src/host'))
 from accounts import Accounts, create_account, password_hash
 from relay import Relay, control_record
@@ -63,6 +63,12 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
                 return self.devices[-1]
             await asyncio.sleep(.005)
         self.fail('not ready')
+
+    async def test_protocol_debug_cannot_dump_basic_credentials(self):
+        logger = logging.getLogger('eyepqc.relay.websocket')
+        with patch.object(logger, 'level', logging.DEBUG), patch('relay.serve', new_callable=AsyncMock) as serve:
+            await self.relay.start(tls=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER))
+            self.assertFalse(serve.call_args.kwargs['logger'].isEnabledFor(logging.DEBUG))
 
     async def rejected(self, status, suffix='', header=None):
         self.accounts.allowance = 5

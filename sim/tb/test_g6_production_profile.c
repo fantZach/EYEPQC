@@ -184,6 +184,7 @@ static void reset_provider(void)
     last_send_length = 0U;
     memset(last_send, 0, sizeof last_send);
     memset(&session, 0, sizeof session);
+    memset(&ephemeral, 0, sizeof ephemeral);
     memset(hello, 0, sizeof hello);
     memset(ack, 0, sizeof ack);
     phase = WAIT_HELLO;
@@ -198,6 +199,7 @@ static int bytes_are(const uint8_t *bytes, unsigned length, uint8_t expected)
 
 static void seed_active_sensitive_state(void)
 {
+    memset(&ephemeral, 0x66, sizeof ephemeral);
     memset(session.transcript_hash, 0x33, sizeof session.transcript_hash);
     memset(session.video_key, 0x44, sizeof session.video_key);
     memset(session.control_key, 0x55, sizeof session.control_key);
@@ -217,7 +219,8 @@ static void seed_active_sensitive_state(void)
 
 static int active_cpu_secrets_are_cleared(void)
 {
-    return bytes_are(session.transcript_hash, sizeof session.transcript_hash, 0U) &&
+    return bytes_are((const uint8_t *)&ephemeral, sizeof ephemeral, 0U) &&
+           bytes_are(session.transcript_hash, sizeof session.transcript_hash, 0U) &&
            bytes_are(session.video_key, sizeof session.video_key, 0U) &&
            bytes_are(session.control_key, sizeof session.control_key, 0U) &&
            session.nonce_prefix == 0U && session.session_id == 0U &&
@@ -253,7 +256,7 @@ static int test_missing_provider_fails_closed(void)
 
 static int make_hello(uint8_t message[48])
 {
-    uint8_t body[36] = {1U, 1U, 0U, 1U};
+    uint8_t body[36] = {1U, 1U, 0U, 2U};
     for (unsigned i = 0; i < 32U; ++i) body[4U + i] = (uint8_t)(i + 1U);
     return eye_control_encode(message, 48U, EYE_HELLO, body, sizeof body);
 }
