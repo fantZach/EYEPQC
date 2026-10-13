@@ -134,12 +134,37 @@ size=31265390592、type=0x0c，F: 卷序列号 `9AA2764D`。镜像长度/摘要�
 19:29:41.87（UTC+8）日志捕获 `SUCCESSFUL_HANDOFF`、G0 BOOT build=`47f571a09684` / boot_mode=`0x05`、
 DDR PASS、TIMER PASS 和 READY；随后连续 STAT 的故障计数为零，用户另确认“LED正常闪烁”。
 采集 session=93273，日志 `data/captures/g0/new_sd_cold_20261013_1.jsonl`，只读 COM4，不访问 JTAG、不写 UART。
-**SD 独立进入 G0 已实测；运行时长及物理复位验收尚未完成。**
+**SD 独立进入 G0 已实测；本轮十分钟例外通过，物理复位仍待验收。**
 
 用户随后要求“10分钟就行”，本轮目标改为 uptime >=600 秒的用户例外，不宣称原 1800 秒/30 分钟已测。
-既有 collector 的 CLI 仍是 minimum_seconds=1800；临时自动回查 `eyepqc-sd` 在首次有效 600 秒样本后
-只停止主机采集器并保留日志，再用 minimum_seconds=600 复核和注明例外。原正式门禁要求/历史证据不被改写。
+collector 的 CLI 原为 minimum_seconds=1800；自动回查在最新 640 秒样本后只对主机 collector 发 Ctrl-C，
+退出码 1/KeyboardInterrupt 是用户要求提前结束采集，不是板卡错误。未停止/复位板卡，COM4 已释放。
+原始 UART 日志保持不变，SHA-256 `ace037eb435f56b9e5bb90c462abb29187841285349ac40ce632f5f1be4d9d3b`。
+复制为 `new_sd_cold_20261013_1.10m_evidence.jsonl` 后，附真实用户确认的来源和有意停采说明；
+衍生文件 SHA-256 `fc6a2370b7c7674266999c8e6874835339f716deb06a802d63625d25a916108c`。
+以既有 `verify --scenario sd_cold_start_30m --minimum-seconds 600` 离线复核通过，
+legacy scenario 名称不表示三十分钟已测；独立结果 `data/captures/g0/new_sd_cold_20261013_1.10m.result.json` 明确 scope。
+
+| 十分钟用户例外结果 | 实测 |
+|---|---|
+| 时间窗（UTC+8） | 19:29:41.871151 至 19:40:21.944488 |
+| uptime / STAT / ticks | 640 秒 / 64 条 / 12800 |
+| BOOT / mode / DDR PASS | 1 次 / 0x05 / 12 次 |
+| ddr_err / assert / exception / timer_err | 全为 0 |
+| UART 断线 | 0 |
+| 人工观察 | 用户确认 SD/拨码/断电准备及上电，另答“LED正常闪烁”；非电压/频率仪测 |
+
+原三十分钟没有执行；完整 G0 仍缺物理复位，新卡一次成功也不等于全介质寿命检查。
+临时自动回查已在下一步需要人工动作时暂停；本轮 9 项 G0/collector/DDR-linker 定向测试通过。
 本轮只做 G0 自检，不装载业务私钥/seed，也不能替代 G6 视频自主启动。
+
+复位入口已用官方资料核对并渲染检查：核心板装配图第 1 页 KEY1 / `PS_RST` 位于 U1 大芯片右侧、
+U7 下方、U2 上方；核心原理图第 4 页 POWER ON RESET 中 KEY1 经 HX811T #MR/#RESET 驱动 PS_POR_B。
+这是 PS POR 按键，不是底板 PL_RESET、PS_KEY0/1，也不是同页仅上拉的 PS_SRST_B。
+原理图 SHA-256 `1c8cf8105e91d762d29ad604e82b629b3921fa474d5a0311ed6c04237db107ea`，
+装配图 SHA-256 `7b5cfc3ae3b82d418bfaea0936ddccd81ab1bf4a9da3f4a5aa10282bea0a3686`。
+下一轮另开被动 `reset_probe`，先捕获新 SD baseline BOOT/READY，再提示用户按该 PS_RST 恰好一次，
+保留第二 BOOT/READY/STAT 后才验收，不写软件 BOOT_MODE 或模拟按键。
 
 ## G6 独立视频限制
 
