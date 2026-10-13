@@ -134,7 +134,7 @@ size=31265390592、type=0x0c，F: 卷序列号 `9AA2764D`。镜像长度/摘要�
 19:29:41.87（UTC+8）日志捕获 `SUCCESSFUL_HANDOFF`、G0 BOOT build=`47f571a09684` / boot_mode=`0x05`、
 DDR PASS、TIMER PASS 和 READY；随后连续 STAT 的故障计数为零，用户另确认“LED正常闪烁”。
 采集 session=93273，日志 `data/captures/g0/new_sd_cold_20261013_1.jsonl`，只读 COM4，不访问 JTAG、不写 UART。
-**SD 独立进入 G0 已实测；本轮十分钟例外通过，物理复位仍待验收。**
+**SD 独立进入 G0 已实测；本轮十分钟例外和物理复位测试窗均复核通过（复位原全段校验失败保留，见下文）。**
 
 用户随后要求“10分钟就行”，本轮目标改为 uptime >=600 秒的用户例外，不宣称原 1800 秒/30 分钟已测。
 collector 的 CLI 原为 minimum_seconds=1800；自动回查在最新 640 秒样本后只对主机 collector 发 Ctrl-C，
@@ -154,7 +154,7 @@ legacy scenario 名称不表示三十分钟已测；独立结果 `data/captures/
 | UART 断线 | 0 |
 | 人工观察 | 用户确认 SD/拨码/断电准备及上电，另答“LED正常闪烁”；非电压/频率仪测 |
 
-原三十分钟没有执行；完整 G0 仍缺物理复位，新卡一次成功也不等于全介质寿命检查。
+原三十分钟没有执行；本轮 SD/LED/十分钟例外/物理复位子项通过，新卡一次成功不等于全介质寿命检查或生产安全。
 临时自动回查已在下一步需要人工动作时暂停；本轮 9 项 G0/collector/DDR-linker 定向测试通过。
 本轮只做 G0 自检，不装载业务私钥/seed，也不能替代 G6 视频自主启动。
 
@@ -163,8 +163,22 @@ U7 下方、U2 上方；核心原理图第 4 页 POWER ON RESET 中 KEY1 经 HX8
 这是 PS POR 按键，不是底板 PL_RESET、PS_KEY0/1，也不是同页仅上拉的 PS_SRST_B。
 原理图 SHA-256 `1c8cf8105e91d762d29ad604e82b629b3921fa474d5a0311ed6c04237db107ea`，
 装配图 SHA-256 `7b5cfc3ae3b82d418bfaea0936ddccd81ab1bf4a9da3f4a5aa10282bea0a3686`。
-下一轮另开被动 `reset_probe`，先捕获新 SD baseline BOOT/READY，再提示用户按该 PS_RST 恰好一次，
-保留第二 BOOT/READY/STAT 后才验收，不写软件 BOOT_MODE 或模拟按键。
+随后另开被动 `reset_probe` session=76736；先请用户 K1 完全断电/上电产生新 baseline BOOT/READY/STAT，
+再提示按核心 PS_RST 恰好一次，用户回复“已按一次，正常闪烁”。没有 JTAG 或模拟复位。
+baseline BOOT 时间 19:48:06.829140、PS_RST 后第二 BOOT 时间 19:49:26.218141（UTC+8），两次均 mode=0x05。
+baseline 最后 STAT 为 uptime=70/ticks=1400/ddr_pass=3；复位后 READY 和 STAT 为 uptime=10/ticks=200/ddr_pass=2，
+共 8 条本轮 STAT，全故障计数为 0，UART 断线为 0，证明程序重启及 DDR/timer 重新初始化。
+
+**原全段校验失败保留**：collector 在用户 baseline 断电之前就打开 UART，收了上一轮运行的
+uptime=1070/1080/1090/1100 四条零故障 STAT，位于本轮首个 BOOT 前，严格 parser 因此返回 FAILED。
+原始 `new_sd_reset_20261013_1.jsonl` 和 `.result.json` 均不改写，raw SHA-256
+`fa5ce00ac7703453e1681418b2cb15e51a831e30cb08a4c268ce66d542de7cb6`。
+另复制 `.scoped.jsonl`，明确排除的只有这四条已知上一轮前缀，附范围/来源说明；
+精确逐行检查确认其余原始记录顺序及字节全部保留，没有排除本轮 BOOT/READY/STAT、错误或断线。
+scoped SHA-256 `37224d65f0c17a292db506d48b589e331d5673d46b906de1f11bad07008b529d`；
+既有 `reset_probe` parser 不改动，对此本轮测试窗复核 PASSED，独立 `.scoped.result.json` 明确原失败和选择边界。
+这不是将原全段 FAIL 改成 PASS；物理复位结论仅针对明确的两次启动测试窗。
+两采集器均退出且 COM4 已释放，板卡保留 G0 运行，临时回查保持暂停，未恢复 G6/PC 视频服务。
 
 ## G6 独立视频限制
 
