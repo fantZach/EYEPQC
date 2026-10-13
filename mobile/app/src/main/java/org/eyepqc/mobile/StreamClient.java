@@ -19,12 +19,15 @@ public final class StreamClient implements AutoCloseable {
     public interface Listener { void frame(byte[] jpeg); void status(String message); }
     private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(512));
     private final AtomicBoolean closed=new AtomicBoolean();
+    private final AtomicBoolean timerPending=new AtomicBoolean();
     private final OkHttpClient http=new OkHttpClient.Builder().pingInterval(10,TimeUnit.SECONDS).connectTimeout(10,TimeUnit.SECONDS).build();
     private final Session session;
     private final Listener listener;
     private volatile WebSocket socket;
     private volatile long handshakeStarted;
     private long lastStatus;
+    private long lastHelloSent;
+    private int helloRetries;
     public StreamClient(byte[] pk,byte[] pin,Listener callback) throws Exception { listener=callback;session=new Session(pk,pin,jpeg->{try{callback.frame(jpeg);}finally{Session.wipe(jpeg);}}); }
     public static void validateEndpoint(String endpoint) throws Exception {
         URI uri=new URI(endpoint);
@@ -45,7 +48,7 @@ public final class StreamClient implements AutoCloseable {
             if(token.isEmpty()||token.length()>512||token.indexOf('\r')>=0||token.indexOf('\n')>=0)throw new IllegalArgumentException("invalid access token");
             listener.status("连接中");handshakeStarted=System.nanoTime();
             socket=http.newWebSocket(new Request.Builder().url(endpoint).header("Authorization","Bearer "+token).build(),new WebSocketListener(){
-                @Override public void onOpen(WebSocket ws,Response response){submit(()->{handshakeStarted=System.nanoTime();send(session.start());listener.status("验证板卡中");});}
+                @Override public void onOpen(WebSocket ws,Response response){submit(()->{startHandshake();listener.status("验证板卡中");});}
                 @Override public void onMessage(WebSocket ws,ByteString bytes){
                     if(bytes.size()>1459||bytes.size()<4){fail("非法记录长度");return;}
                     byte[] record=bytes.toByteArray();submit(()->{
@@ -60,9 +63,19 @@ public final class StreamClient implements AutoCloseable {
             });
         });
     }
-    public void rekey(){submit(()->{send(session.rekey());send(session.start());handshakeStarted=System.nanoTime();listener.status("重新协商密钥");});}
+    private void startHandshake()throws Exception{handshakeStarted=lastHelloSent=System.nanoTime();helloRetries=0;send(session.start());}
+    public void rekey(){submit(()->{send(session.rekey());startHandshake();listener.status("重新协商密钥");});}
     public void stop(){submit(()->{if(session.streaming())send(session.stop());shutdown(false);listener.status("已停止");});}
-    public void checkTimeout(){long since=handshakeStarted;if(since!=0&&System.nanoTime()-since>TimeUnit.SECONDS.toNanos(15))fail("握手超时，请重新连接");}
+    public void checkTimeout(){
+        if(closed.get()||handshakeStarted==0||!timerPending.compareAndSet(false,true))return;
+        submit(()->{try{
+            long since=handshakeStarted,now=System.nanoTime();if(since==0)return;
+            if(now-since>TimeUnit.SECONDS.toNanos(15)){fail("握手超时，请重新连接");return;}
+            if(session.waitingAck()&&helloRetries<2&&now-lastHelloSent>=TimeUnit.SECONDS.toNanos(3)){
+                send(session.retryHello());helloRetries++;lastHelloSent=now;
+            }
+        }finally{timerPending.set(false);}});
+    }
     private void send(byte[] record){WebSocket ws=socket;if(ws==null||ws.queueSize()>65536||!ws.send(ByteString.of(record)))throw new IllegalStateException("send queue unavailable");}
     private interface Task {void run() throws Exception;}
     private void submit(Task task){

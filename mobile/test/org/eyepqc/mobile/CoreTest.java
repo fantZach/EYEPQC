@@ -69,6 +69,21 @@ public final class CoreTest {
         for(com.google.gson.JsonElement entry:kem){JsonObject v=entry.getAsJsonObject();byte[] pk=value(v,"ek");SecretWithEncapsulation encaps=new MLKEMGenerator(new SecureRandom()).internalGenerateEncapsulated(new MLKEMPublicKeyParameters(MLKEMParameters.ml_kem_512,pk),value(v,"m"));try{check(Arrays.equals(encaps.getEncapsulation(),value(v,"c")));check(Arrays.equals(encaps.getSecret(),value(v,"k")));kemCount++;}finally{encaps.destroy();}}
         for(com.google.gson.JsonElement entry:json(root+"/data/kat/nist_gcm.json").getAsJsonArray("vectors")){JsonObject v=entry.getAsJsonObject();check(Arrays.equals(encrypt(value(v,"key"),value(v,"nonce"),value(v,"aad"),value(v,"plaintext")),Protocol.join(value(v,"ciphertext"),value(v,"tag"))));gcmCount++;}
         JsonObject vector=kem.get(0).getAsJsonObject();byte[] pk=value(vector,"ek");
+        FixedRandom retryRandom=new FixedRandom(value(vector,"m"));Session retry=new Session(pk,Protocol.sha(pk),ignored->{},retryRandom);
+        rejects(()->retry.retryHello());byte[] firstHello=retry.start();
+        check(retry.waitingAck()&&Arrays.equals(firstHello,retry.retryHello())&&Arrays.equals(firstHello,retry.retryHello()));
+        check(retryRandom.calls==1); // Retransmission must not consume randomness or change transcript.
+        byte[] retryAck=Protocol.control(2,Protocol.join(new byte[]{1,1,0,1},repeat(2,32)));
+        byte[] retryKem=Protocol.unwrap(retry.receive(Protocol.wrap(1,retryAck)).get(0));
+        check(Arrays.equals(Arrays.copyOfRange(retryKem,12,780),value(vector,"c"))&&!retry.waitingAck());
+        rejects(()->retry.retryHello());check(retry.receive(Protocol.wrap(1,retryAck)).isEmpty()&&retryRandom.calls==2);
+        byte[] retryTranscript=Protocol.sha(Protocol.join(Protocol.ascii("EYEPQC v1"),Protocol.sha(pk),Protocol.unwrap(firstHello),retryAck,retryKem));
+        byte[] retryMaterial=Session.derive(value(vector,"k"),retryTranscript);
+        check(retry.receive(Protocol.wrap(1,Protocol.control(4,Protocol.mac(Arrays.copyOfRange(retryMaterial,16,48),Protocol.ascii("board finished"),retryTranscript)))).size()==2&&retry.streaming());
+        rejects(()->retry.receive(Protocol.wrap(1,retryAck)));check(!retry.streaming());Session.wipe(retryMaterial);
+        Session changedAck=new Session(pk,Protocol.sha(pk),ignored->{});changedAck.start();changedAck.receive(Protocol.wrap(1,retryAck));
+        byte[] differentAck=retryAck.clone();differentAck[differentAck.length-1]^=1;
+        rejects(()->changedAck.receive(Protocol.wrap(1,differentAck)));rejects(()->changedAck.retryHello());
         rejects(()->new Session(pk,new byte[32],jpeg->{}));
         rejects(()->Protocol.unwrap(new byte[]{1,0,4,1}));rejects(()->Protocol.unwrap(new byte[]{3,0,1,1}));
         rejects(()->Protocol.controlType(Protocol.control(3,new byte[767])));

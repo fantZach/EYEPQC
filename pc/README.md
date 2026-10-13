@@ -64,6 +64,21 @@ Android 连接 `ws://<PC地址>:8765/stream`，HTTP 握手携带 `Authorization:
 纯 WS 会明文传输接入 token，仅在可信局域网或已建立的受保护组网 VPN 中使用。
 WSS 可通过 `--tls-cert <证书.pem> --tls-key <私钥.pem>` 启用，Android 须信任有效证书。
 
+已有板端身份文件时，可用最小配对工具同时准备手机公钥与本地接入凭据。它核对 800 字节公钥和
+SHA-256 pin，只读取 `public.bin` 与 `public.sha256`，输出目录必须不存在：
+
+```powershell
+& ./.venv/Scripts/python.exe pc/src/host/prepare_pairing.py --identity-dir board/output/mobile_identity_live_20261013_1 --endpoint ws://10.179.236.247:8765/stream --output-dir tmp/mobile_pairing
+& ./.venv/Scripts/python.exe pc/src/host/relay.py --token-file tmp/mobile_pairing/relay.token --host 10.179.236.247
+```
+
+将示例身份目录和 PC 地址换成当前实际值。`tmp/mobile_pairing/pairing.txt` 包含 endpoint/token/pin，
+供本机查看和手机配对；`relay.token` 供桥读取。两者都属于接入凭据，不能通过公钥下载服务公开。
+只有 `tmp/mobile_pairing/public/` 包含可公开的公钥和摘要；如临时开启 HTTP 下载，文档根目录必须精确
+指向这个 `public/` 子目录，绝不能服务配对父目录或板端身份目录。pin 仍须经可信途径确认，不能只信任
+同一未认证 HTTP 下载的摘要。工具 stdout 只显示文件路径，不打印 token。
+POSIX 上凭据以 0600 创建；Windows 继承父目录 ACL，保存到当前用户可控目录并限制其他用户访问。
+
 每个二进制消息只承载一条完整 USB 外层记录；手机只可发送合法的 HELLO、KEM_CIPHERTEXT、
 FINISHED_HOST、START、STOP、REKEY 控制。板端控制与视频原字节转发，PC 不参与业务密钥派生或解密。
 路径错误返回 HTTP 404，token 缺失/错误返回 401，已占用返回 503；同时升级竞争时第二连接关闭 1013。
@@ -71,10 +86,13 @@ FINISHED_HOST、START、STOP、REKEY 控制。板端控制与视频原字节转�
 
 应用发送队列最多 64 条记录（单条最多 1459 字节），USB 未完成记录超时 2 秒，
 网络发送超时 5 秒，串口写超时 250 毫秒。超限关闭整个会话，不抽取控制消息丢弃后继续播放。
+Windows 串口使用 20 ms 正超时、单个后台读取；取消先等待读取自然返回（最多 250 ms），超限才取消 I/O，
+读取结束后才排空/关闭端口。正常 STOP 后保留 DTR，合法残余记录排空到 150 ms quiet（最长 2 秒）。
 每次接入先拉低 DTR 250 毫秒、清除旧缓冲，再拉高开始转发；断连拉低 DTR、清空缓冲并释放串口。
 Android 重连须重新完成握手；实际板端 DTR/故障恢复仍待 G7 验证。
 
-桥已通过真实 WebSocket 与模拟串口离线测试；Windows 实际 USB、Android 真机、45 fps 与校园网/VPN
-吞吐尚待联合验收。可选公网中转配对、部署及 PC 主动连接中转仍未实现。
+桥已通过真实 WebSocket 与模拟串口离线测试，并在真实 G6/摄像头/USB→JVM 两个连续 30 秒窗口达到约 47.26 fps、
+正常 STOP/重连通过。Android 真机显示、45 fps 与校园网/VPN 手机吞吐尚待联合验收；
+之前的失败和严格边界见 [实机记录](../report/mobile_live_bringup_20261013.md)。可选公网中转配对、部署及 PC 主动连接中转仍未实现。
 实现使用 [websockets 15.0.1 asyncio 服务端 API](https://websockets.readthedocs.io/en/15.0.1/reference/asyncio/server.html)。
 详细约束见 [三端架构](../doc/architecture.md)。

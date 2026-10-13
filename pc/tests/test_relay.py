@@ -2,6 +2,8 @@
 
 import asyncio
 import sys
+import time
+import threading
 import unittest
 from pathlib import Path
 
@@ -15,6 +17,7 @@ TOKEN = "test-only-access-token-0123456789abcdef"
 HELLO = encode_usb_record(1, encode_control(MessageType.HELLO, b"\x01\x01\x00\x01" + b"h" * 32))
 ACK = encode_usb_record(1, encode_control(MessageType.HELLO_ACK, b"\x01\x01\x00\x01" + b"b" * 32))
 VIDEO = encode_usb_record(2, bytes(range(256)))
+STOP = encode_usb_record(1, encode_control(MessageType.STOP, bytes(40)))
 
 
 class FakeSerial:
@@ -194,6 +197,177 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         self.relay.serial_factory = original
         async with self.client():
             await self.ready()
+
+    async def test_stop_close_keeps_dtr_high_until_trailing_video_quiet(self):
+        ws = await self.client()
+        device = await self.ready()
+        stopped = asyncio.Event()
+        device.on_write = lambda data: stopped.set() if data == STOP else None
+        await ws.send(STOP)
+        await asyncio.wait_for(stopped.wait(), 1)
+        last_read = [0.0]
+        original_read = device.read
+        end = time.monotonic() + 0.25
+
+        def trailing_read(size):
+            if time.monotonic() < end:
+                last_read[0] = time.monotonic()
+                return VIDEO
+            return original_read(size)
+
+        device.read = trailing_read
+        await ws.close()
+        for _ in range(300):
+            if device.closed:
+                break
+            await asyncio.sleep(0.005)
+        self.assertTrue(device.closed)
+        self.assertFalse(device.dtr)
+        self.assertGreaterEqual(device.transitions[-1][1] - last_read[0], 0.13)
+        self.assertFalse(self.relay.busy)
+
+    async def test_stop_drain_continuous_video_has_bounded_release(self):
+        ws = await self.client()
+        device = await self.ready()
+        stopped = asyncio.Event()
+        device.on_write = lambda data: stopped.set() if data == STOP else None
+        await ws.send(STOP)
+        await asyncio.wait_for(stopped.wait(), 1)
+        device.read = lambda size: VIDEO
+        started = asyncio.get_running_loop().time()
+        await ws.close()
+        for _ in range(600):
+            if device.closed:
+                break
+            await asyncio.sleep(0.005)
+        elapsed = asyncio.get_running_loop().time() - started
+        self.assertTrue(device.closed)
+        self.assertGreaterEqual(elapsed, 1.8)
+        self.assertLess(elapsed, 2.5)
+        self.assertFalse(device.dtr)
+        self.assertFalse(self.relay.busy)
+
+    async def test_stop_drain_rejects_invalid_usb_and_preserves_partial_record(self):
+        from protocol import UsbRecordDecoder
+        device = FakeSerial()
+        decoder = UsbRecordDecoder()
+        decoder.feed(VIDEO[:2])
+        device.input.extend(VIDEO[2:])
+        self.assertEqual(await self.relay.drain_stop(device, decoder), "quiet")
+        self.assertFalse(decoder.buffer)
+        device.input.extend(b"\x03\x00\x01x")
+        with self.assertRaises(ValueError):
+            await self.relay.drain_stop(device, decoder)
+
+    async def test_blocking_read_is_off_loop_and_completed_before_close(self):
+        ws = await self.client()
+        device = await self.ready()
+        started = threading.Event()
+        cancelled = threading.Event()
+        active = [0]
+        peak = [0]
+        owner = threading.get_ident()
+        thread_ids = []
+        original_close = device.close
+
+        def read(size):
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+            thread_ids.append(threading.get_ident())
+            started.set()
+            cancelled.wait(0.02)
+            active[0] -= 1
+            return b""
+
+        def close():
+            self.assertEqual(active[0], 0)
+            original_close()
+
+        device.read = read
+        device.cancel_read = cancelled.set
+        device.close = close
+        for _ in range(100):
+            if started.is_set():
+                break
+            await asyncio.sleep(0.002)
+        self.assertTrue(started.is_set())
+        await ws.send(HELLO)
+        for _ in range(100):
+            if device.written:
+                break
+            await asyncio.sleep(0.002)
+        self.assertEqual(device.written, [HELLO])
+        await ws.close()
+        for _ in range(100):
+            if device.closed:
+                break
+            await asyncio.sleep(0.002)
+        self.assertTrue(device.closed)
+        self.assertFalse(cancelled.is_set())
+        self.assertEqual(active[0], 0)
+        self.assertEqual(peak[0], 1)
+        self.assertTrue(all(identity != owner for identity in thread_ids))
+
+    async def test_cancelled_reader_keeps_natural_partial_tail_without_cancel_io(self):
+        from protocol import UsbRecordDecoder
+        device = FakeSerial()
+        decoder = UsbRecordDecoder()
+        decoder.feed(VIDEO[:2])
+        started = threading.Event()
+        cancelled = threading.Event()
+
+        def read(size):
+            started.set()
+            time.sleep(0.02)
+            return VIDEO[2:]
+
+        device.read = read
+        device.cancel_read = cancelled.set
+        task = asyncio.create_task(self.relay.usb_read(device, decoder))
+        for _ in range(100):
+            if started.is_set():
+                break
+            await asyncio.sleep(0.002)
+        self.assertTrue(started.is_set())
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertFalse(cancelled.is_set())
+        self.assertFalse(decoder.buffer)
+        device.read = lambda size: b""
+        self.assertEqual(await self.relay.drain_stop(device, decoder), "quiet")
+
+    async def test_read_cancel_io_is_only_fallback_after_bounded_wait(self):
+        from protocol import UsbRecordDecoder
+        device = FakeSerial()
+        started = threading.Event()
+        cancelled = threading.Event()
+        active = [0]
+
+        def read(size):
+            active[0] += 1
+            started.set()
+            cancelled.wait(1)
+            active[0] -= 1
+            return b""
+
+        device.read = read
+        device.cancel_read = cancelled.set
+        task = asyncio.create_task(self.relay.usb_read(device, UsbRecordDecoder()))
+        for _ in range(100):
+            if started.is_set():
+                break
+            await asyncio.sleep(0.002)
+        self.assertTrue(started.is_set())
+        before = time.monotonic()
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertGreaterEqual(time.monotonic() - before, 0.23)
+        self.assertLess(time.monotonic() - before, 0.75)
+        self.assertTrue(cancelled.is_set())
+        self.assertEqual(active[0], 0)
+        device.close()
 
     def test_inner_control_validation_and_token_file(self):
         for kind, size in ((1, 36), (3, 768), (5, 32), (6, 40), (7, 40), (8, 40)):

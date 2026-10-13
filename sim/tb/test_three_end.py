@@ -84,6 +84,7 @@ class ThreeEnd(unittest.IsolatedAsyncioTestCase):
         devices = []
         def factory():
             device = SimulatedCdc()
+            device.board.drop_first_hello_ack = len(devices) == 4
             devices.append(device)
             return device
         # Public fixture token and KAT key only, never real provisioning material.
@@ -95,7 +96,7 @@ class ThreeEnd(unittest.IsolatedAsyncioTestCase):
             with tempfile.TemporaryDirectory(prefix='eyepqc-three-end-') as folder:
                 pk = Path(folder) / 'public.bin'
                 pk.write_bytes(reference.G6.pk)
-                for run in range(4):
+                for run in range(5):
                     mode = ['rekey'] if run == 2 else ['stop'] if run == 3 else []
                     process = await asyncio.create_subprocess_exec(
                         str(java), '-cp', classpath, 'org.eyepqc.mobile.NetworkCli',
@@ -117,7 +118,9 @@ class ThreeEnd(unittest.IsolatedAsyncioTestCase):
                         await asyncio.sleep(.02)
                     self.assertFalse(relay.busy)
                     self.assertTrue(devices[-1].closed)
-                    self.assertEqual([int(x) for x in devices[-1].commands[:4]], [1, 3, 5, 6])
+                    expected_controls = [1, 1, 3, 5, 6] if run == 4 else [1, 3, 5, 6]
+                    self.assertEqual([int(x) for x in devices[-1].commands[:len(expected_controls)]],
+                                     expected_controls)
                     if mode == ['rekey']:
                         self.assertEqual([int(x) for x in devices[-1].commands[:9]],
                                          [1, 3, 5, 6, 8, 1, 3, 5, 6])

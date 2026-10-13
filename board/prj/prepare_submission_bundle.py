@@ -81,6 +81,7 @@ PUBLIC_REPORT_FILES = {
     "report/parallel_C_20261009.md",
     "report/progress.md",
     "report/three_end_mvp.md",
+    "report/mobile_live_bringup_20261013.md",
     "report/reuse_license_audit_20261011.md",
     "report/security_gap_audit.md",
     "report/security_cleanup_20261010.md",

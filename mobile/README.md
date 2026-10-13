@@ -55,6 +55,8 @@ ML-KEM 使用 Bouncy Castle lightweight API；HKDF-SHA-256、Finished/控制 HMA
    离开前台会关闭连接；返回后需再次连接。接收队列上限 512 条、单条 1459 字节，
    组帧缓冲上限 2 MiB，界面只保留最近待显示图像；队列超限、协议/Tag/重放错误会断开并要求重新握手。
    显式换钥时，在新 HELLO_ACK 到来前排空旧会话的完整视频记录，不显示、不计入认证帧；普通握手前视频仍拒绝。
+   等待 HELLO_ACK 时每隔 3 秒原样重发 HELLO，最多 2 次；不生成新随机数或延长 15 秒握手期限。
+   仅在等待 Finished 阶段忽略逐字节相同的缓存 HELLO_ACK；不同 ACK、其他状态和认证失败仍拒绝。
 
 应用禁止截图/备份，不写密钥、令牌或 JPEG 明文日志。Java/密码库内部副本不保证物理清零，
 资源释放采用可控数组尽力覆盖；该开发 MVP 不包含生产熵源、板端安全存储或启动保护验收。
@@ -74,20 +76,25 @@ OkHttp 会先接收完整网络消息再调用应用，1459 字节检查属于�
 `ClientCli` 供共享测试驱动，参数为公钥文件和可信 pin，stdin 支持 `START`、`RECEIVE <完整USB记录hex>`、
 `STOP`、`REKEY`、`CLOSE`；stdout 的 `SEND`/`FRAME` 使用公开 fixture，`READY` 表示本条命令处理完成。
 `NetworkCli` 用实际 OkHttp 验证公开 JPEG fixture 的认证接收与 SHA-256，不输出图像内容；这些 CLI 不打包到 APK。
+`LiveProbe` 用同一客户端接实际 PC 桥，参数为公钥路径、pin、端点、令牌文件、输出目录、秒数；
+ImageIO 独立解码并保存首/末 JPEG 与结果 JSON，不把令牌放入进程参数。首认证帧后起计时，
+要求认证解码跨度达到目标窗口的 90% 且没有超过 5 秒帧间停顿；JVM 的测得帧率不代表 Android 手机显示帧率。
 
 2026-10-13 本机 JDK 21、Gradle 8.9、AGP 8.7.3、Platform 35 rev 2、Build Tools 35.0.0 完整构建成功，
-31 项 Gradle 任务执行，构建耗时 2 分 28 秒。官方主下载地址曾 TLS 失败，后通过已有本地代理和官方
+初版 31 项 Gradle 任务执行，构建耗时 2 分 28 秒；修正版 0.2 缓存构建耗时 25 秒（10 执行、21 已是最新）。官方主下载地址曾 TLS 失败，后通过已有本地代理和官方
 `dl-ssl.google.com`/Google CDN 取得工具与依赖；工具缓存与临时仓库 init 脚本位于 ignored 目录，未修改系统代理。
 
-调试 APK：`app/build/outputs/apk/debug/app-debug.apk`，4,633,066 字节，SHA-256：
-`84190c59ce9f78bc8f690eefdb04515510c594218bf35a9a3638818953e08431`。
+调试 APK：`app/build/outputs/apk/debug/app-debug.apk`，4,633,646 字节，SHA-256：
+`0aa8afe434e9631661330e8d2739f3b82e152473b0c9acc8eaba0d9191a9c06d`。
 `apksigner verify --min-sdk-version 26` 通过 APK v2 签名验证；`aapt dump badging` 确认包名 `org.eyepqc.mobile`、
-版本 0.1、最低 API 26、目标 API 35、启动 Activity 与 INTERNET 权限。使用 Android Debug 证书签名，APK 保留为本地构建产物。
+版本 0.2 / versionCode 2、最低 API 26、目标 API 35、启动 Activity 与 INTERNET 权限。
+沿用初版 Android Debug 证书，可更新已安装的 0.1；APK 保留为本地构建产物。
 
-离线内核共 147 项断言通过（包含上述 25/20 个 KAT），另覆盖换钥后旧帧排空、新 ACK/Finished 与新视频。
+离线内核共 158 项断言通过（包含上述 25/20 个 KAT），另覆盖换钥后旧帧排空、新 ACK/Finished 与新视频、
+HELLO 重发不耗新随机数及重复/不同 ACK 的状态约束。
 真实 OkHttp/回环 WebSocket/板端 C 会话及 ML-KEM mock 的握手、视频和重连/换钥互操作见共享 `sim/tb/test_three_end.py`；
 这些检查运行在 PC，未执行 Android Activity 的手机运行测试。
-实际手机安装、校园网/VPN 连通、板端断线恢复和手机认证显示 45 fps 门禁均保留待测。
+手机安装修正版后实际认证显示、校园网/VPN 连通、完整板端异常恢复和手机显示 45 fps 门禁仍需实测。
 
 依赖与工具依据：[OkHttp](https://square.github.io/okhttp/)、
 [ML-KEM API 源码](https://github.com/bcgit/bc-java/blob/r1rv81/core/src/main/java/org/bouncycastle/pqc/crypto/mlkem/MLKEMGenerator.java)、

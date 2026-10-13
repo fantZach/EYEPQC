@@ -21,7 +21,7 @@ public final class Session implements AutoCloseable {
     private final SecureRandom random;
     private final Frames frames;
     private int state; // 0 idle, 1 waiting ACK, 2 waiting board Finished, 3 streaming
-    private byte[] hello, transcript, previousTranscript, videoKey, controlKey;
+    private byte[] hello, cachedAck, transcript, previousTranscript, videoKey, controlKey;
     private int epoch, sessionId;
     private long commandSequence, high;
     private long seen;
@@ -40,6 +40,11 @@ public final class Session implements AutoCloseable {
         pk=key.clone(); frames=listener; random=rng;
     }
     public boolean streaming() { return state==3; }
+    public boolean waitingAck() { return state==1; }
+    public byte[] retryHello() {
+        if(state!=1||hello==null)throw new IllegalStateException("not waiting for HELLO_ACK");
+        return Protocol.wrap(1,hello);
+    }
     public byte[] start() throws Exception {
         if(state!=0)throw new IllegalStateException("session already active");
         byte[] fresh=new byte[32]; random.nextBytes(fresh);
@@ -56,6 +61,7 @@ public final class Session implements AutoCloseable {
             }
             int type=Protocol.controlType(record);
             if(type==9)throw new IllegalArgumentException("board reported error");
+            if(state==2&&type==2&&cachedAck!=null&&Arrays.equals(record,cachedAck))return replies;
             if(state==1 && type==2) {
                 if(!Arrays.equals(Arrays.copyOfRange(record,12,16),new byte[]{1,1,0,1}))throw new IllegalArgumentException("board suite mismatch");
                 SecretWithEncapsulation result=null; byte[] shared=null, material=null;
@@ -65,7 +71,7 @@ public final class Session implements AutoCloseable {
                     transcript=Protocol.sha(Protocol.join(Protocol.ascii("EYEPQC v1"),Protocol.sha(pk),hello,record,kem));
                     if(previousTranscript!=null && MessageDigest.isEqual(previousTranscript,transcript))throw new IllegalArgumentException("replayed handshake");
                     material=derive(shared,transcript); videoKey=Arrays.copyOfRange(material,0,16); controlKey=Arrays.copyOfRange(material,16,48);
-                    ByteBuffer b=ByteBuffer.wrap(material,48,8);epoch=b.getInt();sessionId=b.getInt();state=2;rekeyDrain=false;
+                    ByteBuffer b=ByteBuffer.wrap(material,48,8);epoch=b.getInt();sessionId=b.getInt();cachedAck=record;state=2;rekeyDrain=false;
                     replies.add(Protocol.wrap(1,kem));
                 } finally { wipe(shared);wipe(material);if(result!=null)result.destroy(); }
             } else if(state==2 && type==4) {
@@ -131,5 +137,5 @@ public final class Session implements AutoCloseable {
     }
     private void clearFrame(){wipe(frame);frame=null;packets=null;got=0;}
     static void wipe(byte[] b){if(b!=null)Arrays.fill(b,(byte)0);}
-    @Override public void close(){if(transcript!=null)previousTranscript=transcript;wipe(videoKey);wipe(controlKey);videoKey=controlKey=null;transcript=hello=null;state=0;commandSequence=high=seen=0;received=rekeyDrain=false;drainingSessionId=0;frameId=-1;clearFrame();}
+    @Override public void close(){if(transcript!=null)previousTranscript=transcript;wipe(videoKey);wipe(controlKey);videoKey=controlKey=null;transcript=hello=cachedAck=null;state=0;commandSequence=high=seen=0;received=rekeyDrain=false;drainingSessionId=0;frameId=-1;clearFrame();}
 }

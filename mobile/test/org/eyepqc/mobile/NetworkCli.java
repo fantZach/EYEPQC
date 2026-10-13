@@ -30,7 +30,9 @@ public final class NetworkCli {
         })){
             owner.set(client);
             client.connect(args[2],args[3]);
-            if(!done.await(20,TimeUnit.SECONDS)||!success.get())throw new AssertionError("authenticated fixture not received");
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(20);boolean finished=false;
+            while(System.nanoTime()<deadline){client.checkTimeout();if(done.await(100,TimeUnit.MILLISECONDS)){finished=true;break;}}
+            if(!finished||!success.get())throw new AssertionError("authenticated fixture not received");
             System.out.println(stop?"ANDROID_NETWORK_STOP_OK":rekey?"ANDROID_NETWORK_REKEY_OK":"ANDROID_NETWORK_OK");
         }
     }
