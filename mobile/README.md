@@ -1,5 +1,22 @@
 # 移动端子项目
 
+## 0.6 debug 专用测试 CA
+
+0.6 / versionCode6 的 debug APK 在 `src/debug` 中内置专用公开测试 CA，供本轮准备的 WSS 证书使用。
+debug Manifest 只引用 debug XML，`debug-overrides` 信任该 CA，显式 `overridePins=false`，
+避免 Android 的 debug CA 默认跳过未来 TLS pinning。系统 CA、证书链/有效期、SAN 主机名检查仍使用平台实现；
+没有 trust-all、主机名恒真或重定向降级。schema2 WSS 与 ML-KEM 身份 pin 不变，不安装手机系统 CA，不加证书导入 UI。
+debug base 显式保持原有 v1 局域网明文 WS 开发兼容；账号/schema2 不允许明文。
+
+main/release 不引用网络配置，release 构建不包含测试 CA/调试 XML且不启用debuggable。
+公开 CA 是证书，不包含 CA/server 私钥或密码；APK不自动复制到公开目录或安装。
+0.5 的“仅系统信任 CA”限制在 0.6 release 仍适用，0.6 debug 额外信任这一个测试 CA。
+构建/验签与资源隔离结果见 [mobile 联调前准备](../report/mobile_preboard_20261014.md)。
+debug APK 4,750,025字节，SHA-256 `59e0d9a31496326ab0a3e9f4158d2a47e165eae573b8d19886b19d84f5593461`，
+已验证API26 v2签名及原Debug证书。debug+release完整构建（含release vital lint）和资源隔离测试通过；
+release是未签名的隔离检查产物，未安装/发布；0.6手机TLS尚未实测。
+实现依据：[Android 网络安全配置](https://developer.android.com/privacy-and-security/security-config)。
+
 ## 0.5 账号与临时 KEM
 
 新配置使用 schema2，仅四项：`version`（整数 2）、`endpoint`（`wss://.../stream`）、

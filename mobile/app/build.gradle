@@ -3,7 +3,7 @@ android {
     namespace 'org.eyepqc.mobile'
     compileSdk 35
     buildToolsVersion '35.0.0'
-    defaultConfig { applicationId 'org.eyepqc.mobile'; minSdk 26; targetSdk 35; versionCode 5; versionName '0.5' }
+    defaultConfig { applicationId 'org.eyepqc.mobile'; minSdk 26; targetSdk 35; versionCode 6; versionName '0.6' }
     compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
     packaging { resources.excludes += ['META-INF/versions/**', 'META-INF/LICENSE*', 'META-INF/NOTICE*'] }
 }
