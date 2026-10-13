@@ -70,6 +70,11 @@ public final class LiveProbe {
         finally{image.flush();}
     }
     private static void selfTest(Path base)throws Exception {
+        String[] credentials=accountCredentials("username=fixture\npassword= keep spaces \n");
+        if(!credentials[0].equals("fixture")||!credentials[1].equals(" keep spaces "))throw new AssertionError("credential parsing");
+        for(String bad:new String[]{"username=fixture", "password=x\nusername=fixture", "username=\npassword=x", "username=fixture\npassword=x\nextra=value"}){
+            try{accountCredentials(bad);throw new AssertionError("bad credential file accepted");}catch(IllegalArgumentException expected){}
+        }
         Files.createDirectories(base);Path folder=Files.createTempDirectory(base,"live-probe-check-");byte[] jpeg=publicJpeg(8);
         Measurement good=new Measurement(folder);good.accept(jpeg,TimeUnit.SECONDS.toNanos(1));good.accept(jpeg,TimeUnit.SECONDS.toNanos(2));
         if(!good.passes(1)||good.passes(30))throw new AssertionError("duration threshold");
@@ -84,15 +89,17 @@ public final class LiveProbe {
         System.out.println("LIVE_PROBE_SELFTEST_OK");
     }
     public static void main(String[] args)throws Exception {
+        boolean account=args.length==7&&args[0].equals("--account");
+        if(account)args=java.util.Arrays.copyOfRange(args,1,args.length);
         if(args.length==2&&args[0].equals("--self-test")){selfTest(Paths.get(args[1]));return;}
-        if(args.length!=6)throw new IllegalArgumentException("LiveProbe <public-key path> <pin> <endpoint> <token-file> <capture-directory> <seconds>");
+        if(args.length!=6)throw new IllegalArgumentException("LiveProbe [--account] <public-key path> <pin> <endpoint> <credential-file> <capture-directory> <seconds>");
         double seconds=Double.parseDouble(args[5]);if(!Double.isFinite(seconds)||seconds<1||seconds>7200)throw new IllegalArgumentException("seconds must be 1..7200");
         Path keyFile=Paths.get(args[0]),tokenFile=Paths.get(args[3]),directory=Paths.get(args[4]);
-        if(Files.size(keyFile)!=800||Files.size(tokenFile)>512)throw new IllegalArgumentException("public key/token file size");
+        if(Files.size(keyFile)!=800||Files.size(tokenFile)>(account?2048:512))throw new IllegalArgumentException("public key/credential file size");
         Files.createDirectories(directory);
         for(String name:new String[]{"first.jpg","last.jpg","result.json"})if(Files.exists(directory.resolve(name)))throw new IllegalArgumentException("capture outputs already exist");
         byte[] tokenBytes=Files.readAllBytes(tokenFile);String token;
-        try{token=new String(tokenBytes,StandardCharsets.UTF_8).trim();}finally{Session.wipe(tokenBytes);}
+        try{token=new String(tokenBytes,StandardCharsets.UTF_8);if(!account)token=token.trim();}finally{Session.wipe(tokenBytes);}
         Measurement measurement=new Measurement(directory);AtomicBoolean failed=new AtomicBoolean(),stopping=new AtomicBoolean();
         CountDownLatch stopped=new CountDownLatch(1);
         String failure=null;
@@ -102,8 +109,12 @@ public final class LiveProbe {
                 if(message.equals("已停止")){stopped.countDown();return;}
                 if(!stopping.get()&&!message.equals("连接中")&&!message.equals("验证板卡中")&&!message.startsWith("已认证 /"))failed.set(true);
             }
-        })){
-            client.connect(args[2],token);long connectionStart=System.nanoTime();
+        },account)){
+            if(account){
+                String[] fields=accountCredentials(token);
+                client.connectAccount(args[2],fields[0],fields[1],false);
+            }else client.connect(args[2],token);
+            token=null;long connectionStart=System.nanoTime();
             while(!failed.get()){
                 client.checkTimeout();long first=measurement.first(),now=System.nanoTime();
                 if(first==0&&now-connectionStart>TimeUnit.SECONDS.toNanos(25)){failure="no authenticated decoded frame before deadline";break;}
@@ -118,5 +129,11 @@ public final class LiveProbe {
         Files.write(directory.resolve("result.json"),result.toString().getBytes(StandardCharsets.UTF_8));
         if(!result.get("outcome").getAsString().equals("PASS"))throw new AssertionError("LIVE_PROBE_FAIL: "+result.get("failure").getAsString());
         System.out.println("LIVE_PROBE_OK frames="+result.get("authenticated_decoded_frames")+" fps="+result.get("authenticated_decoded_fps")+" span="+result.get("authenticated_decoded_span_seconds")+" width="+result.get("width")+" height="+result.get("height"));
+    }
+
+    static String[] accountCredentials(String input){
+        String[] fields=input.split("\\r?\\n");
+        if(fields.length!=2||!fields[0].startsWith("username=")||!fields[1].startsWith("password=")||fields[0].length()<=9||fields[1].length()<=9)throw new IllegalArgumentException("credential file format");
+        return new String[]{fields[0].substring(9),fields[1].substring(9)};
     }
 }

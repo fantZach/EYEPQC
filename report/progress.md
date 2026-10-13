@@ -1,5 +1,13 @@
 # Implementation progress
 
+## 2026-10-14：账号与临时 ML-KEM 实板/手机短测
+
+新 suite2 固件已临时 JTAG 装载，真实相机/USB/WSS/账号链路通过 JVM 两轮认证解码：
+1421 帧/30.0465811 秒、475 帧/10.0288435 秒，均约 47.26 fps，STOP 后重连通过。
+用户在 Android 0.6 登录后报告约 45 fps，STOP/重连/手动换钥提示后反馈换钥后约 45 fps；
+relay 记录手机正常 STOP 和新会话打开。准确证据见 [实机短测](account_ephemeral_board_20261014.md)。
+尚未验证半小时自动换钥、双设备接管、完整 G8；SD 仍为 G0，自主视频启动及生产密钥/熵源未完成。
+
 ## 2026-10-14：上板前 debug CA 与账号材料准备
 
 专用CA/实际IP服务端证书、受限ACL账号材料、schema2 JSON及0.6 debug APK已准备；
