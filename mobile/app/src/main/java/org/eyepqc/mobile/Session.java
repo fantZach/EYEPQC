@@ -20,7 +20,8 @@ public final class Session implements AutoCloseable {
     private final byte[] pk;
     private final SecureRandom random;
     private final Frames frames;
-    private int state; // 0 idle, 1 waiting ACK, 2 waiting board Finished, 3 streaming
+    private final int suite;
+    private int state; // 0 idle, 1 ACK, 2 bootstrap Finished, 3 streaming, 4 offer, 5 business Finished
     private byte[] hello, cachedAck, transcript, previousTranscript, videoKey, controlKey;
     private int epoch, sessionId;
     private long commandSequence, high;
@@ -35,12 +36,18 @@ public final class Session implements AutoCloseable {
     public long authenticatedPackets, completeFrames, droppedFrames;
 
     public Session(byte[] key, byte[] pin, Frames listener) throws Exception { this(key,pin,listener,new SecureRandom()); }
+    public Session(byte[] key, byte[] pin, Frames listener,boolean ephemeral) throws Exception { this(key,pin,listener,new SecureRandom(),ephemeral?2:1); }
     Session(byte[] key, byte[] pin, Frames listener, SecureRandom rng) throws Exception {
+        this(key,pin,listener,rng,1);
+    }
+    Session(byte[] key, byte[] pin, Frames listener, SecureRandom rng,int profile) throws Exception {
+        if(profile!=1&&profile!=2)throw new IllegalArgumentException("suite");suite=profile;
         if (key.length!=800 || pin.length!=32 || !MessageDigest.isEqual(Protocol.sha(key),pin)) throw new IllegalArgumentException("board public-key pin mismatch");
         pk=key.clone(); frames=listener; random=rng;
     }
     public boolean streaming() { return state==3; }
     public boolean waitingAck() { return state==1; }
+    int phase(){return state;}
     public byte[] retryHello() {
         if(state!=1||hello==null)throw new IllegalStateException("not waiting for HELLO_ACK");
         return Protocol.wrap(1,hello);
@@ -48,7 +55,7 @@ public final class Session implements AutoCloseable {
     public byte[] start() throws Exception {
         if(state!=0)throw new IllegalStateException("session already active");
         byte[] fresh=new byte[32]; random.nextBytes(fresh);
-        hello=Protocol.control(1,Protocol.join(new byte[]{1,1,0,1},fresh)); wipe(fresh); state=1;
+        hello=Protocol.control(1,Protocol.join(new byte[]{1,1,0,(byte)suite},fresh)); wipe(fresh); state=1;
         return Protocol.wrap(1,hello);
     }
     public List<byte[]> receive(byte[] message) throws Exception {
@@ -63,23 +70,38 @@ public final class Session implements AutoCloseable {
             if(type==9)throw new IllegalArgumentException("board reported error");
             if(state==2&&type==2&&cachedAck!=null&&Arrays.equals(record,cachedAck))return replies;
             if(state==1 && type==2) {
-                if(!Arrays.equals(Arrays.copyOfRange(record,12,16),new byte[]{1,1,0,1}))throw new IllegalArgumentException("board suite mismatch");
+                if(!Arrays.equals(Arrays.copyOfRange(record,12,16),new byte[]{1,1,0,(byte)suite}))throw new IllegalArgumentException("board suite mismatch");
                 SecretWithEncapsulation result=null; byte[] shared=null, material=null;
                 try {
                     result=new MLKEMGenerator(random).generateEncapsulated(new MLKEMPublicKeyParameters(MLKEMParameters.ml_kem_512,pk));
                     byte[] kem=Protocol.control(3,result.getEncapsulation()); shared=result.getSecret();
                     transcript=Protocol.sha(Protocol.join(Protocol.ascii("EYEPQC v1"),Protocol.sha(pk),hello,record,kem));
                     if(previousTranscript!=null && MessageDigest.isEqual(previousTranscript,transcript))throw new IllegalArgumentException("replayed handshake");
-                    material=derive(shared,transcript); videoKey=Arrays.copyOfRange(material,0,16); controlKey=Arrays.copyOfRange(material,16,48);
+                    material=derive(shared,transcript); if(suite==1)videoKey=Arrays.copyOfRange(material,0,16); controlKey=Arrays.copyOfRange(material,16,48);
                     ByteBuffer b=ByteBuffer.wrap(material,48,8);epoch=b.getInt();sessionId=b.getInt();cachedAck=record;state=2;rekeyDrain=false;
                     replies.add(Protocol.wrap(1,kem));
                 } finally { wipe(shared);wipe(material);if(result!=null)result.destroy(); }
-            } else if(state==2 && type==4) {
+            } else if((state==2||state==5) && type==4) {
                 byte[] expected=Protocol.mac(controlKey,Protocol.ascii("board finished"),transcript);
                 boolean valid=MessageDigest.isEqual(expected,Arrays.copyOfRange(record,12,44));wipe(expected);
                 if(!valid)throw new IllegalArgumentException("board Finished authentication failed");
                 replies.add(Protocol.wrap(1,Protocol.control(5,Protocol.mac(controlKey,Protocol.ascii("host finished"),transcript))));
-                replies.add(command(6));state=3;
+                if(state==2&&suite==2){state=4;cachedAck=null;}else{replies.add(command(6));state=3;}
+            } else if(state==4&&type==10){
+                byte[] expected=Protocol.mac(controlKey,Protocol.ascii("EYEPQC eph offer v1"),transcript,Arrays.copyOf(record,844));
+                boolean valid=MessageDigest.isEqual(transcript,Arrays.copyOfRange(record,12,44))&&MessageDigest.isEqual(expected,Arrays.copyOfRange(record,844,876));wipe(expected);
+                if(!valid)throw new IllegalArgumentException("ephemeral offer authentication failed");
+                SecretWithEncapsulation result=null;byte[] shared=null,material=null;
+                try{
+                    result=new MLKEMGenerator(random).generateEncapsulated(new MLKEMPublicKeyParameters(MLKEMParameters.ml_kem_512,Arrays.copyOfRange(record,44,844)));
+                    byte[] reply=Protocol.control(11,Protocol.join(transcript,result.getEncapsulation(),new byte[32]));
+                    byte[] mac=Protocol.mac(controlKey,Protocol.ascii("EYEPQC eph reply v1"),transcript,record,Arrays.copyOf(reply,812));System.arraycopy(mac,0,reply,812,32);wipe(mac);
+                    byte[] business=Protocol.sha(Protocol.join(Protocol.ascii("EYEPQC eph business v1"),transcript,record,reply));
+                    shared=result.getSecret();material=derive(shared,business);wipe(videoKey);wipe(controlKey);
+                    videoKey=Arrays.copyOfRange(material,0,16);controlKey=Arrays.copyOfRange(material,16,48);transcript=business;
+                    ByteBuffer b=ByteBuffer.wrap(material,48,8);epoch=b.getInt();sessionId=b.getInt();state=5;commandSequence=high=seen=0;received=false;
+                    replies.add(Protocol.wrap(1,reply));
+                }finally{wipe(shared);wipe(material);if(result!=null)result.destroy();}
             } else throw new IllegalArgumentException("unexpected control/state");
             return replies;
         } catch(Exception e) { close();throw e; }

@@ -1,5 +1,33 @@
 # 移动端子项目
 
+## 0.5 账号与临时 KEM
+
+新配置使用 schema2，仅四项：`version`（整数 2）、`endpoint`（`wss://.../stream`）、
+`public_key_hex`、`public_key_sha256`；不包含 token、用户名、密码或私钥。8 KiB 严格解析与可信来源要求不变。
+导入后输入账号密码，点击连接；每次 WSS upgrade 用 UTF-8 Basic 登录，密码只保留当前进程输入框，
+禁止 view state 保存和自动填充，不写 JSON/设置/日志。TLS 用系统信任与主机名校验，不跟随重定向。
+普通用户安装的自签 CA 不自动受本 APK 信任；当前请使用系统信任的 CA 签发 WSS，未提供选定 CA 导入功能。
+
+同账号已在线的 HTTP409 弹出接管确认，只有点击“确认接管”才重连 `/stream?takeover=1`。
+取消不会抢占。被接管的旧设备（4409）停流、清图并等待手动操作，不自动重连。
+401/503/429 显示服务拒绝与状态码；不同账号仍只有一个观看端，不支持广播。
+
+schema2 强制 suite2，固定身份 bootstrap 后认证临时 ML-KEM 公钥，业务密钥只来自临时 KEM。
+bootstrap 不发送 START/视频；临时阶段重做双向 Finished 后才 START。拒绝 suite1 ACK、错误 TH/MAC、
+重复/方向/阶段错误以及旧密钥视频。每次新连接或接管执行整套握手；每次业务会话开始设定一次 30 分钟计时，
+客户端在1785秒（提前15秒）发认证 REKEY 结束旧会话并重新完成整套 suite2，为板端1800秒硬截止预留时间，
+不将旧 AES REKEY 当作临时 KEM 完成。
+停止、失败、关闭与离开前台取消计时并清理会话/旧图；握手各阶段 15 秒超时，失败停流。
+冻结字节契约见 [suite2](../doc/account_ephemeral_protocol.md)。
+
+version=1 的五字段 JSON 仍为显式开发兼容，界面显示“v1 开发兼容”，使用 Bearer/suite1；
+账号 schema2 不会回退到此模式。系统默认 TLS 不受 v1 明文局域网开发模式影响。
+已有约 40 fps 手机用户反馈属于旧开发版本，不证明 0.5 账号/suite2 的手机运行情况。
+本轮证据与手机待验步骤见 [mobile 账号记录](../report/mobile_account_ephemeral_20261014.md)。
+当前0.5 APK 4,772,490字节，SHA-256 `66a6c687325bbba583143f682f0f9e51057e868946fbc678d9a1990cc929c228`，
+API26 v2验签及原Debug证书通过，可覆盖安装。默认测试为核心160/JSON39/临时KEM37项；
+公开C fixture重放47项与真实C/WSS/JVM五窗互操作通过，未运行手机0.5。
+
 目标：Android 手机连接 Windows PC 的局域网服务，在手机本机完成握手、认证解密与 JPEG 视频显示。
 跨网可选择组网 VPN 连接 PC 与手机，或连接可选公网中转服务；VPN 供应商尚未选定，校园网可达性与吞吐须实测。
 已有最小 Android 应用源码：原生 Java Activity、OkHttp 4.12.0 二进制 WebSocket、Bouncy Castle 1.81 lightweight ML-KEM-512。
@@ -48,7 +76,7 @@ ML-KEM 使用 Bouncy Castle lightweight API；HKDF-SHA-256、Finished/控制 HMA
    ```
 
    输出为 `mobile/app/build/outputs/apk/debug/app-debug.apk`。调试 APK 供开发验证，不代表发布版本。
-3. 安装 0.4 后，将可信 PC 生成的 `pairing.json` 传到手机，点击“导入连接配置 JSON”选择该文件。
+3. 安装 0.5 后，将可信 PC 生成的 `pairing.json` 传到手机，点击“导入连接配置 JSON”选择该文件。
    应用一次读取地址、令牌、800 字节公钥 hex 和 SHA-256 指纹，无需逐项填写或单独选择公钥文件。
    配置包含接入令牌，只能通过可信方式传给自己的手机，不放入公开 HTTP 下载目录。
 4. 导入校验成功后显示连接地址，点击“连接”，应用执行 Encaps/Finished/START 后显示认证 JPEG；可停止、换钥和关闭。
@@ -102,7 +130,7 @@ ImageIO 独立解码并保存首/末 JPEG 与结果 JSON，不把令牌放入进
 版本 0.3 / versionCode 3、最低 API 26、目标 API 35、启动 Activity 与 INTERNET 权限。
 沿用初版 Android Debug 证书，可覆盖 0.1/0.2；APK 保留为本地构建产物。
 
-当前 0.4 APK 离线缓存构建通过（14 秒、31 tasks、10 executed），API26 v2 验签与版本检查通过。
+0.4 APK 离线缓存构建通过（14 秒、31 tasks、10 executed），API26 v2 验签与版本检查通过。
 APK 为 4,743,182 字节，SHA-256：`a217b3bb6ee9937dde6f10461347dd935919a0349b771cea6f1aaf977f81556a`；
 版本 0.4 / versionCode 4，证书沿用 0.3，可覆盖安装。会话清理、SD 启动配对兼容与手机步骤见
 [mobile 验证记录](../report/mobile_session_lifecycle_20261013.md)。

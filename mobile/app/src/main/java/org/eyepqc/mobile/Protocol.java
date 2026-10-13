@@ -29,8 +29,8 @@ public final class Protocol {
         if (b.getInt() != 0x45595051 || b.get() != 1) throw new IllegalArgumentException("control version");
         int type = b.get() & 255;
         if (b.getShort() != 0 || b.getInt() != record.length - 12) throw new IllegalArgumentException("control header");
-        int[] lengths = {0,36,36,768,32,32,40,40,40};
-        if (type < 1 || type > 9 || (type < 9 && record.length != lengths[type]+12) || (type == 9 && record.length < 14)) throw new IllegalArgumentException("control type/body");
+        int[] lengths = {0,36,36,768,32,32,40,40,40,0,864,832};
+        if (type < 1 || type > 11 || (type != 9 && record.length != lengths[type]+12) || (type == 9 && record.length < 14)) throw new IllegalArgumentException("control type/body");
         return type;
     }
     public static byte[] wrap(int channel, byte[] record) {

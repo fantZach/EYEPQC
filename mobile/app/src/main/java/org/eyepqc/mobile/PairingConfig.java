@@ -14,10 +14,11 @@ import java.util.Map;
 /** A selected file is a trust decision; matching a bundled pin proves consistency only. */
 public final class PairingConfig {
     public static final int MAX_BYTES=8192;
+    public final int version;
     public final String endpoint,token;
     public final byte[] publicKey,pin;
-    private PairingConfig(String endpoint,String token,byte[] publicKey,byte[] pin){
-        this.endpoint=endpoint;this.token=token;this.publicKey=publicKey;this.pin=pin;
+    private PairingConfig(int version,String endpoint,String token,byte[] publicKey,byte[] pin){
+        this.version=version;this.endpoint=endpoint;this.token=token;this.publicKey=publicKey;this.pin=pin;
     }
     public static PairingConfig parse(byte[] bytes)throws Exception {
         if(bytes.length==0||bytes.length>MAX_BYTES)throw new IllegalArgumentException("configuration size");
@@ -30,8 +31,9 @@ public final class PairingConfig {
                 String name=reader.nextName();
                 if(fields.containsKey(name))throw new IllegalArgumentException("duplicate configuration field");
                 if(name.equals("version")){
-                    if(reader.peek()!=JsonToken.NUMBER||!reader.nextString().equals("1"))throw new IllegalArgumentException("configuration version");
-                    fields.put(name,"1");
+                    if(reader.peek()!=JsonToken.NUMBER)throw new IllegalArgumentException("configuration version");
+                    String version=reader.nextString();if(!version.equals("1")&&!version.equals("2"))throw new IllegalArgumentException("configuration version");
+                    fields.put(name,version);
                 }else{
                     if(!name.equals("endpoint")&&!name.equals("token")&&!name.equals("public_key_hex")&&!name.equals("public_key_sha256"))throw new IllegalArgumentException("unknown configuration field");
                     if(reader.peek()!=JsonToken.STRING)throw new IllegalArgumentException("configuration field type");
@@ -39,17 +41,20 @@ public final class PairingConfig {
                 }
             }
             reader.endObject();
-            if(reader.peek()!=JsonToken.END_DOCUMENT||fields.size()!=5)throw new IllegalArgumentException("incomplete or trailing configuration");
+            if(reader.peek()!=JsonToken.END_DOCUMENT)throw new IllegalArgumentException("trailing configuration");
         }
+        int version=Integer.parseInt(fields.getOrDefault("version","0"));
+        if(version!=1&&version!=2||fields.size()!=(version==1?5:4)||!fields.containsKey("endpoint")||!fields.containsKey("public_key_hex")||!fields.containsKey("public_key_sha256")||(version==1)!=fields.containsKey("token"))throw new IllegalArgumentException("incomplete configuration");
         String endpoint=fields.get("endpoint"),token=fields.get("token"),keyHex=fields.get("public_key_hex"),pinHex=fields.get("public_key_sha256");
         StreamClient.validateEndpoint(endpoint);
+        if(version==2&&!endpoint.startsWith("wss://"))throw new IllegalArgumentException("account login requires WSS");
         int port=new java.net.URI(endpoint).getPort();
         if(port==0||port>65535)throw new IllegalArgumentException("configuration port");
-        if(token.length()<32||token.length()>256)throw new IllegalArgumentException("access token size");
-        for(int i=0;i<token.length();i++)if(token.charAt(i)<33||token.charAt(i)>126)throw new IllegalArgumentException("access token format");
+        if(version==1){if(token.length()<32||token.length()>256)throw new IllegalArgumentException("access token size");
+        for(int i=0;i<token.length();i++)if(token.charAt(i)<33||token.charAt(i)>126)throw new IllegalArgumentException("access token format");}
         if(!keyHex.matches("[0-9a-fA-F]{1600}")||!pinHex.matches("[0-9a-fA-F]{64}"))throw new IllegalArgumentException("public identity format");
         byte[] key=Protocol.hex(keyHex),pin=Protocol.hex(pinHex);
         if(!MessageDigest.isEqual(Protocol.sha(key),pin))throw new IllegalArgumentException("public-key pin mismatch");
-        return new PairingConfig(endpoint,token,key,pin);
+        return new PairingConfig(version,endpoint,token,key,pin);
     }
 }

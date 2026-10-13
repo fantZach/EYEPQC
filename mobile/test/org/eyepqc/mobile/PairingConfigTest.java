@@ -37,6 +37,13 @@ public final class PairingConfigTest {
         JsonObject wrong=object.deepCopy();wrong.addProperty("private_key_hex","do-not-import-secret-keys");reject(bytes(wrong.toString()));
         wrong=object.deepCopy();wrong.addProperty("public_key_hex","00");reject(bytes(wrong.toString()));
         wrong=object.deepCopy();wrong.addProperty("public_key_sha256",Protocol.hex(new byte[32]));reject(bytes(wrong.toString()));
+        JsonObject account=object.deepCopy();account.addProperty("version",2);account.remove("token");account.addProperty("endpoint","wss://example.org/stream");
+        PairingConfig v2=PairingConfig.parse(bytes(account.toString()));if(v2.version!=2||v2.token!=null)throw new AssertionError("account configuration");checks++;
+        wrong=account.deepCopy();wrong.addProperty("endpoint","ws://127.0.0.1/stream");reject(bytes(wrong.toString()));
+        wrong=account.deepCopy();wrong.addProperty("password","secret");reject(bytes(wrong.toString()));
+        wrong=account.deepCopy();wrong.addProperty("token","public-test-token-0123456789abcdef");reject(bytes(wrong.toString()));
+        for(String field:new String[]{"version","endpoint","public_key_hex","public_key_sha256"}){wrong=account.deepCopy();wrong.remove(field);reject(bytes(wrong.toString()));}
+        reject(bytes(account.toString().replace("\"version\":2","\"version\":2,\"version\":2")));
         if(args.length==1){byte[] actual=Files.readAllBytes(Paths.get(args[0]));PairingConfig.parse(actual);checks++;}
         System.out.println("PAIRING_CONFIG_OK checks="+checks);
     }
