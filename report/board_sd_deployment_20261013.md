@@ -70,7 +70,23 @@ PC 8765 转发服务由 PC 聊天暂停。板端未自行管理 PC 进程。
 UART 断线立即失败。完整验收要求匹配 build ID、BOOT_MODE=0x05、READY、连续 STAT、每分钟 DDR 复测，
 且 ddr_err/assert/exception/timer_err=0，并由真实操作者确认 SD 卡、拨码、完全断电动作及 H15 LED 约 1 Hz 闪烁。
 
-当前：镜像构建和 SD 文件读回已验证；冷启动/30 分钟/物理复位等待现场日志及操作者确认，尚未通过。
+首次实际启动：2026-10-13 14:08:37（UTC+8）UART 确认 `Boot mode is SD`、`SD Init Done`、
+`DMA Done`、`FPGA Done`，随后 `Handoff Address: 0x00000000` / `No Execution Address JTAG handoff`。
+没有 G0 BOOT/READY，故本轮失败，不能算 30 分钟或冷启动通过。collector 已停止，原始 JSONL 保留，
+SHA-256 `781c4914f31c7a2f824744903ca706d18f34ad071a7a2fbc9210757210bf138f`；下一轮使用新文件。
+
+根因：ARM GCC 生成的 `.note.gnu.build-id` orphan 被共用 `a9_ddr.ld` 放到地址 0，
+ELF 多出 36 字节的 PT_LOAD；Bootgen 将其作为首个应用分区（load=0、exec=0x100000）。
+匹配 FSBL 的 `image_mover.c` 对未签名/未加密的零加载地址在复制前退出循环，因此没有设定跳转入口。
+不能据此宣称已复制覆盖 OCM 或损坏 FSBL。
+
+协调聊天接管后，仅在共用 DDR linker 丢弃该构建标记段，并新增真实 ARM GCC 回归检查所有 LOAD 位于 DDR、
+入口位于可执行 LOAD。所有共用该 linker 的 G0/G6/Keccak builder 都获得修复；已有历史镜像不被修改或重新验收。
+新软件目录 `build/vitis/g0_board_sd_20261013_2_startup` 重新生成 BSP/FSBL，复用同轮已实现的 XSA/引脚/时钟证据，
+没有重复综合未变的 RTL。应用仅剩一个 LOAD，Bootgen 应用 load/exec 均为 `0x00100000`；G0 preflight 通过。
+新 BOOT.BIN 为 4,198,992 字节，SHA-256 `079482ff600bac35203dd75e72080940e8cc2bcd9a3d5d485dd51ffec584ec1c`。
+build ID 仍为 `47f571a09684`（由应用 C/XSA 推导），必须结合 BOOT hash 和 source_inputs 区分镜像。
+当前：新镜像离线验证通过，等待安全更新 SD 与新的实测；冷启动/30 分钟/物理复位均未通过。
 不写 BOOT_MODE 寄存器，不以 JTAG 暖启动作为 SD 证据。
 
 复位采集器原先在第二次 BOOT 后立即停止，漏第二次 READY/STAT，已改为第二次 STAT 后停止。

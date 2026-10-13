@@ -36,6 +36,9 @@ ENTRY(_vector_table)
 
 SECTIONS
 {
+/* A build-id orphan at OCM address zero makes the SD FSBL stop before handoff. */
+/DISCARD/ : { *(.note.gnu.build-id) }
+
 .text : {
 
 _binary_firmware1_start = 0;
