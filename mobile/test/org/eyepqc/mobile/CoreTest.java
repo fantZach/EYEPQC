@@ -11,6 +11,9 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -115,6 +118,16 @@ public final class CoreTest {
         Session badFinished=new Session(pk,Protocol.sha(pk),ignored->{});badFinished.start();badFinished.receive(Protocol.wrap(1,Protocol.control(2,Protocol.join(new byte[]{1,1,0,1},repeat(2,32)))));rejects(()->badFinished.receive(Protocol.wrap(1,Protocol.control(4,new byte[32]))));
         StreamClient.validateEndpoint("ws://192.168.1.2:8765/stream");StreamClient.validateEndpoint("ws://100.64.1.2:8765/stream");StreamClient.validateEndpoint("wss://example.org/stream");
         rejects(()->StreamClient.validateEndpoint("ws://8.8.8.8/stream"));rejects(()->StreamClient.validateEndpoint("ws://example.org/stream"));rejects(()->StreamClient.validateEndpoint("wss://example.org/wrong"));
+        CountDownLatch reset=new CountDownLatch(1);AtomicInteger resets=new AtomicInteger();
+        try(StreamClient failed=new StreamClient(pk,Protocol.sha(pk),new StreamClient.Listener(){
+            public void frame(byte[] frame){throw new AssertionError("frame after failed connection");}
+            public void status(String message){}
+            public void reset(){resets.incrementAndGet();reset.countDown();}
+        })){
+            failed.connect("ws://8.8.8.8/stream","public-test-token");
+            check(reset.await(5,TimeUnit.SECONDS));failed.close();failed.close();
+            check(resets.get()==1);
+        }
         System.out.println("ANDROID_CORE_OK checks="+checks+" MLKEM_KAT="+kemCount+" GCM_KAT="+gcmCount);
     }
 }

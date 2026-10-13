@@ -5,6 +5,7 @@ import java.nio.file.Paths;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /** Actual OkHttp transport smoke adapter: compares a public fixture hash, never prints a frame. */
@@ -15,15 +16,17 @@ public final class NetworkCli {
         final boolean stop=args.length==6&&args[5].equals("stop");
         if(args.length==6&&!rekey&&!stop)throw new IllegalArgumentException("unknown test mode");
         CountDownLatch done=new CountDownLatch(1);AtomicBoolean success=new AtomicBoolean();
+        CountDownLatch resets=new CountDownLatch(rekey?2:1);AtomicInteger resetCount=new AtomicInteger();
         AtomicBoolean requested=new AtomicBoolean(),rotating=new AtomicBoolean();AtomicReference<StreamClient> owner=new AtomicReference<>();
         try(StreamClient client=new StreamClient(Files.readAllBytes(Paths.get(args[0])),Protocol.hex(args[1]),new StreamClient.Listener(){
+            public void reset(){resetCount.incrementAndGet();resets.countDown();}
             public void status(String message){if(message.equals("重新协商密钥"))rotating.set(true);if(stop&&message.equals("已停止")){success.set(true);done.countDown();}}
             public void frame(byte[] jpeg){
                 try{
                     if((stop||rekey&&!rotating.get())&&requested.get())return;
                     if(!Protocol.hex(Protocol.sha(jpeg)).equals(args[4])){done.countDown();return;}
                     if(stop){if(requested.compareAndSet(false,true))owner.get().stop();}
-                    else if(!rekey||rotating.get()){success.set(true);done.countDown();}
+                    else if(!rekey||rotating.get()){success.set(!rekey||resetCount.get()==1);done.countDown();}
                     else if(requested.compareAndSet(false,true))owner.get().rekey();
                 }catch(Exception ignored){done.countDown();}
             }
@@ -35,5 +38,6 @@ public final class NetworkCli {
             if(!finished||!success.get())throw new AssertionError("authenticated fixture not received");
             System.out.println(stop?"ANDROID_NETWORK_STOP_OK":rekey?"ANDROID_NETWORK_REKEY_OK":"ANDROID_NETWORK_OK");
         }
+        if(!resets.await(5,TimeUnit.SECONDS)||resetCount.get()!=(rekey?2:1))throw new AssertionError("session display reset missing or duplicated");
     }
 }

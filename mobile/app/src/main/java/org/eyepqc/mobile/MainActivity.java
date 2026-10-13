@@ -30,7 +30,7 @@ public final class MainActivity extends Activity {
     private long rendered,started;
     private final Runnable render=new Runnable(){public void run(){
         Bitmap next=pending.getAndSet(null);
-        if(next!=null){Bitmap old=displayed;displayed=next;image.setImageBitmap(next);if(old!=null)old.recycle();rendered++;}
+        if(next!=null){Bitmap old=displayed;displayed=next;image.setImageBitmap(next);if(old!=null)old.recycle();if(rendered==0)started=System.nanoTime();rendered++;}
     }};
     private final Runnable monitor=new Runnable(){public void run(){
         if(client!=null)client.checkTimeout();ui.postDelayed(this,1000);
@@ -59,9 +59,13 @@ public final class MainActivity extends Activity {
         disconnect();final long active=generation;
         try{
             if(config==null)throw new IllegalArgumentException("missing configuration");
-            rendered=0;started=System.nanoTime();
+            rendered=0;started=0;
             client=new StreamClient(config.publicKey,config.pin,new StreamClient.Listener(){
-                public void status(String message){ui.post(()->{if(active==generation)status.setText(message+" / 显示 "+String.format(java.util.Locale.ROOT,"%.1f",rendered/Math.max(0.001,(System.nanoTime()-started)/1e9))+" fps");});}
+                public void status(String message){ui.post(()->{if(active==generation)status.setText(message+(message.startsWith("已认证 /")&&rendered>1?" / 显示 "+String.format(java.util.Locale.ROOT,"%.1f",(rendered-1)/Math.max(0.001,(System.nanoTime()-started)/1e9))+" fps":""));});}
+                public void reset(){
+                    synchronized(pending){if(active!=generation)return;ui.removeCallbacks(render);Bitmap b=pending.getAndSet(null);if(b!=null)b.recycle();}
+                    ui.post(()->{if(active==generation)clearDisplay();});
+                }
                 public void frame(byte[] jpeg){
                     if(active!=generation)return;
                     BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeByteArray(jpeg,0,jpeg.length,bounds);
@@ -75,8 +79,9 @@ public final class MainActivity extends Activity {
     }
     private void disconnect(){
         synchronized(pending){generation++;if(client!=null){client.close();client=null;}ui.removeCallbacks(render);Bitmap b=pending.getAndSet(null);if(b!=null)b.recycle();}
-        if(image!=null)image.setImageDrawable(null);if(displayed!=null){displayed.recycle();displayed=null;}if(status!=null)status.setText("已关闭");
+        clearDisplay();if(status!=null)status.setText("已关闭");
     }
+    private void clearDisplay(){if(image!=null)image.setImageDrawable(null);if(displayed!=null){displayed.recycle();displayed=null;}rendered=0;started=0;}
     @Override protected void onResume(){super.onResume();ui.post(monitor);}
     @Override protected void onPause(){super.onPause();ui.removeCallbacks(monitor);disconnect();}
 }

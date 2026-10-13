@@ -16,7 +16,7 @@ import okio.ByteString;
 
 /** One viewer, bounded worker queue, no secret/plaintext logging. */
 public final class StreamClient implements AutoCloseable {
-    public interface Listener { void frame(byte[] jpeg); void status(String message); }
+    public interface Listener { void frame(byte[] jpeg); void status(String message); default void reset() {} }
     private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(512));
     private final AtomicBoolean closed=new AtomicBoolean();
     private final AtomicBoolean timerPending=new AtomicBoolean();
@@ -64,7 +64,7 @@ public final class StreamClient implements AutoCloseable {
         });
     }
     private void startHandshake()throws Exception{handshakeStarted=lastHelloSent=System.nanoTime();helloRetries=0;send(session.start());}
-    public void rekey(){submit(()->{send(session.rekey());startHandshake();listener.status("重新协商密钥");});}
+    public void rekey(){submit(()->{send(session.rekey());listener.reset();startHandshake();listener.status("重新协商密钥");});}
     public void stop(){submit(()->{if(session.streaming())send(session.stop());shutdown(false);listener.status("已停止");});}
     public void checkTimeout(){
         if(closed.get()||handshakeStarted==0||!timerPending.compareAndSet(false,true))return;
@@ -90,7 +90,7 @@ public final class StreamClient implements AutoCloseable {
         WebSocket ws=socket;if(ws!=null){ws.close(1000,null);if(abort)ws.cancel();}
         worker.getQueue().clear();
         // Serialize wiping after any in-flight crypto/decode operation.
-        try{worker.execute(session::close);}catch(RejectedExecutionException ignored){}
+        try{worker.execute(()->{session.close();listener.reset();});}catch(RejectedExecutionException ignored){}
         worker.shutdown();http.dispatcher().executorService().shutdown();http.connectionPool().evictAll();
     }
 }

@@ -4,7 +4,8 @@
 跨网可选择组网 VPN 连接 PC 与手机，或连接可选公网中转服务；VPN 供应商尚未选定，校园网可达性与吞吐须实测。
 已有最小 Android 应用源码：原生 Java Activity、OkHttp 4.12.0 二进制 WebSocket、Bouncy Castle 1.81 lightweight ML-KEM-512。
 最低 Android 8.0（API 26），编译/目标 API 35；不依赖系统提供 ML-KEM，不需 NDK/JNI。0.3 使用 Gson 2.11.0 严格解析单文件配对配置。
-当前已通过纯 Java 离线测试并生成签名调试 APK，**手机/板卡实测仍待完成**。
+当前已通过纯 Java 离线测试并生成签名调试 APK。2026-10-13 用户报告手机正常显示视频、约 40 fps 已足够；
+这是用户基础显示反馈，尚无 10 分钟窗口或手机故障恢复证据，不能标记 G8/G7 全部通过。
 
 ## 必须实现的功能
 
@@ -47,7 +48,7 @@ ML-KEM 使用 Bouncy Castle lightweight API；HKDF-SHA-256、Finished/控制 HMA
    ```
 
    输出为 `mobile/app/build/outputs/apk/debug/app-debug.apk`。调试 APK 供开发验证，不代表发布版本。
-3. 安装 0.3 后，将可信 PC 生成的 `pairing.json` 传到手机，点击“导入连接配置 JSON”选择该文件。
+3. 安装 0.4 后，将可信 PC 生成的 `pairing.json` 传到手机，点击“导入连接配置 JSON”选择该文件。
    应用一次读取地址、令牌、800 字节公钥 hex 和 SHA-256 指纹，无需逐项填写或单独选择公钥文件。
    配置包含接入令牌，只能通过可信方式传给自己的手机，不放入公开 HTTP 下载目录。
 4. 导入校验成功后显示连接地址，点击“连接”，应用执行 Encaps/Finished/START 后显示认证 JPEG；可停止、换钥和关闭。
@@ -55,6 +56,7 @@ ML-KEM 使用 Bouncy Castle lightweight API；HKDF-SHA-256、Finished/控制 HMA
    公钥与摘要在同一 JSON 中的匹配只能证明文件一致性，文件来源本身必须可信。
    离开前台会关闭连接；返回后需再次连接。接收队列上限 512 条、单条 1459 字节，
    组帧缓冲上限 2 MiB，界面只保留最近待显示图像；队列超限、协议/Tag/重放错误会断开并要求重新握手。
+   停止、换钥及连接失败会清除待显示和已显示图像；重新认证后从首张实际显示帧开始统计平均显示 fps。
 
 ## 单文件配置格式
 
@@ -93,19 +95,25 @@ ImageIO 独立解码并保存首/末 JPEG 与结果 JSON，不把令牌放入进
 初版 31 项 Gradle 任务执行，构建耗时 2 分 28 秒；修正版 0.2 缓存构建耗时 25 秒（10 执行、21 已是最新）。官方主下载地址曾 TLS 失败，后通过已有本地代理和官方
 `dl-ssl.google.com`/Google CDN 取得工具与依赖；工具缓存与临时仓库 init 脚本位于 ignored 目录，未修改系统代理。
 
-当前 0.3 APK 完整构建通过（55 秒、31 tasks），单 JSON 导入 UI 已进入 APK。
+0.3 APK 完整构建通过（55 秒、31 tasks），单 JSON 导入 UI 已进入 APK。
 调试 APK：`app/build/outputs/apk/debug/app-debug.apk`，4,742,774 字节，SHA-256：
 `8d335e7d673bb57c4d5dd9bf88c7eaa8baaa06dcdc5682e39f1a012e60ce88f8`。
 `apksigner verify --min-sdk-version 26` 通过 APK v2 签名验证；`aapt dump badging` 确认包名 `org.eyepqc.mobile`、
 版本 0.3 / versionCode 3、最低 API 26、目标 API 35、启动 Activity 与 INTERNET 权限。
 沿用初版 Android Debug 证书，可覆盖 0.1/0.2；APK 保留为本地构建产物。
 
-离线内核共 158 项断言通过（包含上述 25/20 个 KAT），另覆盖换钥后旧帧排空、新 ACK/Finished 与新视频、
+当前 0.4 APK 离线缓存构建通过（14 秒、31 tasks、10 executed），API26 v2 验签与版本检查通过。
+APK 为 4,743,182 字节，SHA-256：`a217b3bb6ee9937dde6f10461347dd935919a0349b771cea6f1aaf977f81556a`；
+版本 0.4 / versionCode 4，证书沿用 0.3，可覆盖安装。会话清理、SD 启动配对兼容与手机步骤见
+[mobile 验证记录](../report/mobile_session_lifecycle_20261013.md)。
+
+离线内核共 160 项断言通过（包含上述 25/20 个 KAT），另覆盖换钥后旧帧排空、新 ACK/Finished 与新视频、
 HELLO 重发不耗新随机数及重复/不同 ACK 的状态约束。
-JSON 导入另有 30 项解析检查，PC 当前实际配置的跨语言解析也通过；手机系统文件选择器/导入运行仍待真机验证。
+JSON 导入另有 30 项解析检查。手机已显示视频为用户报告，未独立采集系统文件选择器/导入的运行证据。
 真实 OkHttp/回环 WebSocket/板端 C 会话及 ML-KEM mock 的握手、视频和重连/换钥互操作见共享 `sim/tb/test_three_end.py`；
 这些检查运行在 PC，未执行 Android Activity 的手机运行测试。
-手机安装修正版后实际认证显示、校园网/VPN 连通、完整板端异常恢复和手机显示 45 fps 门禁仍需实测。
+本轮五会话回环验证握手、重连、换钥、STOP、丢首个 ACK 重试及画面清理回调；这些均为 PC/JVM 证据。
+维持用户接受的约 40 fps MVP；0.4 手机图像清除、10 分钟稳定性、断网/前后台/冷启动恢复仍需真机验证。
 
 依赖与工具依据：[OkHttp](https://square.github.io/okhttp/)、
 [ML-KEM API 源码](https://github.com/bcgit/bc-java/blob/r1rv81/core/src/main/java/org/bouncycastle/pqc/crypto/mlkem/MLKEMGenerator.java)、
