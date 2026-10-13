@@ -1,5 +1,12 @@
 # Implementation progress
 
+## 2026-10-14：上板前 debug CA 与账号材料准备
+
+专用CA/实际IP服务端证书、受限ACL账号材料、schema2 JSON及0.6 debug APK已准备；
+debug/release信任资源隔离独立通过，WSS真实准备材料在localhost/mockCDC验证成功/错误拒绝。
+最终ARM预检再次通过，未启动正式服务、上板或写SD。安装文件与私有凭据路径见
+[上板前准备记录](preboard_ready_20261014.md)；无生产安全或手机实测声明。
+
 更新：2026-10-13。实施依据 `doc/steps.md`，采用 Ponytail：复用密码库与标准库，
 以能运行、能比对的最小链路推进，保留必需的长度检查和认证边界。
 当前工作副本的电脑端验证清单见 [电脑端构建记录](pc_build.md)；不代表 G0/G7 板卡门禁完成。

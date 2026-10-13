@@ -1,5 +1,11 @@
 tmp/
 pairing.json
+# Local test TLS/account secrets; the debug CA public certificate remains tracked.
+*.key
+*.p12
+*.pfx
+accounts.json
+login.txt
 
 # Local runtimes and generated FPGA/software products.
 .venv/
