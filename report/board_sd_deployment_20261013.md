@@ -75,7 +75,7 @@ UART 断线立即失败。完整验收要求匹配 build ID、BOOT_MODE=0x05、R
 没有 G0 BOOT/READY，故本轮失败，不能算 30 分钟或冷启动通过。collector 已停止，原始 JSONL 保留，
 SHA-256 `781c4914f31c7a2f824744903ca706d18f34ad071a7a2fbc9210757210bf138f`；下一轮使用新文件。
 
-根因：ARM GCC 生成的 `.note.gnu.build-id` orphan 被共用 `a9_ddr.ld` 放到地址 0，
+已确认的构建阻断：ARM GCC 生成的 `.note.gnu.build-id` orphan 被共用 `a9_ddr.ld` 放到地址 0，
 ELF 多出 36 字节的 PT_LOAD；Bootgen 将其作为首个应用分区（load=0、exec=0x100000）。
 匹配 FSBL 的 `image_mover.c` 对未签名/未加密的零加载地址在复制前退出循环，因此没有设定跳转入口。
 不能据此宣称已复制覆盖 OCM 或损坏 FSBL。
@@ -86,7 +86,17 @@ ELF 多出 36 字节的 PT_LOAD；Bootgen 将其作为首个应用分区（load=
 没有重复综合未变的 RTL。应用仅剩一个 LOAD，Bootgen 应用 load/exec 均为 `0x00100000`；G0 preflight 通过。
 新 BOOT.BIN 为 4,198,992 字节，SHA-256 `079482ff600bac35203dd75e72080940e8cc2bcd9a3d5d485dd51ffec584ec1c`。
 build ID 仍为 `47f571a09684`（由应用 C/XSA 推导），必须结合 BOOT hash 和 source_inputs 区分镜像。
-当前：新镜像离线验证通过，等待安全更新 SD 与新的实测；冷启动/30 分钟/物理复位均未通过。
+2026-10-13 19:02:16（UTC+8）用户接回卡后，重新核对同读卡器、磁盘/分区大小、FAT32 和卷序列号。
+旧 BOOT 文件长度仍为 4,199,056，但 SHA-256 为 `a3c1c709b3690bcd792675f9a16b4b2e17ec483751da7987ef2b3d874292d03e`，
+与首次写入时的摘要不同；逐字节比较有 67 字节变化，全部在 offset 0x60～0xbc，包括启动头 IHT/PHT 字段。
+变化原因/发生时间未确定，不能凭此认定卡损坏或把全部现场异常归于 linker。
+原文件已完整备份至 `board/output/sd_deploy_20261013_2/BOOT.before.bin` 并核对摘要后，才覆盖单个 `E:/BOOT.BIN`；
+Flush(true) 后新文件读回摘要一致，其他文件未修改，未格式化/分区。
+操作记录为同目录 `deployment.json`；因旧文件变化，增加安全弹出并重插读卡器后的持久性复核。
+当前：新镜像写入及即时读回通过，重插后复核与冷启动/30 分钟/物理复位均未通过。
+首次用户回复“已重插”后，Windows 读卡器 USB `VID_DD31&PID_3118/0123456789AB` 仍枚举但状态 Error、
+ProblemCode=47，磁盘/卷未出现；这是安全移除状态，不能当持久性校验失败或宣称卡损坏。
+已请用户重新插拔整个读卡器 USB 接口，暂不将卡放回板上；未禁用其他 USB 设备或重启电脑。
 不写 BOOT_MODE 寄存器，不以 JTAG 暖启动作为 SD 证据。
 
 复位采集器原先在第二次 BOOT 后立即停止，漏第二次 READY/STAT，已改为第二次 STAT 后停止。
