@@ -151,3 +151,36 @@ Board 完成 SD 启动并交还视频 CDC 后，再以前台入口恢复；默�
 常见排查：401 检查手机配置与 token 是否对应；503 检查旧观看连接/清理窗口；1011 检查 USB 枚举、
 端口独占、写入/发送超时与板端启动；1008 检查记录长度/方向、半包超时或队列溢出。
 先保存桥日志及手机错误，再由 Board 记录 `fatal/transport/control`，不要反复无依据 provision/复位。
+
+## WSS 账号模式与 schema2
+
+账号模式仅允许 TLS，通过 HTTP Basic UTF-8 每次认证，不能使用 Bearer 绕过。
+以下仅为部署命令；执行前需要协调者交还设备，本次不启动服务。
+
+```powershell
+# 交互输入密码，创建新的私有账号文件；拒绝覆盖，密码不作为命令行参数。
+& ./.venv/Scripts/python.exe pc/src/host/accounts.py --file tmp/accounts.json --username viewer
+& ./pc/run_relay.ps1 -Mode Run -AccountsFile tmp/accounts.json -TlsCert tmp/server.pem -TlsKey tmp/server-key.pem -BindAddress <当前PC地址>
+# 公钥来自可信Board交付目录；省略token-file导出schema2，目标必须不存在。
+& ./.venv/Scripts/python.exe pc/src/host/prepare_pairing.py --identity-dir <公开身份目录> --endpoint wss://<证书SAN匹配的主机>:8765/stream --config-file tmp/pairing-account.json
+```
+
+schema2 仅含 version=2、endpoint(wss)、public_key_hex、public_key_sha256；不含密码/token。
+原带 token 的 v1 导出、明确选择 `--token-file` 的开发模式继续兼容，账号文件与 token-file 互斥。
+自签证书必须通过可信渠道把 CA 导入 Android，并让应用信任该 CA（Android 应用未必默认信任用户 CA）；
+仍校验主机名/SAN，不能关闭证书验证。证书私钥和账号文件留在私有目录，Windows须限制父目录ACL。
+
+账号文件为用户名到 `{salt: 16字节hex, hash: 32字节hex}` 的映射，固定 scrypt N=131072/r=8/p=1，
+maxmem=256MiB。不提供低成本生产选项；旧试验低成本哈希不能沿用，应重新创建账号文件。
+全局单进程限速为5次突发、每秒恢复1次，同时最多一个后台哈希；忙时429，未知账号也走dummy hash。
+限速可能让其他用户暂时无法登录，现有视频转发继续运行；多进程部署前须替换该限速方案。
+
+`/stream` 错误/缺失 Basic 返回401；同账号已有观看端返回409；不同账号占用返回503；限速429。
+新设备得到409后必须由用户明确确认，才连接 `/stream?takeover=1` 并再次提供Basic。
+PC认证正确后先撤销旧owner控制权限，以4409关闭旧端，等待旧USB清理完成才打开新串口。
+旧设备收到4409应停止自动抢回。并发接管由同一锁串行处理，最多一个USB owner；清理失败/超时或
+STOP持续排空超过2秒则封锁后续连接，须检查日志与设备后手动重启服务，不能自动强抢。
+
+suite2 HELLO/ACK及type10(body864，板→手机)/type11(body832，手机→板)可原样转发。
+PC仅验证长度/方向，不处理临时KEM、MAC或业务密钥；完整契约见 [suite2](../doc/account_ephemeral_protocol.md)。
+账号TLS和软件回环通过不代表手机、实板、新SD固件或生产密码协议已通过。

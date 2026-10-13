@@ -305,7 +305,8 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(elapsed, 1.8)
         self.assertLess(elapsed, 2.5)
         self.assertFalse(device.dtr)
-        self.assertFalse(self.relay.busy)
+        self.assertTrue(self.relay.busy)
+        self.assertTrue(self.relay.cleanup_failed)
 
     async def test_stop_drain_rejects_invalid_usb_and_preserves_partial_record(self):
         from protocol import UsbRecordDecoder

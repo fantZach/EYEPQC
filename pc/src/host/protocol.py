@@ -31,9 +31,11 @@ class MessageType(IntEnum):
     STOP = 7
     REKEY = 8
     ERROR = 9
+    EPHEMERAL_PUBLIC = 10
+    EPHEMERAL_CIPHERTEXT = 11
 
 
-CONTROL_LENGTHS = {1: 36, 2: 36, 3: 768, 4: 32, 5: 32, 6: 40, 7: 40, 8: 40}
+CONTROL_LENGTHS = {1: 36, 2: 36, 3: 768, 4: 32, 5: 32, 6: 40, 7: 40, 8: 40, 10: 864, 11: 832}
 
 
 @dataclass(frozen=True)
@@ -147,7 +149,7 @@ def _control_prefix(prefix):
 def _control_body(kind, body):
     if kind in (MessageType.HELLO, MessageType.HELLO_ACK):
         low, high, suite = struct.unpack("!BBH", body[:4])
-        if not low <= VERSION <= high or suite != SUITE:
+        if not low <= VERSION <= high or suite not in (SUITE, 2):
             raise ValueError("unsupported version range or suite")
         if kind == MessageType.HELLO_ACK and (low, high) != (VERSION, VERSION):
             raise ValueError("HELLO_ACK must select version 1")

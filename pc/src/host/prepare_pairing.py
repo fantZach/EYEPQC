@@ -18,7 +18,7 @@ def _new_file(path, data, mode):
         target.write(data)
 
 
-def configuration(identity_dir, endpoint, token):
+def configuration(identity_dir, endpoint, token=None):
     endpoint = str(endpoint)
     address = urlsplit(endpoint)
     if (address.scheme not in ("ws", "wss") or not address.hostname or address.username is not None
@@ -34,6 +34,10 @@ def configuration(identity_dir, endpoint, token):
         raise ValueError("expected 800-byte ML-KEM-512 public key and 64-hex SHA-256 pin")
     if not hmac.compare_digest(hashlib.sha256(public).hexdigest(), pin):
         raise ValueError("public key SHA-256 does not match pin")
+    if token is None:
+        if address.scheme != "wss":
+            raise ValueError("account pairing requires wss")
+        return dict(version=2, endpoint=endpoint, public_key_hex=public.hex(), public_key_sha256=pin)
     if not 32 <= len(token) <= 256 or not all(33 <= ord(c) <= 126 for c in token):
         raise ValueError("invalid access token")
     return dict(version=1, endpoint=endpoint, token=token,
@@ -41,7 +45,7 @@ def configuration(identity_dir, endpoint, token):
 
 
 def export_config(identity_dir, endpoint, token_file, output_file):
-    config = configuration(identity_dir, endpoint, read_token(token_file))
+    config = configuration(identity_dir, endpoint, read_token(token_file) if token_file else None)
     _new_file(Path(output_file), (json.dumps(config, indent=2) + "\n").encode("utf-8"), 0o600)
     return Path(output_file)
 
@@ -72,12 +76,10 @@ def main():
     parser.add_argument("--endpoint", required=True)
     outputs = parser.add_mutually_exclusive_group(required=True)
     outputs.add_argument("--output-dir", type=Path)
-    outputs.add_argument("--config-file", type=Path, help="Export one JSON using an existing relay token")
+    outputs.add_argument("--config-file", type=Path, help="Export schema2 WSS JSON; --token-file explicitly exports development schema1")
     parser.add_argument("--token-file", type=Path)
     args = parser.parse_args()
     if args.config_file:
-        if not args.token_file:
-            parser.error('--config-file requires --token-file')
         print(export_config(args.identity_dir, args.endpoint, args.token_file, args.config_file).resolve())
         return
     if args.token_file:

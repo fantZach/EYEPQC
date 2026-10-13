@@ -1,6 +1,7 @@
 """Windows USB CDC ↔ WebSocket ciphertext relay; no business keys or decoding."""
 
 import argparse
+from accounts import Accounts
 import asyncio
 import hmac
 import logging
@@ -33,7 +34,7 @@ def control_record(message):
         raise ValueError("invalid control channel or length")
     kind, _ = decode_control(message[3:])
     if kind not in (MessageType.HELLO, MessageType.KEM_CIPHERTEXT, MessageType.FINISHED_HOST,
-                    MessageType.START, MessageType.STOP, MessageType.REKEY):
+                    MessageType.START, MessageType.STOP, MessageType.REKEY, MessageType.EPHEMERAL_CIPHERTEXT):
         raise ValueError("control type is not mobile-to-board")
     return message
 
@@ -53,10 +54,18 @@ def open_cdc(port=None):
 
 
 class Relay:
-    def __init__(self, token, serial_factory=open_cdc, *, queue_records=64,
+    def __init__(self, token=None, serial_factory=open_cdc, *, accounts=None, queue_records=64,
                  partial_timeout=2.0, send_timeout=5.0):
         if queue_records < 1 or partial_timeout <= 0 or send_timeout <= 0:
             raise ValueError("queue and timeouts must be positive")
+        if (token is None) == (accounts is None):
+            raise ValueError("select exactly one authentication mode")
+        self.accounts = accounts
+        self.owner = None
+        self.owner_user = None
+        self.handoff = asyncio.Lock()
+        self.verifying = False
+        self.cleanup_failed = False
         self.token = token
         self.serial_factory = serial_factory
         self.queue_records = queue_records
@@ -64,14 +73,39 @@ class Relay:
         self.send_timeout = send_timeout
         self.busy = False
 
-    def authorize(self, connection, request):
-        if request.path != "/stream":
+    async def authorize(self, connection, request):
+        allowed = ("/stream", "/stream?takeover=1") if self.accounts else ("/stream",)
+        if request.path not in allowed:
             return connection.respond(HTTPStatus.NOT_FOUND, "Unknown endpoint\n")
         values = request.headers.get_all("Authorization")
-        if len(values) != 1 or not hmac.compare_digest(values[0].encode(), ("Bearer " + self.token).encode()):
-            return connection.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
-        if self.busy:
-            return connection.respond(HTTPStatus.SERVICE_UNAVAILABLE, "Viewer already connected\n")
+        if self.accounts:
+            if not self.accounts.admit():
+                return connection.respond(HTTPStatus.TOO_MANY_REQUESTS, "Rate limited\n")
+            if self.verifying:
+                return connection.respond(HTTPStatus.TOO_MANY_REQUESTS, "Authentication busy\n")
+            self.verifying = True
+            pending = asyncio.create_task(asyncio.to_thread(self.accounts.verify, values[0] if len(values) == 1 else ""))
+            try:
+                try:
+                    user = await asyncio.shield(pending)
+                except asyncio.CancelledError:
+                    await asyncio.shield(pending)
+                    raise
+            finally:
+                self.verifying = False
+            if user is None:
+                return connection.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
+            connection.relay_user = user
+            connection.relay_takeover = request.path.endswith("?takeover=1")
+            if self.cleanup_failed:
+                return connection.respond(HTTPStatus.SERVICE_UNAVAILABLE, "USB cleanup failed\n")
+            if self.busy and user == self.owner_user and not connection.relay_takeover:
+                return connection.respond(HTTPStatus.CONFLICT, "Confirm takeover\n")
+        else:
+            if len(values) != 1 or not hmac.compare_digest(values[0].encode(), ("Bearer " + self.token).encode()):
+                return connection.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
+        if self.cleanup_failed or (self.busy and (not self.accounts or connection.relay_user != self.owner_user)):
+            return connection.respond(HTTPStatus.SERVICE_UNAVAILABLE, "Viewer unavailable\n")
 
     async def usb_reader(self, device, queue, decoder, stats):
         partial_since = None
@@ -83,6 +117,11 @@ class Relay:
                 if queue.qsize() + len(records) > queue.maxsize:
                     raise asyncio.QueueFull
                 for channel, payload in records:
+                    if channel == USB_CONTROL:
+                        kind, _ = decode_control(payload)
+                        if kind not in (MessageType.HELLO_ACK, MessageType.FINISHED_BOARD,
+                                        MessageType.ERROR, MessageType.EPHEMERAL_PUBLIC):
+                            raise ValueError("control type is not board-to-mobile")
                     queue.put_nowait(encode_usb_record(channel, payload))
                 stats["queue_peak"] = max(stats["queue_peak"], queue.qsize())
                 if not decoder.buffer:
@@ -123,6 +162,8 @@ class Relay:
 
     async def network_reader(self, websocket, device, stats):
         async for message in websocket:
+            if self.owner is not websocket:
+                return
             record = control_record(message)
             # Control-only writes are bounded by the port's 250 ms write timeout.
             if device.write(record) != len(record):
@@ -149,11 +190,29 @@ class Relay:
         return outcome
 
     async def handle(self, websocket):
-        # The upgrade and handler may race; this guard also rejects a simultaneous upgrade.
-        if self.busy:
-            await websocket.close(1013, "Viewer already connected")
-            return
-        self.busy = True
+        async with self.handoff:
+            if self.cleanup_failed:
+                await websocket.close(1011, "USB cleanup failed")
+                return
+            if self.busy:
+                if (not self.accounts or websocket.relay_user != self.owner_user
+                        or not websocket.relay_takeover or self.owner is None):
+                    await websocket.close(1013, "Viewer already connected")
+                    return
+                old = self.owner
+                self.owner = None  # Fence writes before any await during takeover.
+                try:
+                    await old.close(4409, "Taken over")
+                    await asyncio.wait_for(old.relay_done.wait(), 3)
+                except (TimeoutError, OSError, ConnectionClosed):
+                    self.cleanup_failed = True
+                if self.cleanup_failed:
+                    await websocket.close(1011, "USB cleanup failed")
+                    return
+            self.busy = True
+            self.owner = websocket
+            self.owner_user = getattr(websocket, 'relay_user', None)
+            websocket.relay_done = asyncio.Event()
         device = None
         tasks = []
         close_code = 1000
@@ -204,7 +263,8 @@ class Relay:
             if device is not None:
                 if stats["stop_forwarded"] and close_code == 1000:
                     try:
-                        await self.drain_stop(device, decoder)
+                        if await self.drain_stop(device, decoder) != "quiet":
+                            self.cleanup_failed = True
                     except ValueError:
                         close_code, reason = 1008, "Invalid USB record during STOP drain"
                         error = "ValueError"
@@ -220,13 +280,17 @@ class Relay:
                     device.reset_input_buffer()
                     device.reset_output_buffer()
                 except (OSError, serial.SerialException):
-                    pass
+                    self.cleanup_failed = True
                 finally:
                     try:
                         device.close()
                     except (OSError, serial.SerialException):
-                        pass
-            self.busy = False
+                        self.cleanup_failed = True
+            if self.owner is websocket:
+                self.owner = None
+            if self.owner is None or self.owner is websocket:
+                self.busy = self.cleanup_failed
+            websocket.relay_done.set()
             print(f"RELAY_SESSION_CLOSE code={close_code} stop_forwarded={int(stats['stop_forwarded'])} "
                   f"mobile_controls={stats['mobile_controls']} usb_records={stats['usb_records']} "
                   f"network_records={stats['network_records']} network_bytes={stats['network_bytes']} "
@@ -237,6 +301,8 @@ class Relay:
             await websocket.close(close_code, reason)
 
     async def start(self, host="127.0.0.1", port=8765, *, tls=None):
+        if self.accounts and tls is None:
+            raise ValueError("account mode requires TLS")
         return await serve(self.handle, host, port, process_request=self.authorize,
                            compression=None, max_size=1459, max_queue=16,
                            write_limit=32768, close_timeout=2, ssl=tls,
@@ -250,7 +316,9 @@ async def run(args):
     if args.tls_cert:
         tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         tls.load_cert_chain(args.tls_cert, args.tls_key)
-    relay = Relay(read_token(args.token_file), lambda: open_cdc(args.serial_port))
+    relay = Relay(read_token(args.token_file) if args.token_file else None,
+                  lambda: open_cdc(args.serial_port),
+                  accounts=Accounts(args.accounts_file) if args.accounts_file else None)
     async with await relay.start(args.host, args.port, tls=tls) as server:
         print(f"RELAY_READY {'wss' if tls else 'ws'}://{args.host}:{args.port}/stream", flush=True)
         await server.serve_forever()
@@ -258,7 +326,9 @@ async def run(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--token-file", type=Path, required=True)
+    auth = parser.add_mutually_exclusive_group(required=True)
+    auth.add_argument("--token-file", type=Path)
+    auth.add_argument("--accounts-file", type=Path)
     parser.add_argument("--host", default="127.0.0.1", help="PC LAN or VPN interface address")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--serial-port", help="optional COM port override")

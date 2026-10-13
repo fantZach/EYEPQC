@@ -6,6 +6,9 @@ param(
     [ValidateRange(1, 65535)]
     [int]$Port = 8765,
     [string]$TokenFile = 'tmp/mobile_pairing/relay.token',
+    [string]$AccountsFile,
+    [string]$TlsCert,
+    [string]$TlsKey,
     [string]$SerialPort
 )
 
@@ -38,11 +41,21 @@ try {
     if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
         throw 'Create the repository .venv and install requirements.txt and pc/requirements.txt first.'
     }
-    $tokenPath = (Resolve-Path -LiteralPath $TokenFile).Path
-    $relayArgs = @('-u', (Join-Path $repoRoot 'pc/src/host/relay.py'),
-        '--token-file', $tokenPath, '--host', $BindAddress, '--port', $Port)
+    $relayArgs = @('-u', (Join-Path $repoRoot 'pc/src/host/relay.py'), '--host', $BindAddress, '--port', $Port)
+    if ($AccountsFile) {
+        if (-not $TlsCert -or -not $TlsKey -or $PSBoundParameters.ContainsKey('TokenFile')) {
+            throw 'AccountsFile requires TlsCert/TlsKey and excludes TokenFile.'
+        }
+        $relayArgs += @('--accounts-file', (Resolve-Path -LiteralPath $AccountsFile).Path)
+    } else {
+        $relayArgs += @('--token-file', (Resolve-Path -LiteralPath $TokenFile).Path)
+    }
+    if ($TlsCert -or $TlsKey) {
+        if (-not $TlsCert -or -not $TlsKey) { throw 'Supply both TlsCert and TlsKey.' }
+        $relayArgs += @('--tls-cert', (Resolve-Path -LiteralPath $TlsCert).Path, '--tls-key', (Resolve-Path -LiteralPath $TlsKey).Path)
+    }
     if ($SerialPort) { $relayArgs += @('--serial-port', $SerialPort) }
-    Write-Host 'Foreground relay: stop the phone first, then press Ctrl+C here. The existing token is reused.'
+    Write-Host 'Foreground relay: stop the phone first, then press Ctrl+C here. Credentials are unchanged.'
     & $python @relayArgs
     if ($LASTEXITCODE -ne 0) { throw "Relay exited with code $LASTEXITCODE." }
 } finally {
