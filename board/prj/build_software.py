@@ -200,16 +200,13 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
             sources += [ROOT / 'board/prj/usb_probe.c', vendor / 'xusbps_ch9.c']
         include += [vendor]
     if name == 'g6_usb':
-        sources += [ROOT / 'board/src/ps/src' / f for f in ('session.c', 'protocol.c')]
-        if production_provider is None:
-            sources.append(ROOT / 'board/src/ps/src/m09_mlkem.c')
+        sources += [ROOT / 'board/src/ps/src' / f for f in ('session.c', 'protocol.c', 'ephemeral.c', 'm09_mlkem.c')]
         sources += [ROOT / 'board/src/third_party/tinycrypt/lib/source' / f for f in ('sha256.c', 'utils.c')]
         if production_provider is not None:
             sources.append(ROOT / 'board/src/ps/src/g6_hmac_drbg.c')
             sources.append(production_provider)
         include.append(ROOT / 'board/src/third_party/tinycrypt/lib/include')
-        if production_provider is None:
-            include += [ROOT / 'board/src/third_party', ROOT / 'board/src/third_party/mlkem']
+        include += [ROOT / 'board/src/third_party', ROOT / 'board/src/third_party/mlkem']
     linker = ROOT / 'board/prj/a9_ddr.ld'
     inputs = [p for p in sources if p.is_relative_to(ROOT)] + [linker, ROOT / 'board/src/ps/include/bsp_compat.h']
     if name != 'g3_camera':
@@ -217,8 +214,7 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
     if name == 'g6_usb':
         inputs += list((ROOT / 'board/src/ps/include').glob('*.h'))
         inputs += list((ROOT / 'board/src/third_party/tinycrypt/lib/include').rglob('*.h'))
-        if production_provider is None:
-            inputs += list((ROOT / 'board/src/third_party/mlkem').rglob('*'))
+        inputs += list((ROOT / 'board/src/third_party/mlkem').rglob('*'))
         if secure_cleanup_enabled:
             inputs += [ROOT / 'board/prj/usb_probe_auto_recovery.c',
                        ROOT / 'board/prj/usb_probe.c',
@@ -369,6 +365,10 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
         manifest['external_sources_root'] = 'tool-root'
         manifest['secure_cleanup_implementation'] = 'bounded_usbps_overlay_and_dma_gcm_frame_tx_callbacks'
     if name == 'g6_usb':
+        manifest['protocol_suites'] = [2] if production_provider is not None else [1, 2]
+        manifest['ephemeral_key_storage'] = 'application_ram_only'
+        manifest['ephemeral_keygen_source'] = ('provider_entropy_64_bytes' if production_provider is not None
+                                              else 'pc_known_development_seed_no_forward_secrecy_claim')
         if production_provider is not None:
             manifest['security_profile'] = 'external_provider_unvalidated'
             manifest['production_secure_cleanup'] = manifest['secure_cleanup_implementation']
@@ -457,13 +457,19 @@ def main():
                          for p in workspace.glob('*/build/link_command.json')})
     if provider_for_build is not None:
         build_inputs[provider_for_build.relative_to(workspace).as_posix()] = digest(provider_for_build)
+    external_inputs = {}
     for name, manifest in manifests.items():
         for external_path, external_hash in manifest.get('external_sources', {}).items():
-            build_inputs[f'{name}/external_sources/{external_path}'] = external_hash
+            local = workspace / external_path
+            sdk = tools / 'Vitis/data/embeddedsw/XilinxProcessorIPLib/drivers/usbps_v2_11' / external_path
+            target = local if local.is_file() else sdk
+            if not target.is_file() or digest(target) != external_hash:
+                raise RuntimeError('External build input missing or changed: ' + external_path)
+            external_inputs[str(target.resolve())] = external_hash
     (workspace / 'software_build.json').write_text(json.dumps(dict(
         xsa_sha256=xsa_hash, tool_root=str(tools), applications=list(manifests),
         g6_dev_secure_cleanup=args.g6_dev_secure_cleanup,
-        generated_inputs=build_inputs,
+        generated_inputs=build_inputs, external_inputs=external_inputs,
         build_scripts={p.relative_to(ROOT).as_posix(): digest(p) for p in
                        (ROOT / 'board/prj/build_software.py', ROOT / 'board/prj/generate_bsp.tcl',
                         ROOT / 'board/prj/arm_startup.py')},

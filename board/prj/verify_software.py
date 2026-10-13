@@ -31,6 +31,9 @@ def main():
             if not path.is_relative_to(base) or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
                 raise ValueError('Build input changed: ' + relative)
     counts = {}
+    for filename, expected in summary.get('external_inputs', {}).items():
+        if hashlib.sha256(Path(filename).read_bytes()).hexdigest() != expected:
+            raise ValueError('External build input changed: ' + filename)
     for name in summary['applications']:
         manifest, counts[name] = verify(workspace, name + '_manifest.json')
         bsp = workspace / 'bsp/ps7_cortexa9_0'

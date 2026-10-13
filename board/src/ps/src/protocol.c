@@ -79,8 +79,8 @@ int eye_nonce_encode(uint8_t *out, size_t capacity, uint32_t epoch, uint64_t seq
 
 static int control_length(uint8_t type, uint32_t length)
 {
-    static const uint16_t lengths[] = {0, 36, 36, 768, 32, 32, 40, 40, 40};
-    if (length > EYE_MAX_CONTROL || type < EYE_HELLO || type > EYE_ERROR)
+    static const uint16_t lengths[] = {0, 36, 36, 768, 32, 32, 40, 40, 40, 0, 864, 832};
+    if (length > EYE_MAX_CONTROL || type < EYE_HELLO || type > EYE_EPHEMERAL_REPLY)
         return EYE_INVALID;
     if (type == EYE_ERROR) return length >= 2 && length <= 258 ? EYE_OK : EYE_INVALID;
     return length == lengths[type] ? EYE_OK : EYE_INVALID;
@@ -114,7 +114,8 @@ static int control_body(uint8_t type, const uint8_t *body, uint32_t length)
 {
     if (type == EYE_HELLO || type == EYE_HELLO_ACK) {
         if (body[0] > EYE_VERSION || body[1] < EYE_VERSION ||
-            get_be(body + 2, 2) != EYE_SUITE) return EYE_INVALID;
+            (get_be(body + 2, 2) != EYE_SUITE &&
+             get_be(body + 2, 2) != EYE_SUITE_EPHEMERAL)) return EYE_INVALID;
         if (type == EYE_HELLO_ACK && (body[0] != EYE_VERSION || body[1] != EYE_VERSION))
             return EYE_INVALID;
     }

@@ -37,6 +37,8 @@ int g6_production_mlkem512_decapsulate(uint8_t shared[32],
                                       const uint8_t ciphertext[768],
                                       const uint8_t expected_public_key_hash[32]);
 int g6_production_entropy_bytes(uint8_t *out, uint32_t length);
+/* Suite 2 also requests fresh 64-byte KeyGen coins. Its temporary SK lives
+ * only in application RAM; the provider still never exports the identity SK. */
 void g6_production_security_shutdown(void);
 
 #endif

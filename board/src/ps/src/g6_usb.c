@@ -10,6 +10,7 @@
 #include "xil_cache.h"
 #endif
 #include "session.h"
+#include "ephemeral.h"
 #include "protocol.h"
 #include "g6_control_dispatch.h"
 #include "g6_secure_cleanup.h"
@@ -91,12 +92,15 @@ _Static_assert(sizeof tx == 1472U && (sizeof tx & 63U) == 0U &&
                sizeof tx >= 43U + 1400U + 16U,
                "G6 TX buffer cleanup capacity");
 static struct eye_session session;
+static struct eye_ephemeral ephemeral;
+static uint8_t negotiated_suite, business_ready;
+static XTime profile_started;
 #ifndef G6_PRODUCTION
 static uint64_t random_counter;
 #endif
 static uint32_t frame_id;
 
-enum phase { WAIT_HELLO, WAIT_KEM, WAIT_FINISHED, WAIT_START, STREAM, FAULT };
+enum phase { WAIT_HELLO, WAIT_KEM, WAIT_FINISHED, WAIT_START, STREAM, FAULT, WAIT_EPHEMERAL };
 static enum phase phase;
 
 #ifdef G6_AUTO_RECOVERY
@@ -167,6 +171,7 @@ static void wipe(void *p, unsigned length) {
 static void clear_handshake_cache(void) {
     wipe(hello, sizeof hello);
     wipe(ack, sizeof ack);
+    eye_ephemeral_wipe(&ephemeral);
 }
 #ifdef G6_SECURE_CLEANUP
 static int cleanup_stop_dma_and_gcm(void *context) {
@@ -243,12 +248,24 @@ static int board_random(uint8_t out[32], const uint8_t host_random[32]) {
     return status;
 #else
     uint8_t input[40];
+    if (random_counter == UINT64_MAX) { wipe(out, 32); return 1; }
     memcpy(input, host_random, 32);
     be64(input + 32, random_counter++);
     int status = eye_hmac_sha256(out, random_seed, sizeof random_seed, input, sizeof input);
     wipe(input, sizeof input);
     return status;
 #endif
+}
+static int ephemeral_coins(uint8_t out[64]) {
+#ifdef G6_PRODUCTION
+    int status = g6_production_entropy_bytes(out, 64U);
+#else
+    /* Development seed is PC-known: this profile makes no forward-secrecy claim. */
+    int status = board_random(out, session.transcript_hash);
+    if (!status) status = board_random(out + 32, session.transcript_hash);
+#endif
+    if (status) wipe(out, 64U);
+    return status;
 }
 #ifdef G6_PRODUCTION
 static int initialize_production_security(void) {
@@ -397,6 +414,13 @@ static int handle_control(const uint8_t *message, unsigned length) {
     diag_last_control_type = type;
 #endif
     if (phase == WAIT_HELLO && type == EYE_HELLO && length == 48) {
+        negotiated_suite = body[3];
+#ifdef G6_PRODUCTION
+        if (negotiated_suite != EYE_SUITE_EPHEMERAL) return 1;
+#endif
+        business_ready = 0;
+        XTime_GetTime(&profile_started);
+        body_ack[3] = negotiated_suite;
 #ifdef G6_AUTO_RECOVERY
         ++diag_hello_attempt_count;
         ++diag_hello_ack_send_attempts;
@@ -462,13 +486,36 @@ static int handle_control(const uint8_t *message, unsigned length) {
     }
     if (phase == WAIT_FINISHED && type == EYE_FINISHED_HOST && length == 44) {
         if (eye_session_verify_host_finished(&session, message)) return 1;
+        if (negotiated_suite == EYE_SUITE_EPHEMERAL && !business_ready) {
+            uint8_t coins[64] = {0};
+            int status = ephemeral_coins(coins);
+            if (!status) status = eye_ephemeral_offer(&ephemeral, &session, coins);
+            wipe(coins, sizeof coins);
+            if (!status) status = send_control(ephemeral.offer, sizeof ephemeral.offer);
+            if (status) { eye_ephemeral_wipe(&ephemeral); return 1; }
+            phase = WAIT_EPHEMERAL;
+            return 0;
+        }
         phase = WAIT_START;
         return 0;
     }
+    if (phase == WAIT_EPHEMERAL && type == EYE_EPHEMERAL_REPLY) {
+        uint8_t finished[44] = {0};
+        int status = eye_ephemeral_complete(&ephemeral, &session, message, length);
+        if (!status) status = eye_session_board_finished(&session, finished);
+        if (!status) status = send_control(finished, sizeof finished);
+        wipe(finished, sizeof finished);
+        if (status) return 1;
+        business_ready = 1;
+        phase = WAIT_FINISHED;
+        return 0;
+    }
     if (phase == WAIT_START && type == EYE_START && length == 52) {
+        if (negotiated_suite == EYE_SUITE_EPHEMERAL && !business_ready) return 1;
         if (eye_session_command(&session, message) || g3_usb_flush()) return 1;
         frame_id = 0;
         phase = STREAM;
+        XTime_GetTime(&profile_started);
 #ifdef G6_AUTO_RECOVERY
         publish_rekey_diag();
 #endif
@@ -507,6 +554,26 @@ static int process_control(void *context, const uint8_t *message, unsigned lengt
     publish_rekey_diag();
 #endif
     return status;
+}
+static int expire_profile(XTime now) {
+    if (negotiated_suite != EYE_SUITE_EPHEMERAL || phase == WAIT_HELLO || phase == FAULT)
+        return 0;
+    uint64_t limit = phase == STREAM ? 1800U : 15U;
+    if (now - profile_started < limit * (uint64_t)COUNTS_PER_SECOND) return 0;
+    if (phase != STREAM) {
+        fail_closed();
+        return 1;
+    }
+    eye_session_rekey(&session);
+#ifdef G6_SECURE_CLEANUP
+    if (secure_cleanup()) { mark_fault(); return 1; }
+#else
+    g3_usb_zeroize();
+#endif
+    clear_handshake_cache();
+    business_ready = 0;
+    phase = WAIT_HELLO;
+    return 1;
 }
 static int send_frame(const uint8_t *jpeg, unsigned size) {
     unsigned count = (size + 1399U) / 1400U;
@@ -590,6 +657,9 @@ int main(void) {
         }
         was_connected = 1;
         if (phase == FAULT) continue;
+        XTime now;
+        XTime_GetTime(&now);
+        if (expire_profile(now)) continue;
         if (eye_g6_control_dispatch(control, sizeof control,
                                     take_control, process_control, NULL) < 0) {
             if (!usb_cdc_ready() || usb_cdc_connection_epoch() != connection_epoch) {

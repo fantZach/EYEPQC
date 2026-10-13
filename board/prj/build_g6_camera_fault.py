@@ -54,7 +54,7 @@ def build_variant(workspace, xsa, tools, base_manifest):
     sources = [ROOT / 'board/src/ps/diag/g3_camera_fault_diag.c',
                ROOT / 'board/src/ps/diag/g6_usb_camera_fault.c',
                ROOT / 'board/prj/usb_probe.c', vendor / 'xusbps_ch9.c',
-               *[ROOT / 'board/src/ps/src' / f for f in ('session.c', 'protocol.c', 'm09_mlkem.c')],
+               *[ROOT / 'board/src/ps/src' / f for f in ('session.c', 'protocol.c', 'ephemeral.c', 'm09_mlkem.c')],
                *[ROOT / 'board/src/third_party/tinycrypt/lib/source' / f for f in ('sha256.c', 'utils.c')]]
     include = [workspace / 'bsp/ps7_cortexa9_0/include', ROOT / 'board/src/ps/include',
                ROOT / 'board/src/third_party', ROOT / 'board/src/third_party/mlkem',
@@ -115,7 +115,8 @@ def build_variant(workspace, xsa, tools, base_manifest):
               ROOT / 'board/src/ps/include/protocol.h', ROOT / 'board/src/ps/include/usb_recovery.h',
               ROOT / 'board/src/ps/include/mvp_gcm.h', ROOT / 'board/src/ps/include/dma_buffers.h',
               ROOT / 'board/src/ps/src/session.c', ROOT / 'board/src/ps/src/protocol.c',
-              ROOT / 'board/src/ps/src/m09_mlkem.c', ROOT / 'board/prj/usb_probe.c',
+              ROOT / 'board/src/ps/src/m09_mlkem.c', ROOT / 'board/src/ps/src/ephemeral.c',
+              ROOT / 'board/src/ps/include/ephemeral.h', ROOT / 'board/prj/usb_probe.c',
               ROOT / 'board/prj/a9_ddr.ld', ROOT / 'board/prj/build_g6_camera_fault.py',
               ROOT / 'board/prj/build_software.py', ROOT / 'board/prj/generate_bsp.tcl',
               ROOT / 'board/prj/trigger_g6_camera_fault.tcl',

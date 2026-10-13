@@ -263,7 +263,7 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
     sources = [ROOT / 'board/src/ps/diag/g3_camera_auto_recovery.c', candidate_usb,
                candidate_probe_unit,
                patched_endpoint, patched_ch9, patched_intr,
-               *[ROOT / 'board/src/ps/src' / f for f in ('session.c', 'protocol.c', 'm09_mlkem.c')],
+               *[ROOT / 'board/src/ps/src' / f for f in ('session.c', 'protocol.c', 'ephemeral.c', 'm09_mlkem.c')],
                *[ROOT / 'board/src/third_party/tinycrypt/lib/source' / f
                  for f in ('sha256.c', 'utils.c')]]
     include = [sdk_overlay, pinned_cpu / 'include', ROOT / 'board/src/ps/include',
@@ -369,7 +369,8 @@ def build_variant(workspace, xsa, tools, base_manifest, expected_g6_source_sha25
                     ROOT / 'board/src/ps/include/protocol.h', ROOT / 'board/src/ps/include/usb_recovery.h',
                     ROOT / 'board/src/ps/include/mvp_gcm.h', ROOT / 'board/src/ps/include/dma_buffers.h',
                     ROOT / 'board/src/ps/src/session.c', ROOT / 'board/src/ps/src/protocol.c',
-                    ROOT / 'board/src/ps/src/m09_mlkem.c', ROOT / 'board/prj/usb_probe_auto_recovery.c',
+                    ROOT / 'board/src/ps/src/m09_mlkem.c', ROOT / 'board/src/ps/src/ephemeral.c',
+                    ROOT / 'board/src/ps/include/ephemeral.h', ROOT / 'board/prj/usb_probe_auto_recovery.c',
                     ROOT / 'board/prj/usb_probe.c', candidate_probe, candidate_probe_unit, ROOT / 'board/prj/a9_ddr.ld',
                     ROOT / 'board/prj/prepare_usb_bounded_sdk.py',
                     ROOT / 'board/prj/build_g6_auto_recovery.py', ROOT / 'board/prj/build_software.py',

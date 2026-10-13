@@ -162,7 +162,8 @@ int eye_session_begin(struct eye_session *s, const uint8_t shared[32],
         return EYE_SESSION_STATE;
     if (eye_control_decode(&type, &body, &length, hello, 48) || type != EYE_HELLO ||
         eye_control_decode(&type, &body, &length, ack, 48) || type != EYE_HELLO_ACK ||
-        eye_control_decode(&type, &body, &length, kem, 780) || type != EYE_KEM_CIPHERTEXT)
+        eye_control_decode(&type, &body, &length, kem, 780) || type != EYE_KEM_CIPHERTEXT ||
+        hello[14] != ack[14] || hello[15] != ack[15])
         return EYE_SESSION_INPUT;
     s->state = EYE_STATE_HANDSHAKE;
     okay = tc_sha256_init(&hash) &&
@@ -184,6 +185,29 @@ int eye_session_begin(struct eye_session *s, const uint8_t shared[32],
     s->session_id = be32(derived + 52);
     s->state = EYE_STATE_CONFIRM;
     wipe(transcript, 32); wipe(derived, sizeof derived);
+    return EYE_SESSION_OK;
+}
+
+int eye_session_bind_ephemeral(struct eye_session *s, const uint8_t shared[32],
+                                const uint8_t transcript[32])
+{
+    uint8_t derived[56] = {0};
+    if (!s) return EYE_SESSION_INPUT;
+    if (!shared || !transcript || s->state != EYE_STATE_CONFIRM ||
+        !s->host_finished_verified || equal32(transcript, s->transcript_hash) ||
+        eye_hkdf56(derived, shared, transcript)) {
+        wipe(derived, sizeof derived);
+        eye_session_error(s);
+        return EYE_SESSION_AUTH;
+    }
+    eye_session_rekey(s);
+    memcpy(s->transcript_hash, transcript, 32);
+    memcpy(s->video_key, derived, 16);
+    memcpy(s->control_key, derived + 16, 32);
+    s->nonce_prefix = be32(derived + 48);
+    s->session_id = be32(derived + 52);
+    s->state = EYE_STATE_CONFIRM;
+    wipe(derived, sizeof derived);
     return EYE_SESSION_OK;
 }
 
