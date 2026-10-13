@@ -1,6 +1,8 @@
 """Real loopback WebSocket tests with simulated, nonblocking USB CDC."""
 
 import asyncio
+import contextlib
+import io
 import sys
 import time
 import threading
@@ -197,6 +199,64 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         self.relay.serial_factory = original
         async with self.client():
             await self.ready()
+
+    async def test_usb_read_failure_allows_fresh_session_and_logs_no_credentials(self):
+        capture = io.StringIO()
+        with contextlib.redirect_stdout(capture):
+            async with self.client() as ws:
+                device = await self.ready()
+
+                def disconnected(size):
+                    raise OSError("simulated USB removal")
+
+                device.read = disconnected
+                with self.assertRaises(ConnectionClosed) as caught:
+                    await asyncio.wait_for(ws.recv(), 1)
+                self.assertEqual(caught.exception.rcvd.code, 1011)
+            self.assertTrue(device.closed)
+            self.assertFalse(device.dtr)
+            self.assertFalse(self.relay.busy)
+            async with self.client() as ws:
+                fresh = await self.ready()
+                self.assertIsNot(fresh, device)
+                fresh.input.extend(ACK + VIDEO)
+                self.assertEqual(await asyncio.wait_for(ws.recv(), 1), ACK)
+                self.assertEqual(await asyncio.wait_for(ws.recv(), 1), VIDEO)
+            for _ in range(100):
+                if not self.relay.busy:
+                    break
+                await asyncio.sleep(0.005)
+        logged = capture.getvalue()
+        self.assertNotIn(TOKEN, logged)
+        self.assertIn("peer=", logged)
+        self.assertIn("network_records=2 network_bytes=", logged)
+        self.assertIn("queue_peak=2", logged)
+        self.assertIn("error=", logged)
+        self.assertIn("reason=", logged)
+
+    async def test_slow_network_send_is_bounded(self):
+        self.relay.send_timeout = 0.04
+        queue = asyncio.Queue(maxsize=1)
+        queue.put_nowait(VIDEO)
+        stats = dict(network_records=0, network_bytes=0)
+
+        class SlowSocket:
+            async def send(self, message):
+                await asyncio.Event().wait()
+
+        with self.assertRaises(TimeoutError):
+            await asyncio.wait_for(self.relay.network_sender(SlowSocket(), queue, stats), 1)
+        self.assertEqual(stats, dict(network_records=0, network_bytes=0))
+
+    async def test_server_shutdown_releases_usb_without_stop(self):
+        ws = await self.client()
+        device = await self.ready()
+        self.server.close()
+        await asyncio.wait_for(self.server.wait_closed(), 1)
+        self.assertTrue(device.closed)
+        self.assertFalse(device.dtr)
+        self.assertFalse(self.relay.busy)
+        await ws.close()
 
     async def test_stop_close_keeps_dtr_high_until_trailing_video_quiet(self):
         ws = await self.client()

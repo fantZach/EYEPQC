@@ -84,6 +84,7 @@ class Relay:
                     raise asyncio.QueueFull
                 for channel, payload in records:
                     queue.put_nowait(encode_usb_record(channel, payload))
+                stats["queue_peak"] = max(stats["queue_peak"], queue.qsize())
                 if not decoder.buffer:
                     partial_since = None
                 elif partial_since is None or records:
@@ -113,10 +114,12 @@ class Relay:
                 decoder.feed(trailing)
             raise
 
-    async def network_sender(self, websocket, queue):
+    async def network_sender(self, websocket, queue, stats):
         while True:
             record = await queue.get()
             await asyncio.wait_for(websocket.send(record), self.send_timeout)
+            stats["network_records"] += 1
+            stats["network_bytes"] += len(record)
 
     async def network_reader(self, websocket, device, stats):
         async for message in websocket:
@@ -155,8 +158,11 @@ class Relay:
         tasks = []
         close_code = 1000
         reason = "Session closed"
+        error = "none"
+        started = time.monotonic()
         decoder = UsbRecordDecoder()
-        stats = dict(stop_forwarded=False, mobile_controls=0, usb_records=0)
+        stats = dict(stop_forwarded=False, mobile_controls=0, usb_records=0,
+                     network_records=0, network_bytes=0, queue_peak=0)
         try:
             device = self.serial_factory()
             device.dtr = False
@@ -165,39 +171,47 @@ class Relay:
             await asyncio.sleep(0.25)
             device.reset_input_buffer()
             device.dtr = True
-            print("RELAY_SESSION_OPEN", flush=True)
+            print(f"RELAY_SESSION_OPEN peer={websocket.remote_address} "
+                  f"serial={getattr(device, 'port', 'simulated')}", flush=True)
             queue = asyncio.Queue(maxsize=self.queue_records)
             tasks = [asyncio.create_task(self.usb_reader(device, queue, decoder, stats)),
-                     asyncio.create_task(self.network_sender(websocket, queue)),
+                     asyncio.create_task(self.network_sender(websocket, queue, stats)),
                      asyncio.create_task(self.network_reader(websocket, device, stats))]
             done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
                 task.result()
-        except (ValueError, asyncio.QueueFull):
+        except (ValueError, asyncio.QueueFull) as exc:
+            error = type(exc).__name__
             close_code, reason = 1008, "Invalid record or bounded queue exceeded"
-        except (TimeoutError, OSError, RuntimeError, serial.SerialException):
+        except (TimeoutError, OSError, RuntimeError, serial.SerialException) as exc:
+            error = type(exc).__name__
             close_code, reason = 1011, "USB or transport failure"
         except ConnectionClosed:
             if websocket.close_code not in (None, 1000, 1001):
                 close_code, reason = 1011, "Abnormal WebSocket closure"
+                error = f"WebSocket{websocket.close_code}"
         finally:
             cancelled_during_drain = False
             for task in tasks:
                 task.cancel()
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            if any(isinstance(result, ValueError) for result in results):
+            if close_code == 1000 and any(isinstance(result, ValueError) for result in results):
                 close_code, reason = 1008, "Invalid USB record during cleanup"
-            elif any(isinstance(result, (OSError, serial.SerialException)) for result in results):
+                error = "ValueError"
+            elif close_code == 1000 and any(isinstance(result, (OSError, serial.SerialException)) for result in results):
                 close_code, reason = 1011, "USB failure during cleanup"
+                error = "USBError"
             if device is not None:
                 if stats["stop_forwarded"] and close_code == 1000:
                     try:
                         await self.drain_stop(device, decoder)
                     except ValueError:
                         close_code, reason = 1008, "Invalid USB record during STOP drain"
+                        error = "ValueError"
                         print("RELAY_STOP_DRAIN outcome=invalid", flush=True)
                     except (OSError, serial.SerialException):
                         close_code, reason = 1011, "USB failure during STOP drain"
+                        error = "USBError"
                         print("RELAY_STOP_DRAIN outcome=usb_failure", flush=True)
                     except asyncio.CancelledError:
                         cancelled_during_drain = True
@@ -214,7 +228,10 @@ class Relay:
                         pass
             self.busy = False
             print(f"RELAY_SESSION_CLOSE code={close_code} stop_forwarded={int(stats['stop_forwarded'])} "
-                  f"mobile_controls={stats['mobile_controls']} usb_records={stats['usb_records']}", flush=True)
+                  f"mobile_controls={stats['mobile_controls']} usb_records={stats['usb_records']} "
+                  f"network_records={stats['network_records']} network_bytes={stats['network_bytes']} "
+                  f"queue_peak={stats['queue_peak']} duration_s={time.monotonic() - started:.3f} "
+                  f"error={error} reason={reason!r}", flush=True)
             if cancelled_during_drain:
                 raise asyncio.CancelledError
             await websocket.close(close_code, reason)

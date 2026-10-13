@@ -50,7 +50,7 @@ Android 使用 PC 的局域网地址或组网 VPN 地址接入；`localhost` 仅
 ```powershell
 & ./.venv/Scripts/python.exe -m pip install -r pc/requirements.txt
 # 只在首次配对时生成；文件包含接入凭据，勿提交或公开。
-& ./.venv/Scripts/python.exe -c "from pathlib import Path; import secrets; p=Path('tmp/relay.token'); p.parent.mkdir(exist_ok=True); p.write_text(secrets.token_urlsafe(32), encoding='ascii')"
+& ./.venv/Scripts/python.exe -c "from pathlib import Path; import secrets; p=Path('tmp/relay.token'); p.parent.mkdir(exist_ok=True); p.open('x', encoding='ascii').write(secrets.token_urlsafe(32))"
 # 默认仅监听127.0.0.1；将地址替换为本机实际局域网或VPN地址。
 & ./.venv/Scripts/python.exe pc/src/host/relay.py --token-file tmp/relay.token --host 192.168.1.10
 # 仅软件回环检查，不打开实际USB。
@@ -78,7 +78,7 @@ Android 0.3 选择这一个文件后自动读取所有参数。`pairing.txt` 保
 已有服务运行时，可导出 JSON 并沿用原 token，无需重启服务或重新配对：
 
 ```powershell
-& ./.venv/Scripts/python.exe pc/src/host/prepare_pairing.py --identity-dir board/output/mobile_identity_live_20261013_3 --endpoint ws://10.179.236.247:8765/stream --token-file tmp/mobile_pairing/relay.token --config-file tmp/mobile_pairing/pairing.json
+& ./.venv/Scripts/python.exe pc/src/host/prepare_pairing.py --identity-dir board/output/mobile_identity_live_20261013_3 --endpoint ws://10.179.236.247:8765/stream --token-file tmp/mobile_pairing/relay.token --config-file tmp/mobile_pairing/pairing-sd.json
 ```
 
 导出文件必须不存在，避免覆盖已有凭据；通过可信文件传输交给自己的手机。
@@ -100,7 +100,54 @@ Windows 串口使用 20 ms 正超时、单个后台读取；取消先等待读�
 Android 重连须重新完成握手；实际板端 DTR/故障恢复仍待 G7 验证。
 
 桥已通过真实 WebSocket 与模拟串口离线测试，并在真实 G6/摄像头/USB→JVM 两个连续 30 秒窗口达到约 47.26 fps、
-正常 STOP/重连通过。Android 真机显示、45 fps 与校园网/VPN 手机吞吐尚待联合验收；
+正常 STOP/重连通过。2026-10-13 用户确认 Android 真机可显示视频、约 40 fps 已足够，不再优先优化 45 fps。
+这是用户确认的功能/性能结果；G8 的 10 分钟记录、断网/慢消费者恢复及 VPN 路径仍须独立验证。
 之前的失败和严格边界见 [实机记录](../report/mobile_live_bringup_20261013.md)。可选公网中转配对、部署及 PC 主动连接中转仍未实现。
 实现使用 [websockets 15.0.1 asyncio 服务端 API](https://websockets.readthedocs.io/en/15.0.1/reference/asyncio/server.html)。
 详细约束见 [三端架构](../doc/architecture.md)。
+
+## 服务状态、停止与 SD 板测配合
+
+从根目录执行只读状态查询；它列出 8765/8766 的监听、TCP 对端与 PID，不读取 token 或打开 USB：
+
+```powershell
+& ./pc/run_relay.ps1 -Mode Status
+```
+
+`Established` 只证明 TCP 建立。8765 对端结合 `RELAY_SESSION_OPEN` 才表示接入授权已通过并打开 CDC；
+桥无法证明手机 Finished/验 Tag/显示成功，须同时看手机状态。8766 下载连接不属于观看连接。
+单纯 `RELAY_READY` 也不证明固件或公钥匹配：桥在观看者接入时才打开视频 CDC。
+
+使用现有 token 前台运行，新入口遇到端口已有监听直接拒绝，不重复启动或结束其他进程：
+
+```powershell
+& ./pc/run_relay.ps1 -Mode Run -BindAddress 10.179.236.247
+# 如 Windows PowerShell 的执行策略阻止脚本，仅对本次进程指定：
+powershell -NoProfile -ExecutionPolicy Bypass -File ./pc/run_relay.ps1 -Mode Run -BindAddress 10.179.236.247
+```
+
+正常停止：先在手机点停止，等待 `RELAY_STOP_DRAIN outcome=quiet` 与 `RELAY_SESSION_CLOSE`，再在服务终端按
+Ctrl+C。没有观看者时可直接 Ctrl+C；服务退出时释放 CDC。`outcome=timeout` 表示已触达 2 秒排空上限，
+不能算板端 STOP 成功。掉线/强制退出靠 DTR 清理，不能代替实板故障恢复验证。
+
+原后台服务如没有可操作终端，仅在协调者明确要求暂停、手机已停止且 8765 无 `Established` 后，
+按 [PC SD 配合记录](../report/pc_sd_service_20261013.md) 重验命令行身份，再结束确认的 relay PID。
+8766 只服务公开下载，不占 CDC，可保持运行。不要使用按进程名称批量结束、盲杀 Python 或自动重置板卡。
+Board 完成 SD 启动并交还视频 CDC 后，再以前台入口恢复；默认自动发现唯一 `VID_03FD&PID_7020`，
+只有实际枚举需要时才加 `-SerialPort COM7`。此入口不操作 COM4、JTAG 或 SD。
+
+日志可在服务终端追加保存到 ignored `tmp/`：
+
+```powershell
+& ./pc/run_relay.ps1 -Mode Run -BindAddress 10.179.236.247 2>&1 | Tee-Object -FilePath tmp/pc-relay-sd.log -Append
+```
+
+新版 `RELAY_SESSION_CLOSE` 包含异常类型/固定原因、发送记录数/字节数、队列峰值和连接时长，
+不包含 token、控制正文、业务密钥或 JPEG。发送记录包含控制与密文分片，不能换算为手机 FPS。
+旧服务不会自动加载源码改动；明确停服后恢复才使用新日志。
+若 SD 固件身份发生变化，使用 Board 交付的公开 `public.bin`/pin 导出新的私有 JSON，复用现有 `relay.token`；
+不要读取或复制板端私钥，不把 JSON 放到下载目录。若仅 PC 地址变化，同样重新导出 endpoint 并在手机导入。
+
+常见排查：401 检查手机配置与 token 是否对应；503 检查旧观看连接/清理窗口；1011 检查 USB 枚举、
+端口独占、写入/发送超时与板端启动；1008 检查记录长度/方向、半包超时或队列溢出。
+先保存桥日志及手机错误，再由 Board 记录 `fatal/transport/control`，不要反复无依据 provision/复位。
