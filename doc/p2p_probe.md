@@ -59,3 +59,5 @@ Windows 本机 Proactor UDP close 曾挂起；独立入口使用 SelectorEventLo
 最终复跑三项 PC 检查与 JS 检查通过；本机一秒第二窗口为422包/4.925584Mbps，仅作合成链路功能证据。
 原 Android 核心160 / JSON39 / 临时KEM37检查仍通过。
 探针 debug APK SHA256：`39fadd6d00f89a41a30590d60745201d1d4f4d9f6aee5b9f574c2c0e7befb68e`，v2 验签通过。
+当前 PC 对 Cloudflare STUN 的真实收集返回两个 host、一个 srflx 候选并正常关闭；
+这仅证明本次候选发现成功，不证明手机端打洞成功，也不排除当前 Mihomo/TUN 底层路径。
