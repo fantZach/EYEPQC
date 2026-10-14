@@ -187,3 +187,39 @@ STOP持续排空超过2秒则封锁后续连接，须检查日志与设备后手
 suite2 HELLO/ACK及type10(body864，板→手机)/type11(body832，手机→板)可原样转发。
 PC仅验证长度/方向，不处理临时KEM、MAC或业务密钥；完整契约见 [suite2](../doc/account_ephemeral_protocol.md)。
 账号TLS和软件回环通过不代表手机、实板、新SD固件或生产密码协议已通过。
+
+## 公网反向 TCP 隧道（代码准备，未部署）
+
+采用 Windows OpenSSH 把云端公开 `0.0.0.0:8765` 转到 PC 的 `127.0.0.1:8765`。
+云端使用独立 sshd 的 TCP2222 和专用用户 `eyepqc-tunnel`，不修改已有管理 SSH22。
+PC 沿用账号 WSS relay，账号校验、409 接管、USB 清理和队列仍在 PC；隧道和云端只转发字节，
+不执行视频/KEM解密。SSH 上行公钥授权不替代手机用户名密码。
+
+在仓库根目录使用现有 `.venv`；需安装 Windows OpenSSH Client 并将 `ssh.exe` 加入 PATH。
+IdentityFile 必须为专用本机 SSH 私钥，known_hosts 必须通过可信渠道核对**独立 sshd** host key 后准备。
+非标准端口的 known_hosts 项使用 `[云端地址]:2222`。工具只检查文件存在且非空，不读取私钥或证明 host key 可信；
+不能直接信任未经核验的 ssh-keyscan 输出。下面都是需要用户提供的本机路径，不在聊天发送私钥。
+
+```powershell
+# 默认 Plan 只输出 argv 和检查路径，不启动 ssh、不读取文件正文、不联网。
+& ./.venv/Scripts/python.exe pc/src/host/cloud_tunnel.py --cloud-host <云端IPv4或域名> --identity-file <专用SSH私钥路径> --known-hosts <已核验known_hosts路径>
+# Check 仅调用 ssh -G 解析有效配置，不连接服务器，也不验证实际云端host key。
+& ./.venv/Scripts/python.exe pc/src/host/cloud_tunnel.py --mode Check --cloud-host <云端地址> --identity-file <专用SSH私钥路径> --known-hosts <已核验known_hosts路径>
+# 云端部署/网络/host key完成并明确授权后，显式Run才建立前台隧道。
+& ./.venv/Scripts/python.exe pc/src/host/cloud_tunnel.py --mode Run --cloud-host <云端地址> --identity-file <专用SSH私钥路径> --known-hosts <已核验known_hosts路径>
+```
+
+默认 SSH2222，可用 `--ssh-port` 改为与独立 sshd 实际配置一致的端口；公开/本机转发端口固定8765。
+关闭用户/系统 ssh config、共享连接和 agent，固定严格host key、BatchMode、IdentitiesOnly、
+ExitOnForwardFailure、ConnectTimeout10、15秒保活/3次。文件路径支持空格，拒绝UNC、控制字符、引号和SSH展开标记。
+参数通过 argv 传入，不经 shell，不自动更改已核验 known_hosts，不请求 shell/PTY。
+SSH 失败返回其非零退出码；Ctrl+C 停止前台入口，没有后台重连循环。
+保活只检测 SSH 连接，不能证明 WSS relay、USB 固件或手机视频正常。
+
+另一个前台终端由操作者启动账号 relay：`run_relay.ps1 -Mode Run -BindAddress 127.0.0.1 -AccountsFile <本机账号文件> -TlsCert <证书链> -TlsKey <本机TLS私钥>`。
+手机 schema2 地址改为 `wss://<云端地址>:8765/stream`，但 TLS 仍终止在 PC，证书 SAN 必须匹配手机访问的云端 IP/域名。
+不能继续使用只包含校园网 IP 的旧 leaf。debug APK 信任的测试 CA 可以保留，为云端地址重新签发 leaf；
+现有 `prepare_test_tls.py --ca-dir ... --ip <云端IPv4>` 支持 IPv4 换签到新目录，域名证书须由可信签发流程包含 DNS SAN。
+CA/服务器私钥始终留在 PC；账号模式不允许 ws 降级，不关闭 CA/主机名/板端公钥验证。
+与局域网使用同一份记录协议、suite2 和手机登录流程，路径仍支持显式 `/stream?takeover=1`。
+具体服务端限制见 [云中转契约](../doc/cloud_relay_plan.md)。本轮没有部署云端、启动隧道或验证公网视频。

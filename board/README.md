@@ -45,6 +45,17 @@
 PC 经 JTAG 装载测试私钥仍属于可信开发环境；准备与公开身份导出不能算认证视频已通过。
 板端 6 项无硬件 mock 测试通过，完整链路步骤见 [三端 MVP](../doc/three_end_mvp.md)。
 
+## 公网透明中转接口（2026-10-14）
+
+四端路线见 [公网中转契约](../doc/cloud_relay_plan.md)：Board ⇄ USB ⇄ PC WSS ⇄ OpenSSH 反向 TCP 隧道 ⇄ Android。
+云端只转发 TCP；TLS、账号和 USB owner/队列仍由 PC 管理，suite2 的身份 bootstrap、临时 KEM、
+双向 Finished、START/STOP/REKEY 与认证视频记录不变，板端无需新增云端地址、网络栈或密码核。
+
+控制 body 最大 1024 字节，临时 offer/reply 完整控制记录为 876/844 字节，USB 外层仍为 channel + BE16 长度。
+板端握手 15 秒及业务 1800 秒硬截止保持，客户端于 1785 秒提前重建；公网延迟或背压超限时按既有失败/清理规则停流。
+开发态 PC 已知 JTAG seed，不能声称对恶意 PC 前向保密；G6 视频 SD 自主启动仍未完成。
+公网 G9 不替代 G0/G7/G8。本轮仅接口审查和离线回归，详见 [板端云中转报告](../report/board_cloud_20261014.md)。
+
 ## M01 硬件资料
 
 官方硬件资料目录需由使用者自行提供；例程源码位于该目录的 `4_Source_Code` 子目录，包含

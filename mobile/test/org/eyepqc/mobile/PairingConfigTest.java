@@ -44,6 +44,13 @@ public final class PairingConfigTest {
         wrong=account.deepCopy();wrong.addProperty("token","public-test-token-0123456789abcdef");reject(bytes(wrong.toString()));
         for(String field:new String[]{"version","endpoint","public_key_hex","public_key_sha256"}){wrong=account.deepCopy();wrong.remove(field);reject(bytes(wrong.toString()));}
         reject(bytes(account.toString().replace("\"version\":2","\"version\":2,\"version\":2")));
+        for(String endpoint:new String[]{"wss://203.0.113.8:8765/stream","wss://viewer.example:10443/stream","wss://viewer.example/stream"}){
+            JsonObject cloud=account.deepCopy();cloud.addProperty("endpoint",endpoint);PairingConfig parsed=PairingConfig.parse(bytes(cloud.toString()));
+            if(!parsed.endpoint.equals(endpoint)||parsed.version!=2||parsed.token!=null)throw new AssertionError("cloud endpoint");checks++;
+        }
+        for(String endpoint:new String[]{"http://viewer.example:8765/stream","https://viewer.example/stream","ws://203.0.113.8:8765/stream","wss://viewer.example:0/stream","wss://viewer.example:65536/stream","wss://viewer.example/video","wss://viewer.example/stream?takeover=1","wss://viewer.example/stream?token=x","wss://user:pass@viewer.example/stream","wss://viewer.example/stream#fragment"}){
+            JsonObject cloud=account.deepCopy();cloud.addProperty("endpoint",endpoint);reject(bytes(cloud.toString()));
+        }
         if(args.length==1){byte[] actual=Files.readAllBytes(Paths.get(args[0]));PairingConfig.parse(actual);checks++;}
         System.out.println("PAIRING_CONFIG_OK checks="+checks);
     }

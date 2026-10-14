@@ -1,5 +1,24 @@
 # 移动端子项目
 
+## 云端 TCP 转发兼容（0.6）
+
+现有 schema2 直接支持 `wss://<云端公网IPv4或域名>:8765/stream`，公开端口可改，例如10443；
+省略端口使用443。手机访问云端的公开视频 TCP 端口，账号密码仍在 APP 输入。
+采用 [云端方案](../doc/cloud_relay_plan.md) 的反向 TCP 隧道后，WSS/TLS 实际终止在 Windows PC，
+账号校验、显式接管和业务二进制记录保持原样，手机继续执行 suite2/ML-KEM/GCM。
+Android 沿用现有 WebSocket 路径，不增加 SSH/WebRTC 或新协议。
+
+PC 的 TLS 叶证书 SAN 必须匹配手机 JSON 中的云端 IP/域名；只含校园网 IP 的旧证书不能用于新地址。
+同一个0.6 debug测试CA为新云端地址重签叶证书后，只需可信重新导出/导入 schema2 endpoint，
+只因 IP/域名或叶证书改变不必重打 APK。CA本身轮换/过期则另行更新信任；证书仍须链可信、有效期正确、SAN匹配。
+板卡公钥/pin 沿用实际可信身份，改变 endpoint 不自动改变或接受新的 ML-KEM 身份。
+云端配置 JSON 只含四项 version=2/endpoint/public_key_hex/public_key_sha256，不放账号密码、token或私钥。
+
+JSON endpoint 固定为 `/stream`，不预置 takeover 查询。HTTP409仍弹出确认，只有用户确认后才请求
+`/stream?takeover=1`；取消不接管，旧端4409不自动抢回。HTTP/明文WS、错误路径、URI凭据、预置查询和片段均拒绝。
+debug CA只用于开发联调，release仍无测试CA；未据此标记生产、公网或Android真机通过。
+本轮仅补软件测试和说明，运行时、信任资源、APK0.6未改变。见 [mobile 云端兼容记录](../report/mobile_cloud_20261014.md)。
+
 ## 0.6 debug 专用测试 CA
 
 0.6 / versionCode6 的 debug APK 在 `src/debug` 中内置专用公开测试 CA，供本轮准备的 WSS 证书使用。

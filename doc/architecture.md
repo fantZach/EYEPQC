@@ -4,6 +4,11 @@
 平台条件：PC 为 Windows，移动端为 Android。
 本文定义三端架构；Windows 密文桥与 Android 应用源码已有，软件互操作通过，实际板卡/手机链路待验。
 
+2026-10-14 更新：公网中转新增独立 `server/`，形成四个维护子项目。
+当前公网实现采用PC主动OpenSSH反向TCP隧道，云端公开端口转至PC回环WSS；
+TLS和账号校验仍在PC，Android/Board业务协议不变。此决定不表示公网已验收，
+统一部署/限制见 [公网中转契约](cloud_relay_plan.md)。以下旧接口/历史阶段不迁移为新门禁通过。
+
 ## 部署与职责
 
 ```text
@@ -19,9 +24,10 @@
 | `board/` | RTL、PS 固件、第三方密码核、XDC、`prj/` 构建/调试工具 | 摄像头、DMA、ML-KEM Decaps、AES-GCM 加密与 USB 从机 |
 | `pc/` | Windows Python 主机工具；后续 USB/网络桥和中转服务 | 连接板卡、透明转发双向记录、连接授权及有界队列 |
 | `mobile/` | 后续 Android 应用 | 公钥 pin、ML-KEM Encaps、Finished、认证解密与视频显示 |
+| `server/` | 受限 OpenSSH 配置、Linux 服务及部署校验 | 认证PC隧道公钥、透明TCP中转，不终止业务TLS或解密视频 |
 
 `doc/`、`sim/`、`data/kat/`、`report/` 为共享契约与证据。根目录脚本负责跨项目编排。
-可选中转服务归 PC 项目维护但可独立部署。第一步使用同一局域网，不需要租服务器；公网实现按实际接入条件部署。
+公网服务由独立server项目维护，PC维护对应主动隧道入口。第一步使用同一局域网，不需要租服务器；公网实现按实际接入条件部署。
 板端继续裸机运行，不因网络中转引入 Linux、USB 网卡或板端 TCP/IP 改造。
 Android 使用原生 Java Activity、OkHttp 4.12.0、Bouncy Castle 1.81 lightweight ML-KEM；最低系统 API 26，编译/目标 API 35。
 Windows PC 与 Android 也可通过组网 VPN 访问 PC 接入服务，作为局域网之外的可选路径。

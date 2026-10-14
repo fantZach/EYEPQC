@@ -1,5 +1,18 @@
 # Implementation progress
 
+## 2026-10-14：服务器中转四端代码准备
+
+用户恢复服务器中转，新增独立server/文件夹和聊天，P2P保留但暂停。
+冻结方案为PC主动OpenSSH反向TCP隧道→云端公开端口→手机原WSS；TLS与scrypt账号仍在PC，
+Board USB/suite2与Android0.6运行时无需修改。PC入口默认Plan/离线Check，Run才启动前台隧道；
+server提供专用用户/公钥、仅remote forwarding/PermitListen8765的独立SSH2222配置与service。
+四聊天仅修改所属文件，主聊天负责共享契约、联测和统一提交，见 [协调记录](cloud_coordination_20261014.md)。
+
+主聊天复跑PC42项、Server16项、Android核心160/JSON52/临时KEM37及四个TLS/接管回环通过；
+真实C/Java suite2经过模拟透明TCP节点的五窗口通过，原局域WSS五窗口复跑也通过。
+Board本轮36项离线及M10检查通过，未操作硬件。真实Linux sshd、云端、SSH隧道、手机公网视频和G9未验收；
+没有上传私钥/账号、签发实际云地址证书或启动真实服务，既有QueueFull/P2P失败不被软件PASS覆盖。
+
 ## 2026-10-14：无 TURN P2P 探针
 
 首轮手机实测补记：用户安装后提供 answer，PC 在 DataChannel open 的45秒截止超时，

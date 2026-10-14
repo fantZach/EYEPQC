@@ -93,6 +93,8 @@ class EphemeralBoard(reference.MemoryBoard):
 
 
 class AccountThreeEnd(unittest.IsolatedAsyncioTestCase):
+    tcp_passthrough = False
+
     async def test_wss_ephemeral_video_rekey_stop_and_reconnect(self):
         reference.G6.setUpClass()
         self.addCleanup(reference.G6.tearDownClass)
@@ -150,6 +152,12 @@ class AccountThreeEnd(unittest.IsolatedAsyncioTestCase):
                 relay = Relay(accounts=Accounts(account_file), serial_factory=factory, queue_records=128)
                 server = await relay.start('127.0.0.1', 0, tls=tls)
                 port = server.sockets[0].getsockname()[1]
+                tunnel = None
+                if self.tcp_passthrough:
+                    from test_cloud_passthrough import TcpPassthrough
+                    tunnel = TcpPassthrough(port)
+                    await tunnel.start()
+                    port = tunnel.port
                 public = folder/'public.bin'
                 public.write_bytes(reference.G6.pk)
                 import io
@@ -183,7 +191,12 @@ class AccountThreeEnd(unittest.IsolatedAsyncioTestCase):
                             self.assertNotEqual(devices[-1].board.offers[0], devices[-1].board.offers[1])
                         print('ACCOUNT_THREE_END_OK mode='+mode, flush=True)
                 finally:
+                    if tunnel is not None:
+                        await tunnel.close()
                     server.close(); await server.wait_closed()
+                    if tunnel is not None:
+                        self.assertGreater(tunnel.upload_bytes, 0)
+                        self.assertGreater(tunnel.download_bytes, 0)
             finally:
                 if os.name == 'nt':
                     import _ctypes

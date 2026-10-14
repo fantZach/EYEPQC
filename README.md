@@ -9,6 +9,11 @@
 长连接每 30 分钟重新握手。独立方案与安全前置见 [账号与临时 KEM 方案](doc/account_ephemeral_plan.md)。
 此方案正在实现，不代表手机、实板、可信熵源或完整视频 SD 自启动已通过。
 
+2026-10-14 用户选择公网服务器中转并要求先完成四端代码；新增独立 `server/`。
+第一版复用 OpenSSH 反向 TCP 隧道，PC 主动连接云端，Android 使用原 WSS/schema2；
+TLS 和账号校验仍在 PC，云端不持有视频密钥。P2P探针暂停，失败证据保留。
+软件/部署/公网实测分别记录，见 [公网中转契约](doc/cloud_relay_plan.md)。
+
 ```text
 OV5640 → 开发板：采集 JPEG / AES-GCM 加密
                   ⇅ USB CDC（密文视频向外，控制消息双向）
@@ -20,16 +25,17 @@ OV5640 → 开发板：采集 JPEG / AES-GCM 加密
 先在同一局域网内由 PC 提供接入服务，无需租服务器。公网阶段可将中转服务部署到已有或租用的服务器；
 板卡仍通过 PC 联网，无需改成 USB Host 或迁移到 PetaLinux。
 
-## 三个子项目
+## 四个子项目
 
 | 子项目 | 目录 | 职责与当前状态 |
 |---|---|---|
 | 开发板 | [board/](board/README.md) | 已有 PL RTL、PS 裸机代码、第三方密码核、约束、构建及板测工具 |
-| PC | [pc/](pc/README.md) | 原有调试端与新 USB↔WebSocket 纯密文桥；桥已通过软件回环测试，真实 USB 联调待做 |
-| 移动端 | [mobile/](mobile/README.md) | Android 调试 APK 已构建并验签，Java/网络互操作通过；实际手机/板卡待验 |
+| PC | [pc/](pc/README.md) | USB↔WSS 账号密文桥已完成实板短测；新增公网反向隧道，公网部署另验 |
+| 移动端 | [mobile/](mobile/README.md) | Android 0.6 视频和手动换钥后用户反馈约45fps；完整 G8/G9 未通过 |
+| 服务器 | [server/](server/README.md) | 独立维护的受限 OpenSSH 中转、Linux 配置/部署工具；公网部署与验收另行执行 |
 
-可选远程中转服务归 PC 子项目维护、独立部署，不另设第四个源码子项目。
-原有 **板卡↔PC 本地解密演示** 保留；新桥与 Android 核心已通过软件互操作，手机/板卡实机和公网链路尚待验收。
+公网中转由独立 server 子项目维护，PC 子项目维护 Windows 上行隧道和 USB/WSS 接入。
+原有 **板卡↔PC 本地解密演示** 保留；账号/suite2 实机短测见 [实机报告](report/account_ephemeral_board_20261014.md)，完整 G8 和公网 G9 仍待验收。
 移动端采用原生 Java Activity、OkHttp 4.12.0、Bouncy Castle 1.81 lightweight ML-KEM；最低 Android 8.0/API 26，目标 API 35。
 
 ```text
@@ -42,6 +48,7 @@ EYEPQC/
 │   └── xdc/             # 板级约束
 ├── pc/src/host/          # 现有 Python 主机与开发验证工具
 ├── mobile/              # 移动端职责、协议接入与验收计划
+├── server/              # 公网受限 TCP 中转及 Linux 部署配置
 ├── doc/                 # 共享目标、协议和实施步骤
 ├── sim/                 # 跨板端/主机的集成测试、RTL testbench、向量
 ├── data/kat/            # 公开标准测试向量
@@ -52,7 +59,7 @@ EYEPQC/
 ```
 
 `build/`、`data/captures/`、`board/output/`、`board/vendor/` 和 `.venv/` 保留原位置并继续由 Git 忽略。
-三子项目是同一 Git 仓库中的职责划分，不是 Git submodule；`sim/` 为共享验收设施。
+四子项目是同一 Git 仓库中的职责划分，不是 Git submodule；`sim/` 为共享验收设施。
 
 ## 快速开始：现有 PC 基线
 
