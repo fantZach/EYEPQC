@@ -2,6 +2,11 @@
 
 ## 2026-10-14：无 TURN P2P 探针
 
+首轮手机实测补记：用户安装后提供 answer，PC 在 DataChannel open 的45秒截止超时，
+手机反馈“ICE/DTLS连接失败”，没有进入30秒负载测量，不能标记直连/吞吐通过。
+Mihomo/TUN接口仍存在，根因尚未区分；不自动关代理，以免打断UU。
+只读检查及原始offer缺失的证据边界见 [首轮手机记录](p2p_phone_20261014.md)。
+
 新增独立 Windows aiortc1.15.0 / Android WebView DataChannel 探针和手动 SDP 交换说明。
 本机真 DataChannel 429包逐字节校验，1秒窗口5.007288Mbps；PC三项测试与JS解析/负载检查通过，
 独立 APK 构建和 v2 验签通过。首次 Windows Proactor close 挂起，改独立入口Selector后测试正常退出；
