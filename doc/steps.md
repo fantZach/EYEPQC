@@ -1,5 +1,9 @@
 # EYEPQC 编程与调试步骤
 
+2026-10-14：用户选择先验证 Windows 校园网↔Android 移动网 P2P，再决定云服务器。
+新增独立 aiortc/WebView 合成数据探针，无 TURN，不操作板卡或替换 WSS。
+本机 DataChannel 和 APK 构建不算异网/视频门禁；操作与边界见 [P2P 首轮试验](p2p_probe.md)。
+
 2026-10-13 用户授权实现 [账号与临时 KEM 方案](account_ephemeral_plan.md)：先冻结跨端协议，
 再推进 PC WSS 账号/显式接管、Android 登录/临时 KEM/1800 秒换钥和板端临时密钥清理，最后软件互操作。
 单观看端范围不扩大为群组广播；新 profile 软件/实板/手机门禁分别记录。

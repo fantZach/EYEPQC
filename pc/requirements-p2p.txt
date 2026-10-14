@@ -1,0 +1,2 @@
+# Isolated connectivity probe; do not install into the working USB relay environment.
+aiortc==1.15.0

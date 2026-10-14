@@ -1,5 +1,15 @@
 # Implementation progress
 
+## 2026-10-14：无 TURN P2P 探针
+
+新增独立 Windows aiortc1.15.0 / Android WebView DataChannel 探针和手动 SDP 交换说明。
+本机真 DataChannel 429包逐字节校验，1秒窗口5.007288Mbps；PC三项测试与JS解析/负载检查通过，
+独立 APK 构建和 v2 验签通过。首次 Windows Proactor close 挂起，改独立入口Selector后测试正常退出；
+asyncio debug loop 的初轮约1.09Mbps不当吞吐通过，不能代替实际30秒手机异网测量。
+未安装到手机、未实测校园网打洞、未接入账号/真实视频，也未修改板端或运行服务。
+下一步用户安装“EYEPQC P2P测试”后，交换一次 offer/answer，在移动网保持前台完成30秒/5Mbps测试。
+详见 [P2P 首轮试验](../doc/p2p_probe.md)。
+
 ## 2026-10-14：账号与临时 ML-KEM 实板/手机短测
 
 新 suite2 固件已临时 JTAG 装载，真实相机/USB/WSS/账号链路通过 JVM 两轮认证解码：
