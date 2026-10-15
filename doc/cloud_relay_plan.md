@@ -22,6 +22,11 @@ Board ⇄ USB ⇄ Windows PC WSS relay（127.0.0.1:8765）
 
 ## 冻结参数与安全边界
 
+2026-10-15 自动配对扩展：Android0.7先通过同一TLS入口 `GET /pairing.json` 登录并获取公开schema2，
+再连接原 `/stream`。配置下载同用PC Basic/scrypt/限速，但不占USB、不接管观看者；server仍无业务代码/配置文件。
+PC显式 `--pairing-file` 启用，不开放目录或凭据文件；手机拒绝重定向、异地址endpoint、v1及已记住指纹的静默替换。
+首次信任依赖预先确认的服务地址与有效TLS，不以公钥和其摘要同时下载作为独立身份认证。
+
 1. 手机 URL 路径仍为 `/stream` / `/stream?takeover=1`；消息仍是一条完整 USB 二进制记录，没有新包头。
 2. 默认云端公开 TCP8765 通过 `-R 0.0.0.0:8765:127.0.0.1:8765` 转到 PC WSS。PC relay 默认只监听回环。
 3. 隧道 PC 使用专用 SSH 用户 `eyepqc-tunnel` 和本机私钥，不用 root/密码，不上传板端身份、种子或 TLS 私钥。

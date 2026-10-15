@@ -1,5 +1,23 @@
 # PC 子项目
 
+## 登录后自动分发配对配置
+
+Android0.7在账号登录成功后自动获取公开schema2，无需用户传JSON。PC启动时显式指定唯一公开配置：
+
+```powershell
+& ./pc/run_relay.ps1 -Mode Run -BindAddress 127.0.0.1 -AccountsFile tmp/cloud_wss_20261015_1/private/accounts.json -PairingFile tmp/cloud_wss_20261015_1/public/pairing.json -TlsCert tmp/cloud_wss_20261015_1/public/server-chain.pem -TlsKey tmp/cloud_wss_20261015_1/private/server-key.pem
+```
+
+将示例替换为本机材料；先检查现有监听和观看者，不重复启动。
+Python直接入口参数为 `--pairing-file`。仅账号+TLS模式支持；省略时保留旧手动导入方式，下载路径返回404。
+同一TLS端口只新增 `GET /pairing.json`，使用既有Basic/scrypt/限速与单哈希验证；未授权401、忙/限速429。
+只加载这一份最大8KiB、严格四字段的schema2到内存，不开放目录，不读取身份私钥；内容不含密码/token。
+响应application/json、no-store、nosniff。配置在启动时冻结，更新须检查无观看者后按正常流程重启relay。
+下载不打开USB、不改变owner或触发接管，即使USB不可用也能交付公开配置；视频仍按原规则单观看端授权。
+Android要求JSON endpoint与输入WSS地址完全一致；证书SAN须匹配该地址，云端通过原SSH隧道透明传输HTTPS。
+首次公钥信任来自正确TLS服务，已有同地址指纹不静默改变，不能声称首次分发不信任PC或其TLS身份。
+本功能不增加云账号服务、不上传账号/私钥到云端，也不解决已有发送积压/板卡故障。
+
 可选直接 P2P 的独立连通性探针见 [P2P 首轮试验](../doc/p2p_probe.md)：
 aiortc 固定版本安装在独立 build/p2p_venv，只发送合成数据，不打开 USB 或更改现有 WSS。
 

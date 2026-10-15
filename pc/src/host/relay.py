@@ -4,11 +4,14 @@ import argparse
 from accounts import Accounts
 import asyncio
 import hmac
+import hashlib
+import json
 import logging
 from http import HTTPStatus
 from pathlib import Path
 import ssl
 import time
+from urllib.parse import urlsplit
 
 import serial
 from serial.tools import list_ports
@@ -24,6 +27,40 @@ def read_token(path):
     if not 32 <= len(token) <= 256 or not all(33 <= ord(c) <= 126 for c in token):
         raise ValueError("token file must contain 32..256 printable non-space ASCII characters")
     return token
+
+
+def read_pairing(path):
+    """Load only a bounded public schema2 document, never a directory or credentials."""
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate pairing field")
+            result[key] = value
+        return result
+    with Path(path).open("rb") as source:
+        data = source.read(8193)
+    if not 0 < len(data) <= 8192:
+        raise ValueError("pairing size")
+    config = json.loads(data.decode("utf-8"), object_pairs_hook=unique)
+    if (not isinstance(config, dict) or set(config) !=
+            {"version", "endpoint", "public_key_hex", "public_key_sha256"} or
+            type(config["version"]) is not int or config["version"] != 2 or
+            any(not isinstance(config[field], str) for field in config if field != "version")):
+        raise ValueError("public schema2 pairing required")
+    endpoint = config["endpoint"]
+    address = urlsplit(endpoint)
+    if (address.scheme != "wss" or not address.hostname or address.username is not None or
+            address.password is not None or address.path != "/stream" or "?" in endpoint or
+            "#" in endpoint or address.port == 0 or
+            any(ord(c) <= 32 or ord(c) > 126 for c in endpoint)):
+        raise ValueError("pairing requires a WSS stream endpoint")
+    key_hex, pin_hex = config["public_key_hex"], config["public_key_sha256"]
+    if (len(key_hex) != 1600 or len(pin_hex) != 64 or
+            any(c not in "0123456789abcdefABCDEF" for c in key_hex + pin_hex) or
+            not hmac.compare_digest(hashlib.sha256(bytes.fromhex(key_hex)).digest(), bytes.fromhex(pin_hex))):
+        raise ValueError("pairing public identity mismatch")
+    return data
 
 
 def control_record(message):
@@ -55,11 +92,14 @@ def open_cdc(port=None):
 
 class Relay:
     def __init__(self, token=None, serial_factory=open_cdc, *, accounts=None, queue_records=64,
-                 partial_timeout=2.0, send_timeout=5.0):
+                 partial_timeout=2.0, send_timeout=5.0, pairing_file=None):
         if queue_records < 1 or partial_timeout <= 0 or send_timeout <= 0:
             raise ValueError("queue and timeouts must be positive")
         if (token is None) == (accounts is None):
             raise ValueError("select exactly one authentication mode")
+        if pairing_file is not None and accounts is None:
+            raise ValueError("automatic pairing requires TLS account mode")
+        self.pairing = read_pairing(pairing_file) if pairing_file is not None else None
         self.accounts = accounts
         self.owner = None
         self.owner_user = None
@@ -75,6 +115,8 @@ class Relay:
 
     async def authorize(self, connection, request):
         allowed = ("/stream", "/stream?takeover=1") if self.accounts else ("/stream",)
+        if self.pairing is not None:
+            allowed += ("/pairing.json",)
         if request.path not in allowed:
             return connection.respond(HTTPStatus.NOT_FOUND, "Unknown endpoint\n")
         values = request.headers.get_all("Authorization")
@@ -95,6 +137,12 @@ class Relay:
                 self.verifying = False
             if user is None:
                 return connection.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
+            if request.path == "/pairing.json":
+                response = connection.respond(HTTPStatus.OK, self.pairing.decode("utf-8"))
+                response.headers["Content-Type"] = "application/json; charset=utf-8"
+                response.headers["Cache-Control"] = "no-store"
+                response.headers["X-Content-Type-Options"] = "nosniff"
+                return response
             connection.relay_user = user
             connection.relay_takeover = request.path.endswith("?takeover=1")
             if self.cleanup_failed:
@@ -321,7 +369,8 @@ async def run(args):
         tls.load_cert_chain(args.tls_cert, args.tls_key)
     relay = Relay(read_token(args.token_file) if args.token_file else None,
                   lambda: open_cdc(args.serial_port),
-                  accounts=Accounts(args.accounts_file) if args.accounts_file else None)
+                  accounts=Accounts(args.accounts_file) if args.accounts_file else None,
+                  pairing_file=args.pairing_file)
     async with await relay.start(args.host, args.port, tls=tls) as server:
         print(f"RELAY_READY {'wss' if tls else 'ws'}://{args.host}:{args.port}/stream", flush=True)
         await server.serve_forever()
@@ -332,6 +381,7 @@ def main():
     auth = parser.add_mutually_exclusive_group(required=True)
     auth.add_argument("--token-file", type=Path)
     auth.add_argument("--accounts-file", type=Path)
+    parser.add_argument("--pairing-file", type=Path, help="Public schema2 JSON served only after TLS account login")
     parser.add_argument("--host", default="127.0.0.1", help="PC LAN or VPN interface address")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--serial-port", help="optional COM port override")

@@ -11,7 +11,7 @@ import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
 
-/** A selected file is a trust decision; matching a bundled pin proves consistency only. */
+/** Identity comes from a trusted file or authenticated TLS origin, not its checksum alone. */
 public final class PairingConfig {
     public static final int MAX_BYTES=8192;
     public final int version;
@@ -19,6 +19,12 @@ public final class PairingConfig {
     public final byte[] publicKey,pin;
     private PairingConfig(int version,String endpoint,String token,byte[] publicKey,byte[] pin){
         this.version=version;this.endpoint=endpoint;this.token=token;this.publicKey=publicKey;this.pin=pin;
+    }
+    public static PairingConfig fromServer(byte[] bytes,String endpoint,byte[] previousPin)throws Exception {
+        PairingConfig config=parse(bytes);
+        if(config.version!=2||!config.endpoint.equals(endpoint))throw new IllegalArgumentException("server pairing origin or profile mismatch");
+        if(previousPin!=null&&!MessageDigest.isEqual(config.pin,previousPin))throw new IllegalArgumentException("board identity changed; trusted manual import required");
+        return config;
     }
     public static PairingConfig parse(byte[] bytes)throws Exception {
         if(bytes.length==0||bytes.length>MAX_BYTES)throw new IllegalArgumentException("configuration size");

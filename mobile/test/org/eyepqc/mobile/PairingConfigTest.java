@@ -51,6 +51,13 @@ public final class PairingConfigTest {
         for(String endpoint:new String[]{"http://viewer.example:8765/stream","https://viewer.example/stream","ws://203.0.113.8:8765/stream","wss://viewer.example:0/stream","wss://viewer.example:65536/stream","wss://viewer.example/video","wss://viewer.example/stream?takeover=1","wss://viewer.example/stream?token=x","wss://user:pass@viewer.example/stream","wss://viewer.example/stream#fragment"}){
             JsonObject cloud=account.deepCopy();cloud.addProperty("endpoint",endpoint);reject(bytes(cloud.toString()));
         }
+        byte[] accountBytes=bytes(account.toString());
+        PairingConfig.fromServer(accountBytes,"wss://example.org/stream",null);checks++;
+        PairingConfig.fromServer(accountBytes,"wss://example.org/stream",v2.pin);checks++;
+        try{PairingConfig.fromServer(accountBytes,"wss://other.example/stream",null);throw new AssertionError("cross origin accepted");}catch(IllegalArgumentException expected){checks++;}
+        byte[] changedPin=v2.pin.clone();changedPin[0]^=1;
+        try{PairingConfig.fromServer(accountBytes,v2.endpoint,changedPin);throw new AssertionError("identity replacement accepted");}catch(IllegalArgumentException expected){checks++;}
+        try{PairingConfig.fromServer(bytes(good),config.endpoint,null);throw new AssertionError("profile downgrade accepted");}catch(IllegalArgumentException expected){checks++;}
         if(args.length==1){byte[] actual=Files.readAllBytes(Paths.get(args[0]));PairingConfig.parse(actual);checks++;}
         System.out.println("PAIRING_CONFIG_OK checks="+checks);
     }

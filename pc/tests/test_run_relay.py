@@ -30,6 +30,13 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("No relay/download TCP endpoints", result.stdout)
         self.assertIn("do not prove", result.stdout)
 
+    def test_automatic_pairing_refuses_token_mode_before_reading_files(self):
+        result = self.run_script("function Get-NetTCPConnection { }",
+                                 "-Mode Run -PairingFile 'does-not-exist.json'")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("PairingFile requires AccountsFile and TLS", result.stderr)
+        self.assertNotIn("Resolve-Path", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

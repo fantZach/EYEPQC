@@ -1,9 +1,9 @@
-import asyncio, base64, datetime, ipaddress, json, logging, ssl, sys, tempfile, threading, time, unittest
+import asyncio, base64, datetime, hashlib, http.client, ipaddress, json, logging, ssl, sys, tempfile, threading, time, unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src/host'))
 from accounts import Accounts, create_account, password_hash
-from relay import Relay, control_record
+from relay import Relay, control_record, read_pairing
 from protocol import encode_control, encode_usb_record, decode_control
 from prepare_pairing import configuration, export_config
 from test_relay import FakeSerial, HELLO, ACK
@@ -32,7 +32,12 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
             device = FakeSerial()
             self.devices.append(device)
             return device
-        self.relay = Relay(accounts=self.accounts, serial_factory=factory)
+        self.public_config = dict(version=2, endpoint='wss://127.0.0.1/stream',
+                                  public_key_hex=bytes(800).hex(),
+                                  public_key_sha256=hashlib.sha256(bytes(800)).hexdigest())
+        self.pairing_path = self.root/'pairing.json'
+        self.pairing_path.write_text(json.dumps(self.public_config), encoding='utf-8')
+        self.relay = Relay(accounts=self.accounts, serial_factory=factory, pairing_file=self.pairing_path)
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, 'localhost')])
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -63,6 +68,58 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
                 return self.devices[-1]
             await asyncio.sleep(.005)
         self.fail('not ready')
+
+    async def pairing_request(self, path='/pairing.json', headers=None):
+        def request():
+            connection = http.client.HTTPSConnection('127.0.0.1', self.server.sockets[0].getsockname()[1],
+                                                     context=self.client_tls, timeout=5)
+            try:
+                connection.request('GET', path, headers={'Authorization': basic()} if headers is None else headers)
+                response = connection.getresponse()
+                return response.status, dict(response.getheaders()), response.read()
+            finally:
+                connection.close()
+        return await asyncio.to_thread(request)
+
+    async def test_automatic_pairing_authenticates_without_opening_usb(self):
+        status, headers, body = await self.pairing_request()
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), self.public_config)
+        self.assertEqual(headers['Cache-Control'], 'no-store')
+        self.assertEqual(headers['Content-Type'], 'application/json; charset=utf-8')
+        self.assertEqual(headers['X-Content-Type-Options'], 'nosniff')
+        self.assertFalse(self.devices)
+        self.assertFalse(self.relay.busy)
+
+    async def test_automatic_pairing_rejects_bad_auth_paths_and_limits(self):
+        for headers in ({}, {'Authorization': basic(password='wrong')}, {'Authorization': 'Bearer wrong'}):
+            self.accounts.allowance = 5
+            self.assertEqual((await self.pairing_request(headers=headers))[0], 401)
+        for path in ('/pairing.json?takeover=1', '/private/login.txt', '/pairing.json/../accounts.json'):
+            self.assertEqual((await self.pairing_request(path=path))[0], 404)
+        self.accounts.allowance = 0
+        self.assertEqual((await self.pairing_request())[0], 429)
+        self.accounts.allowance = 5
+        self.relay.verifying = True
+        try:
+            self.assertEqual((await self.pairing_request())[0], 429)
+        finally:
+            self.relay.verifying = False
+        self.assertFalse(self.devices)
+
+    async def test_pairing_download_cannot_take_over_or_touch_failed_usb(self):
+        async with self.client() as old:
+            device = await self.ready()
+            owner = self.relay.owner
+            for user in ('测试', 'other'):
+                self.accounts.allowance = 5
+                self.assertEqual((await self.pairing_request(headers={'Authorization': basic(user)}))[0], 200)
+                self.assertIs(self.relay.owner, owner)
+                self.assertFalse(device.closed)
+                self.assertEqual(len(self.devices), 1)
+        self.relay.cleanup_failed = True
+        self.accounts.allowance = 5
+        self.assertEqual((await self.pairing_request())[0], 200)
 
     async def test_protocol_debug_cannot_dump_basic_credentials(self):
         logger = logging.getLogger('eyepqc.relay.websocket')
@@ -213,6 +270,31 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AccountPairingTests(unittest.TestCase):
+    def test_served_pairing_is_strict_public_schema2_only(self):
+        good = dict(version=2, endpoint='wss://viewer.example:8765/stream',
+                    public_key_hex=bytes(800).hex(), public_key_sha256=hashlib.sha256(bytes(800)).hexdigest())
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'pairing.json'
+            payload = json.dumps(good).encode()
+            path.write_bytes(payload)
+            self.assertEqual(read_pairing(path), payload)
+            with self.assertRaises(ValueError): Relay('x'*32, pairing_file=path)
+            bad = []
+            for field, value in [('version',1), ('version',True), ('endpoint','ws://localhost/stream'),
+                                 ('endpoint','wss://user:pass@localhost/stream'),
+                                 ('endpoint','wss://localhost:0/stream'), ('endpoint','wss://localhost:65536/stream'),
+                                 ('endpoint','wss://localhost/stream?'), ('endpoint','wss://localhost/stream#'),
+                                 ('public_key_hex','x'*1600), ('public_key_sha256','f'*64), ('public_key_hex',None)]:
+                bad.append(json.dumps(dict(good, **{field:value})).encode())
+            bad += [b'{}', b'[]', b'\xff', b' '*8193, payload+b'{}',
+                    payload.replace(b'"version": 2', b'"version": 2, "version": 2'),
+                    json.dumps(dict(good,password='never-serve')).encode(),
+                    json.dumps(dict(good,token='never-serve')).encode()]
+            for data in bad:
+                with self.subTest(data=data[:60]):
+                    path.write_bytes(data)
+                    with self.assertRaises((ValueError, UnicodeError)): read_pairing(path)
+
     def test_schema2_and_new_control_direction(self):
         import hashlib
         with tempfile.TemporaryDirectory() as folder:

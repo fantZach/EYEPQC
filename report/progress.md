@@ -1,5 +1,13 @@
 # Implementation progress
 
+## 2026-10-15：Android0.7登录后自动获取配对配置
+
+PC从指定公开schema2文件提供同TLS端口 `/pairing.json`，复用Basic/scrypt/限速，下载不占USB或触发接管。
+Android输入账号密码后自动获取、严格校验、私有保存公开配置，再连接原suite2；预填当前公网地址，可修改。
+TLS/同地址约束、8KiB上限、已保存指纹防静默替换、后台取消及手动备用均保留，密码/token不持久化。
+PC/移动端回归、HTTPS拒绝用例、APK和实际公网下载详见 [实施记录](auto_pairing_20261015.md)。
+没有改Board/云端SSH或修复之前QueueFull/板端致命错误；手机安装/UI及实际视频仍待验，下载成功不算G8/G9。
+
 ## 2026-10-15：真实板卡经公网中转短测通过，待手机验证
 
 G6 suite2固件75项哈希/BSP/ARM启动预检通过，JTAG易失加载成功，COM7视频USB枚举；SD/Flash未改。

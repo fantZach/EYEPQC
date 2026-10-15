@@ -7,6 +7,7 @@ param(
     [int]$Port = 8765,
     [string]$TokenFile = 'tmp/mobile_pairing/relay.token',
     [string]$AccountsFile,
+    [string]$PairingFile,
     [string]$TlsCert,
     [string]$TlsKey,
     [string]$SerialPort
@@ -48,8 +49,10 @@ try {
         }
         $relayArgs += @('--accounts-file', (Resolve-Path -LiteralPath $AccountsFile).Path)
     } else {
+        if ($PairingFile) { throw 'PairingFile requires AccountsFile and TLS.' }
         $relayArgs += @('--token-file', (Resolve-Path -LiteralPath $TokenFile).Path)
     }
+    if ($PairingFile) { $relayArgs += @('--pairing-file', (Resolve-Path -LiteralPath $PairingFile).Path) }
     if ($TlsCert -or $TlsKey) {
         if (-not $TlsCert -or -not $TlsKey) { throw 'Supply both TlsCert and TlsKey.' }
         $relayArgs += @('--tls-cert', (Resolve-Path -LiteralPath $TlsCert).Path, '--tls-key', (Resolve-Path -LiteralPath $TlsKey).Path)
