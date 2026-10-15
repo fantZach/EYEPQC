@@ -4,6 +4,11 @@
 采集 OV5640 JPEG、完成 ML-KEM Decaps 和 AES-GCM 加密，将密文交给 PC 转发。
 目标架构见 [三端架构](../doc/architecture.md)，共享协议见 [protocol](../doc/protocol.md)。
 
+2026-10-15握手恢复修复：普通G6也使用发送失败时DTR/epoch证据区分正常断连，安全清理旧会话后才接受新握手；
+真实致命错误清除身份后保持FAULT，开发态同样不能被断连路径改回WAIT_HELLO。
+当前易失实测构建为 `build/vitis/g6_handshake_recovery_20261015_1`，75项哈希/BSP/ARM预检通过，
+JTAG开发态已加载；SD/Flash不改。强制关闭客户端与低带宽后重连记录见 [修复报告](../report/handshake_recovery_20261015.md)。
+
 | 目录 | 内容 |
 |---|---|
 | `src/rtl/` | 摄像头、异步 FIFO、AXIS、AES-GCM 与独立 Keccak 实验 |

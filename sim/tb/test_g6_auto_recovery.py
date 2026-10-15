@@ -101,8 +101,8 @@ class G6AutoRecovery(unittest.TestCase):
         self.assertIn('g6_auto_action_for_status', malformed)
         self.assertIn('G6_AUTO_ACTION_FAIL_CLOSED', malformed)
         self.assertIn('secure_cleanup() || g6_candidate_recover_camera()', malformed)
-        transport = source.split('g6_secure_expected_usb_disconnect(', 1)[1].split('continue;', 1)[0]
-        self.assertIn('send_epoch', transport)
+        transport = source.split('static int handle_frame_send_failure(', 1)[1].split('static int handle_control(', 1)[0]
+        self.assertIn('epoch_before', transport)
         self.assertIn('ready_at_failure', transport)
         self.assertIn('epoch_at_failure', transport)
         self.assertIn('g6_transport_failure_diag.transport_error_count', source)

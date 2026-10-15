@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src/host"))
-from protocol import MessageType, encode_control, encode_usb_record
+from protocol import MessageType, encode_control, encode_usb_record, encode_video, packet_header
 from relay import Relay, control_record, read_token
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
@@ -18,7 +18,7 @@ from websockets.exceptions import ConnectionClosed, InvalidStatus
 TOKEN = "test-only-access-token-0123456789abcdef"
 HELLO = encode_usb_record(1, encode_control(MessageType.HELLO, b"\x01\x01\x00\x01" + b"h" * 32))
 ACK = encode_usb_record(1, encode_control(MessageType.HELLO_ACK, b"\x01\x01\x00\x01" + b"b" * 32))
-VIDEO = encode_usb_record(2, bytes(range(256)))
+VIDEO = encode_usb_record(2, encode_video(packet_header(1, 0, 256, 0, 0, 0), bytes(range(256)), bytes(16)))
 STOP = encode_usb_record(1, encode_control(MessageType.STOP, bytes(40)))
 
 
@@ -172,6 +172,51 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.wait_for(ws.recv(), 1)
             self.assertEqual(caught.exception.rcvd.code, 1008)
 
+    async def test_congested_video_drops_whole_frames_but_preserves_controls(self):
+        queue = asyncio.Queue(maxsize=3)
+        queue.put_nowait(ACK)
+        queue.put_nowait(ACK)
+        stats = dict(usb_records=0, queue_peak=0, video_frames_dropped=0, video_records_dropped=0)
+        def frame(number, size=2800):
+            return [encode_usb_record(2, encode_video(packet_header(1, number, size, index, number, number*2+index),
+                     bytes(min(1400,size-index*1400)), bytes(16))) for index in range((size+1399)//1400)]
+        from protocol import UsbRecordDecoder
+        device = FakeSerial()
+        device.input.extend(b''.join(frame(1)))
+        reader = asyncio.create_task(self.relay.usb_reader(device, queue, UsbRecordDecoder(), stats))
+        try:
+            deadline = time.monotonic()+2
+            while stats['usb_records']<2 and time.monotonic()<deadline: await asyncio.sleep(.01)
+            self.assertEqual(stats['video_frames_dropped'],1)
+            self.assertEqual(stats['video_records_dropped'],2)
+            self.assertEqual(queue.qsize(),2)
+            self.assertEqual(queue.get_nowait(),ACK)
+            self.assertEqual(queue.get_nowait(),ACK)
+            second = frame(2)
+            device.input.extend(b''.join(second)+ACK)
+            deadline = time.monotonic()+2
+            while stats['usb_records']<5 and time.monotonic()<deadline: await asyncio.sleep(.01)
+            self.assertEqual([queue.get_nowait() for _ in range(3)],second+[ACK])
+            self.assertLessEqual(stats['queue_peak'],3)
+            # A frame larger than the entire fixed budget is discarded without allocation growth.
+            device.input.extend(b''.join(frame(3,5600)))
+            deadline = time.monotonic()+2
+            while stats['usb_records']<9 and time.monotonic()<deadline: await asyncio.sleep(.01)
+            self.assertEqual(queue.qsize(),0)
+            self.assertEqual(stats['video_frames_dropped'],2)
+            self.assertEqual(stats['video_records_dropped'],6)
+        finally:
+            reader.cancel()
+            await asyncio.gather(reader,return_exceptions=True)
+
+    async def test_invalid_encrypted_video_header_is_rejected(self):
+        async with self.client() as ws:
+            device = await self.ready()
+            device.input.extend(encode_usb_record(2,bytes(56)))
+            with self.assertRaises(ConnectionClosed) as caught:
+                await asyncio.wait_for(ws.recv(),1)
+            self.assertEqual(caught.exception.rcvd.code,1008)
+
     async def test_partial_write_failure_releases_usb(self):
         async with self.client() as ws:
             device = await self.ready()
@@ -247,6 +292,23 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(TimeoutError):
             await asyncio.wait_for(self.relay.network_sender(SlowSocket(), queue, stats), 1)
         self.assertEqual(stats, dict(network_records=0, network_bytes=0))
+
+    async def test_sender_bounds_unacknowledged_bytes_with_standard_ping(self):
+        queue = asyncio.Queue(maxsize=256)
+        for _ in range(256): queue.put_nowait(VIDEO)
+        stats = dict(network_records=0,network_bytes=0)
+        class Socket:
+            def __init__(self): self.waiter=asyncio.get_running_loop().create_future();self.sent=0;self.pings=0
+            async def send(self,record): self.sent+=len(record)
+            async def ping(self): self.pings+=1;return self.waiter
+        socket=Socket()
+        self.relay.send_timeout=.1
+        with self.assertRaises(TimeoutError):
+            await asyncio.wait_for(self.relay.network_sender(socket,queue,stats),2)
+        self.assertEqual(socket.pings,1)
+        self.assertGreaterEqual(socket.sent,65536)
+        self.assertLess(socket.sent,65536+len(VIDEO))
+        self.assertFalse(queue.empty())
 
     async def test_server_shutdown_releases_usb_without_stop(self):
         ws = await self.client()

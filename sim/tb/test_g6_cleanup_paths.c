@@ -364,6 +364,14 @@ static int test_fail_closed(void)
         !session_closed(EYE_STATE_ERROR) || !long_term_material_zeroized())
         return 1;
 #endif
+    cleanup_order_count = 0U;
+    cleanup_fail_at = 0U;
+    unsigned cleanup_before = cleanup_order_count;
+    uint32_t disconnects_before = g6_disconnects;
+    if (retire_disconnected_session(4U, 0U, 0U, 14U) != 1 ||
+        phase != FAULT || g6_disconnects != disconnects_before ||
+        cleanup_order_count != cleanup_before || !long_term_material_zeroized())
+        return 30;
     return 0;
 }
 
@@ -422,6 +430,35 @@ static int test_disconnect(void)
         cleanup_diag_flush_calls != 0U ||
         !session_closed(EYE_STATE_ERROR) || !long_term_material_preserved())
         return 1;
+#endif
+    return 0;
+}
+
+static int test_send_disconnect_classification(void)
+{
+    for (unsigned changed_epoch = 0; changed_epoch <= 1; ++changed_epoch) {
+        setup_case(STREAM, EYE_STATE_STREAMING);
+        fake_usb_ready = changed_epoch ? 1 : 0;
+        fake_connection_epoch = changed_epoch ? 8U : 7U;
+        if (handle_frame_send_failure(4U, 0U, 7U) != 0 ||
+            phase != WAIT_HELLO || g6_transport_errors != 0U ||
+            g6_disconnects != 41U || !long_term_material_preserved() ||
+            !session_closed(EYE_STATE_ERROR)) return 1;
+    }
+    for (unsigned resume_failed = 0; resume_failed <= 1; ++resume_failed) {
+        setup_case(STREAM, EYE_STATE_STREAMING);
+        fake_usb_ready = resume_failed ? 0 : 1;
+        if (handle_frame_send_failure(4U, resume_failed, 7U) != 1 ||
+            phase != FAULT || g6_transport_errors != 1U ||
+            g6_disconnects != 40U || !long_term_material_zeroized()) return 2;
+    }
+#ifdef G6_SECURE_CLEANUP
+    setup_case(STREAM, EYE_STATE_STREAMING);
+    fake_usb_ready = 0;
+    cleanup_fail_at = 3U;
+    if (handle_frame_send_failure(4U, 0U, 7U) != 1 ||
+        phase != FAULT || g6_transport_errors != 1U ||
+        !long_term_material_zeroized()) return 3;
 #endif
     return 0;
 }
@@ -522,6 +559,7 @@ int main(void)
     int duplicate_hello_status = test_duplicate_hello_replays_cached_ack();
     int fail_closed_status = test_fail_closed();
     int disconnect_status = test_disconnect();
+    if (!disconnect_status) disconnect_status = test_send_disconnect_classification();
     int command_status = test_stop_and_rekey();
     int auth_status = test_authentication_failure();
     if (duplicate_hello_status || fail_closed_status || disconnect_status || command_status || auth_status) {

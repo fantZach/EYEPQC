@@ -18,8 +18,8 @@ from serial.tools import list_ports
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
 
-from protocol import (MessageType, USB_CONTROL, USB_LIMITS, UsbRecordDecoder,
-                      decode_control, encode_usb_record)
+from protocol import (MessageType, USB_CONTROL, USB_LIMITS, USB_VIDEO, UsbRecordDecoder,
+                      decode_control, decode_video, encode_usb_record)
 
 
 def read_token(path):
@@ -157,19 +157,37 @@ class Relay:
 
     async def usb_reader(self, device, queue, decoder, stats):
         partial_since = None
+        video_frame = None
+        dropping_frame = False
         while True:
             data = await self.usb_read(device, decoder)
             if data:
                 records = decoder.feed(data)
                 stats["usb_records"] += len(records)
-                if queue.qsize() + len(records) > queue.maxsize:
+                pending_controls = sum(channel == USB_CONTROL for channel, _ in records)
+                if queue.qsize() + pending_controls > queue.maxsize:
                     raise asyncio.QueueFull
                 for channel, payload in records:
                     if channel == USB_CONTROL:
+                        pending_controls -= 1
                         kind, _ = decode_control(payload)
                         if kind not in (MessageType.HELLO_ACK, MessageType.FINISHED_BOARD,
                                         MessageType.ERROR, MessageType.EPHEMERAL_PUBLIC):
                             raise ValueError("control type is not board-to-mobile")
+                    elif channel == USB_VIDEO:
+                        header, _, _, _ = decode_video(payload)
+                        frame = (header.session_id, header.frame_id)
+                        if frame != video_frame:
+                            video_frame = frame
+                            # Reserve capacity for a complete frame, never stall USB behind the WAN.
+                            # shortcut: Frames larger than this fixed queue are dropped; use byte budgeting for larger resolutions.
+                            dropping_frame = (header.packet_id != 0 or
+                                header.packet_count > queue.maxsize - queue.qsize() - pending_controls)
+                            if dropping_frame:
+                                stats["video_frames_dropped"] += 1
+                        if dropping_frame:
+                            stats["video_records_dropped"] += 1
+                            continue
                     queue.put_nowait(encode_usb_record(channel, payload))
                 stats["queue_peak"] = max(stats["queue_peak"], queue.qsize())
                 if not decoder.buffer:
@@ -202,11 +220,19 @@ class Relay:
             raise
 
     async def network_sender(self, websocket, queue, stats):
+        unacknowledged = 0
         while True:
             record = await queue.get()
             await asyncio.wait_for(websocket.send(record), self.send_timeout)
             stats["network_records"] += 1
             stats["network_bytes"] += len(record)
+            unacknowledged += len(record)
+            if unacknowledged >= 65536:
+                # Bound bytes beyond this queue, including SSH/TCP buffering, using standard WS control frames.
+                async with asyncio.timeout(self.send_timeout):
+                    pong = await websocket.ping()
+                    await pong
+                unacknowledged = 0
 
     async def network_reader(self, websocket, device, stats):
         async for message in websocket:
@@ -269,7 +295,8 @@ class Relay:
         started = time.monotonic()
         decoder = UsbRecordDecoder()
         stats = dict(stop_forwarded=False, mobile_controls=0, usb_records=0,
-                     network_records=0, network_bytes=0, queue_peak=0)
+                     network_records=0, network_bytes=0, queue_peak=0,
+                     video_frames_dropped=0, video_records_dropped=0)
         try:
             device = self.serial_factory()
             device.dtr = False
@@ -342,6 +369,7 @@ class Relay:
             print(f"RELAY_SESSION_CLOSE code={close_code} stop_forwarded={int(stats['stop_forwarded'])} "
                   f"mobile_controls={stats['mobile_controls']} usb_records={stats['usb_records']} "
                   f"network_records={stats['network_records']} network_bytes={stats['network_bytes']} "
+                  f"video_frames_dropped={stats['video_frames_dropped']} video_records_dropped={stats['video_records_dropped']} "
                   f"queue_peak={stats['queue_peak']} duration_s={time.monotonic() - started:.3f} "
                   f"error={error} reason={reason!r}", flush=True)
             if cancelled_during_drain:

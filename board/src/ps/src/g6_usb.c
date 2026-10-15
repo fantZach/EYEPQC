@@ -362,10 +362,8 @@ static int retire_disconnected_session(unsigned send_status,
                                        unsigned resume_status,
                                        unsigned ready_at_failure,
                                        uint32_t epoch_at_failure) {
-#ifdef G6_PRODUCTION
-    /* A fatal production fault shuts down the provider and DRBG permanently. */
+    /* Fatal faults retire the provider or wipe development identity/seed. */
     if (phase == FAULT) return 1;
-#endif
 #ifndef G6_AUTO_RECOVERY
     (void)send_status;
     (void)resume_status;
@@ -404,6 +402,27 @@ static int retire_disconnected_session(unsigned send_status,
     publish_rekey_diag();
 #endif
     return 0;
+}
+static int handle_frame_send_failure(unsigned send_status, unsigned resume_status,
+                                     uint32_t epoch_before) {
+    unsigned ready_at_failure = (unsigned)usb_cdc_ready();
+    uint32_t epoch_at_failure = usb_cdc_connection_epoch();
+    /* DTR/epoch evidence, not a send error alone, permits a fresh session. */
+    if (g6_secure_expected_usb_disconnect(send_status, resume_status,
+            ready_at_failure, epoch_before, epoch_at_failure))
+        return retire_disconnected_session(send_status, resume_status,
+                                            ready_at_failure, epoch_at_failure);
+#ifdef G6_AUTO_RECOVERY
+    g6_transport_failure_diag.send_status = send_status;
+    g6_transport_failure_diag.resume_status = resume_status;
+    g6_transport_failure_diag.phase = (uint32_t)phase;
+    g6_transport_failure_diag.usb_ready = ready_at_failure;
+    g6_transport_failure_diag.connection_epoch = epoch_at_failure;
+    g6_transport_failure_diag.transport_error_count = g6_transport_errors + 1U;
+#endif
+    ++g6_transport_errors;
+    fail_closed();
+    return 1;
 }
 static int handle_control(const uint8_t *message, unsigned length) {
     uint8_t type, body_ack[36] = {1, 1, 0, 1};
@@ -737,39 +756,18 @@ int main(void) {
         g6_auto_recovery_diag.malformed_drop_count = 0U;
 #endif
         capture_errors = 0;
-#ifdef G6_AUTO_RECOVERY
         uint32_t send_epoch = usb_cdc_connection_epoch();
         status = send_frame(jpeg, size);
         int resume_status = g3_usb_resume();
+#ifdef G6_AUTO_RECOVERY
         if (!status && !resume_status)
             g6_transport_failure_diag.last_successful_frame_id = frame_id - 1U;
-        if (resume_status || status) {
-            unsigned ready_at_failure = (unsigned)usb_cdc_ready();
-            uint32_t epoch_at_failure = usb_cdc_connection_epoch();
-            if (g6_secure_expected_usb_disconnect(
-                    (unsigned)status, (unsigned)resume_status,
-                    ready_at_failure, send_epoch, epoch_at_failure)) {
-                (void)retire_disconnected_session((unsigned)status,
-                    (unsigned)resume_status, ready_at_failure, epoch_at_failure);
-                was_connected = 0;
-                connection_epoch = epoch_at_failure;
-                continue;
-            }
-            g6_transport_failure_diag.send_status = (uint32_t)status;
-            g6_transport_failure_diag.resume_status = (uint32_t)resume_status;
-            g6_transport_failure_diag.phase = (uint32_t)phase;
-            g6_transport_failure_diag.usb_ready = ready_at_failure;
-            g6_transport_failure_diag.connection_epoch = epoch_at_failure;
-            g6_transport_failure_diag.transport_error_count = g6_transport_errors + 1U;
-            ++g6_transport_errors;
-            fail_closed();
-        }
-#else
-        status = send_frame(jpeg, size);
-        if (g3_usb_resume() || status) {
-            ++g6_transport_errors;
-            fail_closed();
-        }
 #endif
+        if (resume_status || status) {
+            (void)handle_frame_send_failure((unsigned)status, (unsigned)resume_status,
+                                             send_epoch);
+            was_connected = 0;
+            connection_epoch = usb_cdc_connection_epoch();
+        }
     }
 }
