@@ -20,7 +20,12 @@ import okio.ByteString;
 public final class StreamClient implements AutoCloseable {
     // Leave 15 seconds to refresh before the board's strict 1800-second key expiry.
     static final long ROTATION_MILLIS=TimeUnit.SECONDS.toMillis(1785);
-    public interface Listener { void frame(byte[] jpeg); void status(String message); default void reset() {} default void takeoverRequired() {} }
+    public enum State { CONNECTING, VERIFYING, STREAMING, REKEYING, STOPPED, FAILED }
+    public interface Listener {
+        void frame(byte[] jpeg); void status(String message);
+        default void state(State state) {} default void statistics(long frames,long dropped) {}
+        default void reset() {} default void takeoverRequired() {}
+    }
     private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(512));
     private final AtomicBoolean closed=new AtomicBoolean();
     private final AtomicBoolean timerPending=new AtomicBoolean();
@@ -67,17 +72,18 @@ public final class StreamClient implements AutoCloseable {
     private void connectAuthorized(String endpoint,String authorization,boolean takeover){
         submit(()->{
             validateEndpoint(endpoint);
-            listener.status("连接中");handshakeStarted=System.nanoTime();
+            listener.state(State.CONNECTING);listener.status("连接中");handshakeStarted=System.nanoTime();
             socket=http.newWebSocket(new Request.Builder().url(endpoint+(takeover?"?takeover=1":"")).header("Authorization",authorization).build(),new WebSocketListener(){
-                @Override public void onOpen(WebSocket ws,Response response){submit(()->{startHandshake();listener.status("验证板卡中");});}
+                @Override public void onOpen(WebSocket ws,Response response){submit(()->{startHandshake();listener.state(State.VERIFYING);listener.status("验证板卡中");});}
                 @Override public void onMessage(WebSocket ws,ByteString bytes){
                     if(bytes.size()>1459||bytes.size()<4){fail("非法记录长度");return;}
                     byte[] record=bytes.toByteArray();submit(()->{
                         if(businessExpired()){fail("业务密钥已到期，请重新连接");return;}
                         int before=session.phase();
                         for(byte[] reply:session.receive(record))send(reply);
+                        if(before!=session.phase()&&session.streaming())listener.state(State.STREAMING);
                         if(ephemeral&&before!=session.phase()){if(session.streaming()){businessExpires=System.nanoTime()+TimeUnit.MINUTES.toNanos(30);scheduleRotation(ROTATION_MILLIS);}else handshakeStarted=System.nanoTime();}
-                        if(session.streaming()){handshakeStarted=0;long now=System.nanoTime();if(now-lastStatus>TimeUnit.SECONDS.toNanos(1)){lastStatus=now;listener.status("已认证 / 帧 "+session.completeFrames+" / 丢帧 "+session.droppedFrames);}}
+                        if(session.streaming()){handshakeStarted=0;long now=System.nanoTime();if(now-lastStatus>TimeUnit.SECONDS.toNanos(1)){lastStatus=now;listener.statistics(session.completeFrames,session.droppedFrames);listener.status("已认证 / 帧 "+session.completeFrames+" / 丢帧 "+session.droppedFrames);}}
                     });
                 }
                 @Override public void onMessage(WebSocket ws,String text){fail("拒绝文本消息");}
@@ -88,11 +94,11 @@ public final class StreamClient implements AutoCloseable {
         });
     }
     private void startHandshake()throws Exception{handshakeStarted=lastHelloSent=System.nanoTime();helloRetries=0;send(session.start());}
-    public void rekey(){submit(()->{if(businessExpired()){fail("业务密钥已到期，请重新连接");return;}cancelRotation();send(session.rekey());businessExpires=0;listener.reset();startHandshake();listener.status("重新协商密钥");});}
+    public void rekey(){submit(()->{if(businessExpired()){fail("业务密钥已到期，请重新连接");return;}cancelRotation();send(session.rekey());businessExpires=0;listener.reset();startHandshake();listener.state(State.REKEYING);listener.status("重新协商密钥");});}
     private boolean businessExpired(){long deadline=businessExpires;return deadline!=0&&System.nanoTime()-deadline>=0;}
     synchronized void scheduleRotation(long delayMillis){cancelRotation();if(closed.get())return;rotation=new java.util.Timer("eyepqc-rotation",true);rotation.schedule(new java.util.TimerTask(){public void run(){rekey();}},delayMillis);}
     private synchronized void cancelRotation(){if(rotation!=null){rotation.cancel();rotation=null;}}
-    public void stop(){submit(()->{if(session.streaming())send(session.stop());shutdown(false);listener.status("已停止");});}
+    public void stop(){submit(()->{if(session.streaming())send(session.stop());shutdown(false);listener.state(State.STOPPED);listener.status("已停止");});}
     public void checkTimeout(){
         if(businessExpired()){fail("业务密钥已到期，请重新连接");return;}
         if(closed.get()||handshakeStarted==0||!timerPending.compareAndSet(false,true))return;
@@ -111,7 +117,7 @@ public final class StreamClient implements AutoCloseable {
         try{worker.execute(()->{if(closed.get())return;try{task.run();}catch(Exception error){fail("认证或协议失败，请重新连接");}});}
         catch(RejectedExecutionException error){fail("接收队列已满，请重新连接");}
     }
-    private void fail(String message){if(!closed.get())listener.status(message);close();}
+    private void fail(String message){if(!closed.get()){listener.state(State.FAILED);listener.status(message);}close();}
     @Override public void close(){shutdown(true);}
     private void shutdown(boolean abort){
         if(!closed.compareAndSet(false,true))return;

@@ -1,0 +1,72 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/page">
+    <LinearLayout android:id="@+id/normal_panel" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+    <ScrollView android:id="@+id/scroll" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true" android:clipToPadding="false">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:paddingBottom="18dp">
+                <ImageView android:layout_width="36dp" android:layout_height="36dp" android:padding="3dp" android:src="@drawable/ic_shield" android:importantForAccessibility="no" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="10dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="EYEPQC" android:textSize="24sp" android:fontFamily="sans-serif-medium" android:letterSpacing="0.07" android:textColor="@color/ink" />
+                    <TextView style="@style/Caption" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="加密视频 · 实时监看" />
+                </LinearLayout>
+                <Button android:id="@+id/settings" style="@style/Action" android:layout_width="wrap_content" android:layout_height="48dp" android:minHeight="48dp" android:text="连接设置" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp" android:background="@drawable/card_background" android:layout_marginBottom="12dp">
+                <TextView android:id="@+id/state_badge" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingHorizontal="10dp" android:paddingVertical="5dp" android:text="等待连接" android:textSize="12sp" android:fontFamily="sans-serif-medium" android:accessibilityLiveRegion="polite" />
+                <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:text="输入账号密码，即可自动配对并观看" android:textSize="14sp" android:textColor="@color/muted" />
+                <ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="3dp" android:layout_marginTop="12dp" android:indeterminate="true" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/advanced" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp" android:background="@drawable/card_background" android:layout_marginBottom="12dp" android:visibility="gone">
+                <TextView style="@style/Caption" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="可信服务器地址" android:labelFor="@+id/server" />
+                <EditText android:id="@id/server" style="@style/Field" android:layout_marginTop="8dp" android:inputType="textUri" android:hint="wss://地址:端口/stream" android:text="wss://124.70.38.245:8765/stream" />
+                <TextView android:id="@+id/config_summary" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="首次信任来自此服务的有效 TLS 证书" android:textSize="12sp" android:textColor="@color/muted" />
+                <Button android:id="@+id/import_config" style="@style/Action" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="可信手动导入 JSON（备用）" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/login_card" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp" android:background="@drawable/card_background" android:layout_marginBottom="12dp">
+                <TextView style="@style/Caption" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="账号" android:labelFor="@+id/username" />
+                <EditText android:id="@id/username" style="@style/Field" android:layout_marginTop="6dp" android:inputType="textNoSuggestions" android:imeOptions="actionNext" android:hint="输入观看账号" android:text="viewer" />
+                <TextView style="@style/Caption" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="密码" android:labelFor="@+id/password" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:gravity="center_vertical">
+                    <EditText android:id="@id/password" style="@style/Field" android:layout_width="0dp" android:layout_weight="1" android:inputType="textPassword" android:imeOptions="actionGo" android:hint="仅保留在当前进程" />
+                    <Button android:id="@+id/password_visibility" style="@style/Action" android:layout_width="64dp" android:layout_height="52dp" android:layout_marginStart="8dp" android:paddingHorizontal="8dp" android:text="显示" android:contentDescription="显示密码" />
+                </LinearLayout>
+            </LinearLayout>
+            <FrameLayout android:id="@+id/video_slot" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <FrameLayout android:id="@+id/player" android:layout_width="match_parent" android:layout_height="220dp" android:background="@drawable/player_background" android:clipToOutline="true">
+                    <ImageView android:id="@+id/image" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitCenter" android:contentDescription="已认证的实时视频画面" />
+                    <LinearLayout android:id="@+id/empty_player" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="center" android:gravity="center" android:orientation="vertical" android:padding="24dp">
+                        <ImageView android:layout_width="36dp" android:layout_height="36dp" android:src="@drawable/ic_shield" android:tint="#8AA3CB" android:importantForAccessibility="no" />
+                        <TextView android:id="@+id/empty_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="等待视频" android:textColor="#F0F5FF" android:textSize="18sp" android:fontFamily="sans-serif-medium" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="仅显示认证通过的完整画面" android:textColor="#9CACBF" android:textSize="12sp" />
+                    </LinearLayout>
+                    <TextView android:id="@+id/live_badge" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|start" android:layout_margin="12dp" android:paddingHorizontal="10dp" android:paddingVertical="6dp" android:text="● LIVE" android:textColor="#FFFFFF" android:textSize="11sp" android:background="#CC087F63" android:visibility="gone" />
+                    <ImageButton android:id="@+id/fullscreen" android:layout_width="48dp" android:layout_height="48dp" android:layout_gravity="top|end" android:layout_margin="6dp" android:padding="13dp" android:src="@drawable/ic_fullscreen" android:background="?android:attr/selectableItemBackgroundBorderless" android:contentDescription="全屏预览" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="bottom" android:gravity="center_vertical" android:background="#B30B1423" android:paddingStart="14dp" android:paddingEnd="8dp">
+                        <TextView android:id="@+id/player_info" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:gravity="center_vertical" android:text="ML-KEM · AES-GCM" android:textColor="#D8E2F1" android:textSize="12sp" />
+                        <Button android:id="@+id/fullscreen_stop" android:layout_width="wrap_content" android:layout_height="48dp" android:minHeight="48dp" android:text="停止播放" android:textAllCaps="false" android:textColor="#FFFFFF" android:background="?android:attr/selectableItemBackground" android:visibility="gone" />
+                    </LinearLayout>
+                </FrameLayout>
+            </FrameLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:background="@drawable/card_background" android:layout_marginTop="12dp" android:paddingVertical="16dp">
+                <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center">
+                    <TextView android:id="@+id/fps" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="—" android:textColor="@color/ink" android:textSize="24sp" android:fontFamily="sans-serif-medium" />
+                    <TextView style="@style/Caption" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="显示 FPS" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center">
+                    <TextView android:id="@+id/frames" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="—" android:textColor="@color/ink" android:textSize="24sp" android:fontFamily="sans-serif-medium" />
+                    <TextView style="@style/Caption" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="认证帧" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center">
+                    <TextView android:id="@+id/dropped" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="—" android:textColor="@color/ink" android:textSize="24sp" android:fontFamily="sans-serif-medium" />
+                    <TextView style="@style/Caption" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="缺片帧" />
+                </LinearLayout>
+            </LinearLayout>
+            <TextView style="@style/Caption" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:paddingTop="16dp" android:paddingBottom="8dp" android:text="账号自动配对 · 退出前台即断开\n开发调试版 · 非生产安全认证" android:lineSpacingExtra="5dp" />
+        </LinearLayout>
+    </ScrollView>
+        <LinearLayout android:id="@+id/action_bar" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingHorizontal="20dp" android:paddingVertical="12dp" android:background="@color/page">
+            <Button android:id="@+id/primary" style="@style/PrimaryAction" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="连接并观看" />
+            <Button android:id="@+id/rekey" style="@style/Action" android:layout_width="104dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="换钥" android:enabled="false" />
+        </LinearLayout>
+    </LinearLayout>
+    <FrameLayout android:id="@+id/fullscreen_host" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/player" android:visibility="gone" />
+</FrameLayout>

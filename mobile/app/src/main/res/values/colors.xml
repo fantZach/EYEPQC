@@ -1,0 +1,15 @@
+<resources>
+    <color name="page">#F3F5F8</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="ink">#152238</color>
+    <color name="muted">#64748B</color>
+    <color name="border">#DFE5ED</color>
+    <color name="primary">#2563EB</color>
+    <color name="player">#0B1423</color>
+    <color name="success">#087F63</color>
+    <color name="success_soft">#E4F5EF</color>
+    <color name="warning">#92520D</color>
+    <color name="warning_soft">#FFF3DA</color>
+    <color name="danger">#B42318</color>
+    <color name="danger_soft">#FEECE9</color>
+</resources>

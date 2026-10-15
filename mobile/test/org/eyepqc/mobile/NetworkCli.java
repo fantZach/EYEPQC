@@ -22,8 +22,18 @@ public final class NetworkCli {
         if(args.length==required+1&&!rekey&&!stop)throw new IllegalArgumentException("unknown test mode");
         CountDownLatch done=new CountDownLatch(1);AtomicBoolean success=new AtomicBoolean();
         CountDownLatch resets=new CountDownLatch(rekey?2:1);AtomicInteger resetCount=new AtomicInteger();
+        AtomicInteger connecting=new AtomicInteger(),verifying=new AtomicInteger(),streaming=new AtomicInteger(),rekeying=new AtomicInteger(),stopped=new AtomicInteger(),statistics=new AtomicInteger();
         AtomicBoolean requested=new AtomicBoolean(),rotating=new AtomicBoolean();AtomicReference<StreamClient> owner=new AtomicReference<>();
         try(StreamClient client=new StreamClient(Files.readAllBytes(Paths.get(args[0])),Protocol.hex(args[1]),new StreamClient.Listener(){
+            public void state(StreamClient.State state){switch(state){
+                case CONNECTING:connecting.incrementAndGet();break;
+                case VERIFYING:verifying.incrementAndGet();break;
+                case STREAMING:streaming.incrementAndGet();break;
+                case REKEYING:rekeying.incrementAndGet();break;
+                case STOPPED:stopped.incrementAndGet();break;
+                case FAILED:done.countDown();break;
+            }}
+            public void statistics(long frames,long dropped){if(frames<0||dropped<0)throw new AssertionError("negative statistics");statistics.incrementAndGet();}
             public void reset(){resetCount.incrementAndGet();resets.countDown();}
             public void status(String message){if(message.equals("重新协商密钥"))rotating.set(true);if(stop&&message.equals("已停止")){success.set(true);done.countDown();}}
             public void frame(byte[] jpeg){
@@ -41,6 +51,7 @@ public final class NetworkCli {
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(20);boolean finished=false;
             while(System.nanoTime()<deadline){client.checkTimeout();if(done.await(100,TimeUnit.MILLISECONDS)){finished=true;break;}}
             if(!finished||!success.get())throw new AssertionError("authenticated fixture not received");
+            if(connecting.get()!=1||verifying.get()!=1||streaming.get()!=(rekey?2:1)||rekeying.get()!=(rekey?1:0)||stopped.get()!=(stop?1:0)||statistics.get()==0)throw new AssertionError("viewer lifecycle events missing or duplicated");
             System.out.println((account?"ACCOUNT_NETWORK":"ANDROID_NETWORK")+(stop?"_STOP_OK":rekey?"_REKEY_OK":"_OK"));
         }
         if(!resets.await(5,TimeUnit.SECONDS)||resetCount.get()!=(rekey?2:1))throw new AssertionError("session display reset missing or duplicated");
