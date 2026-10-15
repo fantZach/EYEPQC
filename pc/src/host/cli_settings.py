@@ -73,7 +73,7 @@ def normalize(record, base, *, legacy=False, retained_tunnel=None):
     tunnel = config['tunnel']
     if legacy:
         if tunnel is None:
-            tunnel = copy.deepcopy(retained_tunnel if retained_tunnel is not None else defaults()['tunnel'])
+            tunnel = copy.deepcopy(retained_tunnel if retained_tunnel is not None else default_record()['tunnel'])
             tunnel['enabled'] = False
         elif isinstance(tunnel, dict) and set(tunnel) == TUNNEL_FIELDS - {'enabled'}:
             tunnel = dict(tunnel, enabled=True)
@@ -94,11 +94,15 @@ def normalize(record, base, *, legacy=False, retained_tunnel=None):
     return config
 
 
-def defaults():
-    return normalize(dict(version=1, serial_port=None, accounts_file='private/accounts.json',
+def default_record():
+    return dict(version=1, serial_port=None, accounts_file='private/accounts.json',
         pairing_file='public/pairing.json', tls_cert='public/server-chain.pem', tls_key='private/server-key.pem',
         tunnel=dict(enabled=True, host='124.70.38.245', ssh_port=2222,
-                    identity_file='private/id_ed25519', known_hosts='public/tunnel_known_hosts')), executable_dir())
+                    identity_file='private/id_ed25519', known_hosts='public/tunnel_known_hosts'))
+
+
+def defaults():
+    return normalize(default_record(), settings_path().parent / 'data')
 
 
 def effective():

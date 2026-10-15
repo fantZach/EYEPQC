@@ -126,6 +126,8 @@ class SettingsTests(unittest.TestCase):
                 self.assertEqual(self.call('config', 'show')[0], 1)
 
     def test_unrelated_commands_and_explicit_legacy_config_ignore_broken_settings(self):
+        record = self.legacy()
+        record['tunnel'] = None
         with patch.dict(os.environ, LOCALAPPDATA='invalid-relative'):
             self.assertEqual(self.call()[0], 0)
             with patch.object(eyepqc, 'status'):
@@ -133,8 +135,6 @@ class SettingsTests(unittest.TestCase):
             with patch.object(eyepqc.getpass, 'getpass', return_value='fixture'), patch.object(eyepqc.accounts, 'create_account'):
                 self.assertEqual(self.call('account', '--file', str(self.root / 'new'), '--username', 'fixture')[0], 0)
             path = self.root / 'legacy.json'
-            record = self.legacy()
-            record['tunnel'] = None
             path.write_text(json.dumps(record))
             with patch.object(Path, 'is_file', return_value=True), patch.object(Path, 'stat') as stat:
                 stat.return_value.st_size = 1
@@ -144,7 +144,15 @@ class SettingsTests(unittest.TestCase):
 
 class FrozenConfigurationTests(unittest.TestCase):
     def test_new_exe_manages_isolated_user_settings_without_adjacent_json(self):
-        exe = Path(__file__).resolve().parents[2] / 'build/pc_cli/dist/eyepqc-1.1.exe'
+        directory = Path(__file__).resolve().parents[2] / 'build/pc_cli/dist'
+        exe = directory / 'eyepqc-1.2.1.exe'
+        version = '1.2.1'
+        if not exe.exists():
+            exe = directory / 'eyepqc-1.2.exe'
+            version = '1.2.0'
+        if not exe.exists():
+            exe = directory / 'eyepqc-1.1.exe'
+            version = '1.1.0'
         if not exe.exists():
             self.skipTest('build version 1.1 first')
         with tempfile.TemporaryDirectory() as directory:
@@ -178,4 +186,4 @@ class FrozenConfigurationTests(unittest.TestCase):
             self.assertEqual(run('config', 'set', 'serial_port', 'COM7').returncode, 1)
             self.assertEqual(managed.read_text(), '{broken')
             self.assertEqual(run('--help').returncode, 0)
-            self.assertIn('1.1.0', run('--version').stdout)
+            self.assertIn(version, run('--version').stdout)

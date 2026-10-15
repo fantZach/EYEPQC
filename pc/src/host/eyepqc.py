@@ -16,7 +16,7 @@ import cloud_tunnel
 import relay
 import cli_settings
 
-VERSION = '1.1.0'
+VERSION = '1.2.1'
 PORT = 8765
 
 
@@ -150,9 +150,13 @@ def main(argv=None):
     importer = edits.add_parser('import', help='Import legacy JSON; file paths resolve against its directory')
     importer.add_argument('file', type=Path)
     commands.add_parser('status', help='Read Windows TCP state without reading private files')
-    account = commands.add_parser('account', help='Create a new salted-scrypt file; refuses overwrite')
-    account.add_argument('--file', type=Path, required=True)
-    account.add_argument('--username', required=True)
+    install = commands.add_parser('install-data', help='Import local runtime materials into current-user data; no service action')
+    install.add_argument('--config', type=Path, help='optional legacy source JSON; otherwise current user settings')
+    account = commands.add_parser('account', help='List/add/passwd/delete accounts; old --file/--username creates a new file')
+    account.add_argument('operation', choices=('list', 'add', 'passwd', 'delete'), nargs='?')
+    account.add_argument('--file', type=Path, help='override current settings accounts_file')
+    account.add_argument('--username')
+    account.add_argument('--yes', action='store_true', help='explicitly confirm account deletion')
     args = parser.parse_args(argv)
     hint = 'configuration or configured file missing/invalid; run config show and check'
     try:
@@ -172,15 +176,45 @@ def main(argv=None):
         elif args.command == 'status':
             hint = 'Windows TCP status unavailable; verify PowerShell access'
             status()
+        elif args.command == 'install-data':
+            import install_data
+            hint = 'local material import failed or existing data differs; files/settings preserved; verify source paths and private ACL'
+            install_data.install(args.config)
+            print('DATA_INSTALL_OK; local files/settings only; no service started or stopped')
         elif args.command == 'account':
-            hint = 'account file exists, username/password invalid or destination unavailable; choose a new private file'
-            if args.file.exists():
-                raise ValueError('account file exists; use a new private file and restart with that file')
-            password = getpass.getpass('New password: ')
-            if password != getpass.getpass('Repeat password: '):
-                raise ValueError('passwords differ')
-            accounts.create_account(args.file, args.username, password)
-            print('ACCOUNT_CREATED; use config set accounts_file <new-file>, then restart the relay to apply.')
+            hint = 'account operation refused: invalid/damaged file, user exists/missing, limit/last-user guard or concurrent writer; no changes applied'
+            operation = args.operation
+            if operation is None and (args.file is None or args.username is None):
+                raise ServiceError('legacy account creation requires --file and --username')
+            if operation == 'list' and (args.username is not None or args.yes):
+                raise ServiceError('account list accepts only optional --file')
+            if operation != 'list' and args.username is None:
+                raise ServiceError('account operation requires --username')
+            if args.yes and operation != 'delete':
+                raise ServiceError('--yes is only valid for account delete')
+            if operation == 'delete' and not args.yes:
+                raise ServiceError('account delete requires --yes; the final user cannot be deleted')
+            path = args.file if args.file is not None else Path(cli_settings.effective()['accounts_file'])
+            if operation == 'list':
+                users = accounts.read_users(path)
+                for name in sorted(users):
+                    print(name)
+                print('ACCOUNT_COUNT=' + str(len(users)))
+            elif operation == 'delete':
+                accounts.change_account(path, 'delete', args.username, confirmed=True)
+                print('ACCOUNT_UPDATED; restart the relay normally to apply; active service keeps its startup snapshot')
+            else:
+                if operation is None and path.exists():
+                    raise ServiceError('account file exists; use account add/passwd or choose a new private file')
+                password = getpass.getpass('New password: ')
+                if password != getpass.getpass('Repeat password: '):
+                    raise ServiceError('passwords differ; account not changed')
+                if operation is None:
+                    accounts.create_account(path, args.username, password)
+                    print('ACCOUNT_CREATED; use config set accounts_file <new-file>, then restart the relay to apply.')
+                else:
+                    accounts.change_account(path, operation, args.username, password)
+                    print('ACCOUNT_UPDATED; restart the relay normally to apply; active service keeps its startup snapshot')
         else:
             if args.command == 'run':
                 hint = 'relay port unavailable; run status and stop the old service normally'

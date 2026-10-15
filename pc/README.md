@@ -1,5 +1,61 @@
 # PC 子项目
 
+## 1.2.1 当前用户安装包
+
+`build/pc_installer/dist/EYEPQC-Setup-1.2.1.exe` 是 Windows x64 安装向导，不需要管理员权限。
+安装程序与材料分离，移动桌面上的 EXE 不再改变材料路径：
+
+| 内容 | 当前用户目录 |
+| --- | --- |
+| 程序、卸载程序 | `%LOCALAPPDATA%/EYEPQC/pc/bin/` |
+| 参数和路径 | `%LOCALAPPDATA%/EYEPQC/pc/settings.json` |
+| 账号数据库、TLS/SSH 私钥 | `%LOCALAPPDATA%/EYEPQC/pc/data/private/` |
+| 公共配对、TLS 证书链、SSH known_hosts | `%LOCALAPPDATA%/EYEPQC/pc/data/public/` |
+
+安装时默认从本机已保存设置导入；向导的可选文件框也可选择可信的旧配置 JSON，无需手改 JSON。
+只复制该配置引用的六个运行文件：`accounts.json`、`pairing.json`、`server-chain.pem`、
+`server-key.pem`、`id_ed25519`、`tunnel_known_hosts`，原文件保持不变。
+安装包本身**不含真实账号、TLS/SSH 私钥、CA 签发私钥、板端密钥/seed 或 login.txt**。
+全新电脑必须先提供可信材料来源；缺少材料或 OpenSSH Client、格式损坏、证书/私钥不匹配、
+私有 ACL 不安全时明确阻止安装，不会生成新的身份或跳过验证。
+
+导入先验证，再独占创建文件、flush、读回比较、验证实际副本，最后原子更新设置；模块失败时只清理本次新建文件，
+保留原设置和原材料。私有目录及文件只允许当前用户和 SYSTEM 访问。已有完整数据的升级只验证复用，
+不会覆盖后续维护过的账号或私钥；部分损坏的数据不会被静默覆盖。
+材料导入在程序复制前完成：若后续程序复制失败/取消，已成功导入的数据与设置可能保留，可修正问题后重试；
+这不是整个安装向导的跨阶段事务回滚。
+
+安装将程序目录加入当前用户 PATH（仅 HKCU），不修改系统 PATH；保留原值类型、环境变量及其他项。
+忽略大小写、尾部斜杠、外层引号并展开环境变量去重；重复安装不重复追加。
+安装/卸载会广播环境变化，但已打开的终端仍需关闭重开；若使用 Windows Terminal，请退出全部窗口再重新启动。
+卸载仅删除安装器自己新增且仍精确一致的目录项，保留用户预先配置/手动加入的项；
+目标被改写或出现重复时保守保留，不恢复整份过时 PATH 覆盖后续变动。
+安装不会停止正在播放的旧实例、启动新服务、连接网络或操作板卡。
+准备切换时先在旧窗口 Ctrl+C，再打开新的 PowerShell/命令提示符或开始菜单“EYEPQC command prompt”，运行：
+
+```cmd
+eyepqc config show
+eyepqc check
+eyepqc account list
+eyepqc account passwd --username viewer
+eyepqc run
+```
+
+卸载删除程序、快捷方式及符合上述条件的自有 PATH 项，**保留 data 与 settings**，避免丢失账号和身份材料。
+用户须另行妥善备份私有材料。账号维护详见文末“1.2 账号命令”；改密后须正常重启转发器才生效，不会自动打断观看。
+
+开发者离线构建（使用已存在且签名/固定二进制 hash 校验通过的 Inno Setup 6.7.3，不下载或安装工具）：
+
+```powershell
+& ./pc/build_installer.ps1 -Compiler <本机可信ISCC.exe路径>
+# 已构建1.2.1 CLI时：
+& ./pc/build_installer.ps1 -SkipExeBuild -Compiler <本机可信ISCC.exe路径>
+```
+
+首次 PyInstaller 环境准备仍是独立且显式的开发者步骤；安装包构建不自动安装依赖。
+2026-10-15 原带工具下载/静默安装功能的构建脚本遭火绒启发式告警并删除，已停止该行为，
+当前构建脚本仅做离线编译；这不等于已证明原告警是误报，也不代表成品经过杀毒放行或代码签名。
+
 ## Windows 命令行 EXE
 
 `pc/src/host/eyepqc.py` 提供统一前台入口；**1.1 不再要求手动维护 EXE 旁的 JSON**。
@@ -23,10 +79,10 @@
 ```
 
 构建使用独立 `build/pc_cli/venv`、固定 PyInstaller 6.22.3、console/onefile 模式；`-Name` 可保留正在运行的旧产物。
-默认仍可省略 `-Name` 构建 `eyepqc.exe`，实际用哪个名称不改变命令语法。
-内置默认值为自动 CDC、固定 `127.0.0.1:8765`、SSH `124.70.38.245:2222`，隧道开启；材料相对 EXE 目录为
+当前省略 `-Name` 构建 `eyepqc-1.2.1.exe`，不会覆盖旧 1.2 实例文件，实际用哪个名称不改变命令语法。
+内置默认值为自动 CDC、固定 `127.0.0.1:8765`、SSH `124.70.38.245:2222`，隧道开启；1.2 材料相对用户 `data/` 目录为
 `private/accounts.json`、`public/pairing.json`、`public/server-chain.pem`、`private/server-key.pem`、
-`private/id_ed25519`、`public/tunnel_known_hosts`。默认值不包含本机用户绝对路径或任何秘密材料。
+`private/id_ed25519`、`public/tunnel_known_hosts`。默认值不包含开发机器的硬编码用户绝对路径或任何秘密材料。
 
 `config show` 显示来源（内置默认值/用户设置）及实际设置文件路径。程序在当前 Windows 用户的
 `%LOCALAPPDATA%/EYEPQC/pc/settings.json` 原子保存参数和材料路径，无需手动编辑；LOCALAPPDATA 必须是绝对本机目录。
@@ -311,3 +367,35 @@ SSH 失败返回其非零退出码；Ctrl+C 停止前台入口，没有后台重
 CA/服务器私钥始终留在 PC；账号模式不允许 ws 降级，不关闭 CA/主机名/板端公钥验证。
 与局域网使用同一份记录协议、suite2 和手机登录流程，路径仍支持显式 `/stream?takeover=1`。
 具体服务端限制见 [云中转契约](../doc/cloud_relay_plan.md)。本轮没有部署云端、启动隧道或验证公网视频。
+
+## 1.2 账号命令
+
+安装后的默认账号库由 `config show` 中 `accounts_file` 指定，通常位于
+`%LOCALAPPDATA%/EYEPQC/pc/data/private/accounts.json`。维护命令不需要手改 JSON，不启动或停止服务：
+
+```powershell
+eyepqc account list
+eyepqc account add --username viewer
+eyepqc account passwd --username viewer
+eyepqc account delete --username old-viewer --yes
+# 操作者明确指定其他本机私有库；不会更改settings指向。
+eyepqc account list --file C:/EYEPQC/private/accounts.json
+# 旧命令继续创建全新文件，拒绝覆盖；显式--file不依赖用户settings。
+eyepqc account --file C:/EYEPQC/private/new-accounts.json --username first-viewer
+```
+
+`add` 拒绝重复用户名（文件不存在时可创建首用户，父目录须已存在）；`passwd` 要求用户存在；
+`delete` 必须显式 `--yes`，且拒绝删除最后一位用户。最多100用户。
+新增/改密均交互输入密码两次，不支持密码命令行参数；Unicode及密码前后空格保留。
+用户名最多128 UTF-8字节，密码最多1024 UTF-8字节；拒绝冒号用户名及ISO控制字符（0..31、127..159），
+与Android登录输入约束一致。`list` 仅输出用户名和数量，不显示盐、hash或原密码。
+
+存储沿用现有 JSON schema，每用户仅 `{salt, hash}`：随机16字节盐、scrypt N=131072/r=8/p=1、32字节hash。
+它是密码哈希文件，不是加密数据库，不能查看或还原原密码；也不保存/更新 `login.txt` 明文备忘。
+文件最多64KiB，重复JSON字段、坏类型/十六进制、未知字段或损坏文件均拒绝，不自动修复覆盖。
+写入使用同目录临时文件flush/fsync后原子替换；保留不含秘密的 `.lock` sidecar，系统非阻塞文件锁
+拒绝并发CLI写入，进程结束释放锁，不应手动删除正在使用的锁文件。
+
+账号命令修改的是磁盘库，**运行中的服务保持启动快照**；须手机停止、正常退出服务后重新启动才应用变化。
+不会踢掉观看者、热更新密码或自动切换库。旧 `login.txt` 不会随改密同步。
+安装器保护当前用户私有目录；显式 `--file` 指向其他位置时，操作者须自行选择正确库及Windows ACL。
