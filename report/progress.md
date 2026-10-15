@@ -1,5 +1,15 @@
 # Implementation progress
 
+## 2026-10-15：真实板卡经公网中转短测通过，待手机验证
+
+G6 suite2固件75项哈希/BSP/ARM启动预检通过，JTAG易失加载成功，COM7视频USB枚举；SD/Flash未改。
+JVM通过云端WSS完成真实ML-KEM、双向Finished、AES-GCM与逐帧JPEG解码：
+1420帧/30.0251542秒/47.2604fps，STOP后重连474帧/10.0086845秒/47.2590fps，均640×480。
+两轮正常STOP、error=none、queue_peak=4/64，四张首尾JPEG与结果哈希独立核验通过。
+首轮PC应用层16,081,474字节/30.922秒，整会话平均4.1605Mbit/s；包含握手/清理，不代表峰值或手机测量。
+真实PC relay和SSH隧道保持运行等待手机导入公网配对JSON；不是Android/G8/G9验收，
+既有QueueFull故障与生产密钥/熵源、SD视频启动待办不因此关闭。见 [部署与实测记录](server_deployment_20261015.md)。
+
 ## 2026-10-15：Server已部署，公网隧道与WSS软件验证通过
 
 用户授权直接连接124.70.38.245，已在实际Huawei Cloud Ubuntu24.04.4/aarch64上部署独立受限SSH2222服务，

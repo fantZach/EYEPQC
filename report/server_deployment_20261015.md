@@ -5,6 +5,53 @@
 首次SSH22主机身份按用户“直接连接”授权采用TOFU，固定已观察的Ed25519公钥，保持StrictHostKeyChecking=yes。
 这不是云控制台独立核验，不将ssh-keyscan本身作为可信身份来源。
 
+## 后续：真实板卡经公网WSS短测
+
+2026-10-15约13:12～13:15（本机Asia/Shanghai时间），主聊天独占硬件。
+只读JTAG枚举见APU/双Cortex-A9/xc7z020；COM4短时只读未捕获文本，不据此推断当前应用。
+`verify_software.py build/vitis/g6_account_ephemeral_20261014_2`通过75项应用文件哈希、BSP查表和ARM启动检查。
+随后复用prepare_mobile.py，JTAG易失装载已验证G6固件并注入开发身份/新seed，未写SD/Flash；
+新公开身份导出到 `board/output/mobile_identity_cloud_20261015_1`，pin与公网pairing一致。
+视频CDC枚举为COM7（03FD:7020），COM4仍为调试串口。
+
+PC使用本轮TLS/独立账号启动真实relay（只绑定127.0.0.1:8765），并以专用key/固定host key启动cloud_tunnel.py。
+JVM LiveProbe --account经 `wss://124.70.38.245:8765/stream` 完成suite2真实板卡握手、认证START、
+逐帧AES-GCM认证和ImageIO JPEG解码；TLS校验保持启用，无模拟USB。
+
+| 窗口 | 认证解码帧数 | 有效视频跨度 | 帧率 | 最大帧间隔 |
+| --- | --- | --- | --- | --- |
+| 首次连接，要求30秒 | 1420 | 30.0251542秒 | 47.2603734fps | 0.0713588秒 |
+| STOP后重新连接，要求10秒 | 474 | 10.0086845秒 | 47.2589580fps | 0.0469004秒 |
+
+两轮分辨率640×480，客户端退出码0、result.json均PASS；首尾JPEG共4张通过独立Pillow verify及SHA256对照。
+原始本机证据（ignored，含真实相机图片，不上传云端或Git）：
+
+- `data/captures/cloud_board_20261015_1/{result.json,first.jpg,last.jpg}`。
+- `data/captures/cloud_board_20261015_2/{result.json,first.jpg,last.jpg}`。
+- `tmp/cloud_wss_20261015_1/real_board_{relay_1,tunnel_1,probe_1,probe_2}.log`。
+
+首轮首/尾JPEG SHA256分别为
+`f472b756c00b5c233fea71cccf093a2d49d2469079eaf9d520d1fa80080b6029`、
+`a9d66ec82db114cbf6ce6eca38f8aa95f9af54372a00b5d957757f54e892531e`；
+重连首/尾分别为
+`ba5bdb34c2f83930980103facdd0e4f422ee08bc6d0bdb9ae8409434f5b5a328`、
+`d4a7c701015d8f38824aff8600ee508ee3447cdc40d78cb3329d8d90caea4fb5`。
+
+relay两轮均code1000、stop_forwarded=1、STOP_DRAIN quiet、error=none、queue_peak=4（上限64）；
+网络记录/字节/整会话时长分别为11378/16081474/30.922秒、3812/5427225/13.656秒。
+按首轮PC应用层发送字节/整会话时长计算平均4.1605Mbit/s，含握手/清理、不含TLS/SSH/TCP开销；
+当前场景平均低于10Mbit/s，不能保证峰值、复杂场景或移动网络表现。没有测摄像到显示的端到端延迟。
+
+两次JVM探针已退出，PC relay和SSH隧道保持运行等待手机，当前无探针占用观看会话。
+手机下一步导入本轮 `tmp/cloud_wss_20261015_1/public/pairing.json`，账号viewer，
+密码在本机受限 `private/login.txt`（与旧局域网密码不同，不通过聊天传递）。
+现有0.6 debug APK使用同一测试CA，不需因为公网IP重装；应关闭Wi-Fi、使用移动数据确认异网视频与换钥。
+
+边界：这是同一Windows主机上的JVM经公网服务器往返，不是Android异网/屏幕FPS，也不是完整G8/G9；
+只测短连接和主动STOP重连，未验证半小时自动换钥、长时间、断网/慢消费者恢复。
+旧局域网QueueFull失败仍保留。本轮无需新代码；依Ponytail复用既有脚本、协议和客户端。
+板端长期身份/seed仍由可信开发PC通过JTAG注入，SD仍是G0自检，不是生产安全或SD独立视频启动。
+
 ## 安全组放行后：最新验证
 
 用户回复“放行了”后，PC专用账号/密钥通过公网SSH2222完成认证，原cloud_tunnel.py成功建立固定-R。
