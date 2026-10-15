@@ -1,5 +1,15 @@
 # Implementation progress
 
+## 2026-10-15：PC1.1内置默认值与命令行配置
+
+PC子代理完成config show/set/import，覆盖原JSON全部可配置参数/材料路径；默认run/check改用内置默认值和
+当前用户LOCALAPPDATA/EYEPQC/pc/settings.json，用户不必手编JSON。原子保存、损坏拒绝覆盖、严格解析与
+相对路径固化均保留，关闭隧道不丢旧参数；密码/账户hash/TLS及SSH私钥不编入EXE。
+73项PC离线回归通过，主协调独立复跑11项配置测试并复核归档/哈希；新EXE真实import旧路径和默认check通过，
+没有改账号或密码，没有启动/停止任何业务。旧eyepqc.exe/hash和用户自启的8765监听PID25372保持不变。
+新产物eyepqc-1.1.exe（10,274,436字节）单独交付，1.1本轮未切换实板视频，旧1.0实测不能替代。
+命令、哈希和精确边界见 [PC1.1配置记录](pc_cli_config_20261015.md)。
+
 ## 2026-10-15：统一EXE实板公网短测与重启验证
 
 检查无活动观看者后，主协调正常退出项目旧relay/SSH，实际启动冻结EXE与自有SSH。

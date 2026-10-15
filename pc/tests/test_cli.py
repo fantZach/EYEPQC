@@ -245,7 +245,10 @@ class ConfigurationTests(unittest.TestCase):
 
 class FrozenTests(unittest.TestCase):
     def test_built_executable_checks_isolated_fixture_without_network(self):
-        exe = Path(__file__).resolve().parents[2] / 'build/pc_cli/dist/eyepqc.exe'
+        directory = Path(__file__).resolve().parents[2] / 'build/pc_cli/dist'
+        exe = directory / 'eyepqc-1.1.exe'
+        if not exe.is_file():
+            exe = directory / 'eyepqc.exe'
         if not exe.is_file():
             self.skipTest('build EXE first with pc/build_exe.ps1')
         from cryptography import x509

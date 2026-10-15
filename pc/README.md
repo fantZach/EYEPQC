@@ -2,27 +2,47 @@
 
 ## Windows 命令行 EXE
 
-`pc/src/host/eyepqc.py` 提供统一前台入口；打包后只需单个 `eyepqc.exe`、外置 JSON 配置及配置引用的
-本机材料，无需在运行机器安装 Python。Windows OpenSSH Client 仍须安装并在 PATH 中。
+`pc/src/host/eyepqc.py` 提供统一前台入口；**1.1 不再要求手动维护 EXE 旁的 JSON**。
+单个 EXE 内置无秘密默认参数，配置用命令修改；账户、证书及 SSH 私钥仍保留在本机材料文件中。
+运行机器无需 Python；Windows OpenSSH Client 仍须安装并在 PATH 中。
 
 ```powershell
 # 在仓库根目录构建；仅首次/更新打包依赖时加 -InstallDependencies。
-& ./pc/build_exe.ps1 -InstallDependencies
-& ./build/pc_cli/dist/eyepqc.exe --version
-& ./build/pc_cli/dist/eyepqc.exe --help
-# 复制 pc/eyepqc.example.json 到 EXE 同目录为 eyepqc.json，再按实际文件位置编辑。
-& ./build/pc_cli/dist/eyepqc.exe check
-& ./build/pc_cli/dist/eyepqc.exe status
+& ./pc/build_exe.ps1 -InstallDependencies -Name eyepqc-1.1
+& ./build/pc_cli/dist/eyepqc-1.1.exe --version
+& ./build/pc_cli/dist/eyepqc-1.1.exe config show
+# 已有1.0配置时一次迁移（只读JSON参数/路径，不读材料，不启动服务）。
+& ./build/pc_cli/dist/eyepqc-1.1.exe config import ./build/pc_cli/dist/eyepqc.json
+# 或逐项设置，支持材料文件尚不存在时先配置。
+& ./build/pc_cli/dist/eyepqc-1.1.exe config set serial_port auto
+& ./build/pc_cli/dist/eyepqc-1.1.exe config set accounts_file C:/EYEPQC/private/accounts.json
+& ./build/pc_cli/dist/eyepqc-1.1.exe check
+& ./build/pc_cli/dist/eyepqc-1.1.exe status
 # 确认旧服务已正常退出后，才执行 run；Ctrl+C 停止本次启动的 relay 和 SSH 子进程。
-& ./build/pc_cli/dist/eyepqc.exe run
+& ./build/pc_cli/dist/eyepqc-1.1.exe run
 ```
 
-构建使用独立 `build/pc_cli/venv`、固定 PyInstaller 6.22.3、console/onefile 模式。
-产物不打入配置、账户、证书、SSH key、板端身份或任何 `tmp/` 内容；不会安装后台服务、自动重连或操作 JTAG。
-示例所有路径均相对 **配置文件所在目录**；也可使用明确的本机绝对路径。
-`run --config <文件>`、`check --config <文件>` 可选择其他配置，配置文件不能含内联密码或 token。
-`serial_port: null` 自动发现唯一板卡 CDC；绑定固定 `127.0.0.1:8765`，SSH 默认云端 TCP2222。
-`tunnel: null` 仅启动本机 relay；非空 tunnel 使用严格 host key 验证与专用身份文件。
+构建使用独立 `build/pc_cli/venv`、固定 PyInstaller 6.22.3、console/onefile 模式；`-Name` 可保留正在运行的旧产物。
+默认仍可省略 `-Name` 构建 `eyepqc.exe`，实际用哪个名称不改变命令语法。
+内置默认值为自动 CDC、固定 `127.0.0.1:8765`、SSH `124.70.38.245:2222`，隧道开启；材料相对 EXE 目录为
+`private/accounts.json`、`public/pairing.json`、`public/server-chain.pem`、`private/server-key.pem`、
+`private/id_ed25519`、`public/tunnel_known_hosts`。默认值不包含本机用户绝对路径或任何秘密材料。
+
+`config show` 显示来源（内置默认值/用户设置）及实际设置文件路径。程序在当前 Windows 用户的
+`%LOCALAPPDATA%/EYEPQC/pc/settings.json` 原子保存参数和材料路径，无需手动编辑；LOCALAPPDATA 必须是绝对本机目录。
+用户设置不存在时直接使用默认值，show 不创建文件；已有设置损坏时 show/set/import 均拒绝，原文件保留。
+`set` 每次只改指定键；`import` 整体迁移旧配置。命令不会读取密码、账户 hash、证书或私钥正文，也不连接 USB/网络。
+
+可配置键：`serial_port`（`auto` 或端口名）、`accounts_file`、`pairing_file`、`tls_cert`、`tls_key`、
+`tunnel.enabled`（`true`/`false`）、`tunnel.host`、`tunnel.ssh_port`、`tunnel.identity_file`、`tunnel.known_hosts`。
+关闭隧道只改 enabled，保留已有主机/身份/known_hosts；再次开启复用原值。
+set 的相对路径以调用者当前目录固化为绝对路径，import 的相对路径按旧 JSON 所在目录固化。
+`run --config <文件>`、`check --config <文件>` 继续显式兼容旧 JSON，按该文件目录解析路径；
+普通 run/check **不会自动读取 EXE 旁的 eyepqc.json**。旧 `tunnel:null` 导入后关闭隧道并保留当前隧道参数。
+
+设置仅影响下一次启动，不热更、不结束观看。修改 `tunnel.host` 仅改 SSH 目标，不自动换签 TLS SAN、
+修改手机配对 endpoint/APK 或信任新 SSH host key；这些材料仍须匹配，严格 known_hosts 和证书校验保留。
+产物不打入账户、证书、SSH key、板端身份、用户设置或 `tmp/` 内容；不会安装后台服务、自动重连或操作 JTAG。
 
 `check` 读取所选的本机账户、公钥配对与 TLS 材料，验证格式及证书/私钥匹配，不打开 USB 或建立网络连接。
 SSH 身份/known_hosts 仅检查路径与大小，不证明云端主机身份已实测。
@@ -36,11 +56,11 @@ SSH 身份/known_hosts 仅检查路径与大小，不证明云端主机身份已
 
 ```powershell
 # 交互输入新密码；拒绝覆盖，不把密码放到命令行。
-& ./build/pc_cli/dist/eyepqc.exe account --file <新的私有账户文件> --username viewer
+& ./build/pc_cli/dist/eyepqc-1.1.exe account --file <新的私有账户文件> --username viewer
 ```
 
-账户创建不自动生效。操作者须决定使用哪份账户文件，更新配置的 `accounts_file`，再正常重启入口。
-已有 `accounts-new.json` 也不会被自动选中。外置配置应留在用户可控目录，限制 Windows 私有材料目录 ACL。
+账户创建不自动生效。操作者须决定使用哪份账户文件，`config set accounts_file <路径>`，再正常重启入口。
+已有 `accounts-new.json` 也不会被自动选中。限制 Windows 私有材料目录 ACL；参数存储不能替代凭据保护。
 首次手机视频验证仍需已有 G6 固件、板端身份、有效 WSS 证书及匹配的 Android 配对；EXE 的 help/check
 和离线 fixture 测试不能代替实板/手机通过 EXE 的联合验收。
 

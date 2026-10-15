@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$Python = '', [switch]$InstallDependencies)
+param([string]$Python = '', [switch]$InstallDependencies, [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')][string]$Name = 'eyepqc')
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 if (-not $Python) { $Python = Join-Path $repo '.venv/Scripts/python.exe' }
@@ -14,12 +14,12 @@ if ($InstallDependencies) {
     & $packPython -m pip install -r (Join-Path $PSScriptRoot 'requirements-build.txt')
     if ($LASTEXITCODE -ne 0) { throw 'Packaging dependency installation failed.' }
 }
-& $packPython -m PyInstaller --noconfirm --clean --onefile --console --noupx --name eyepqc `
+& $packPython -m PyInstaller --noconfirm --clean --onefile --console --noupx --name $Name `
     --paths (Join-Path $PSScriptRoot 'src/host') `
     --distpath (Join-Path $buildRoot 'dist') --workpath (Join-Path $buildRoot 'work') `
     --specpath (Join-Path $buildRoot 'spec') (Join-Path $PSScriptRoot 'src/host/eyepqc.py')
 if ($LASTEXITCODE -ne 0) { throw 'EXE build failed.' }
-$exe = Join-Path $buildRoot 'dist/eyepqc.exe'
+$exe = Join-Path $buildRoot "dist/$Name.exe"
 & $exe --version
 if ($LASTEXITCODE -ne 0) { throw 'EXE smoke test failed.' }
 Get-FileHash -LiteralPath $exe -Algorithm SHA256
