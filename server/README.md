@@ -3,6 +3,10 @@
 本目录提供独立 Linux sshd 配置生成/校验及 systemd 模板；冻结接口见
 [公网中转契约](../doc/cloud_relay_plan.md)。本轮没有部署、安装或启动服务。
 
+2026-10-15部署更新：用户授权后，独立服务已安装在124.70.38.245并处于active，真实Linux安装与sshd校验通过；
+PC公网2222连接在到达实例前失败，仍需核对安全组/网络路径，不能标记隧道或公网视频通过。
+下文保留代码准备/部署流程，实际证据及TOFU信任边界见 [部署记录](../report/server_deployment_20261015.md)。
+
 ```text
 Android WSS → 云端 TCP8765 → SSH -R → Windows PC 127.0.0.1:8765 → USB Board
                           PC 主动连接云端 SSH2222
