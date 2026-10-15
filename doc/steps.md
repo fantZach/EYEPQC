@@ -1,5 +1,11 @@
 # EYEPQC 编程与调试步骤
 
+2026-10-15 EXE实板补验：统一入口已实际替换旧PC转发器/隧道，经真实COM7→云端WSS→JVM完成
+30秒1421帧/47.259742fps、STOP重连10秒475帧/47.268093fps、EXE退出重启后10秒475帧/47.272902fps。
+三轮640×480、正常STOP、零视频丢帧/error，六张首尾JPEG独立哈希/解码通过，Ctrl+C后自有进程/监听释放。
+首轮因本机login与账号库不匹配而失败的证据保留，用户更新后通过；未重刷板卡或替换账号库。
+EXE保持运行供手机使用；这不是Android显示/长测或完整G8/G9验收，见 [实际验证](../report/pc_cli_20261015.md#follow-up-actual-exe--board--public-tunnel-verification)。
+
 2026-10-15 PC统一命令行：由PC子代理完成 `eyepqc.exe`，主协调者审查/集成；提供run/check/status/account，
 前台统一运行relay与可选SSH隧道，Ctrl+C退出自有服务，不接管或杀旧进程。外置路径配置，秘密不入EXE。
 PC62项离线回归、冻结EXE隔离材料检查/占用拒绝通过；现有真实服务未切换，不据此宣称EXE实板/手机验收。

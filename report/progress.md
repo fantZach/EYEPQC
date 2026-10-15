@@ -1,5 +1,16 @@
 # Implementation progress
 
+## 2026-10-15：统一EXE实板公网短测与重启验证
+
+检查无活动观看者后，主协调正常退出项目旧relay/SSH，实际启动冻结EXE与自有SSH。
+首次探针因login.txt与当前accounts.json不匹配而HTTP401/零帧失败，原始FAIL保留；用户更新本机登录材料后，
+本机/公网HTTPS200，真实suite2/相机JPEG通过：1421帧/30.046715秒/47.259742fps；
+STOP重连475帧/10.0279061秒/47.268093fps；退出EXE和SSH、重启后475帧/10.026886秒/47.272902fps。
+三轮均640×480、code1000/认证STOP、error=none、零视频丢帧，六张首尾JPEG哈希/尺寸及独立解码通过。
+Ctrl+C后两个EXE进程、自有SSH与8765监听释放，重复启动拒绝通过。未重刷板卡、改库或改变密码。
+最终EXE及隧道保持运行供手机使用；验证脚本由PC子代理编码，主协调控制实机与切换。
+客户端为同PC经公网的JVM，不是Android/UI或G8/G9长测。准确证据/边界见 [EXE实际验证](pc_cli_20261015.md#follow-up-actual-exe--board--public-tunnel-verification)。
+
 ## 2026-10-15：PC统一命令行EXE
 
 按用户要求，PC子代理接手编码/测试/打包，主协调者负责审查、共享文档和统一提交。
