@@ -1,5 +1,49 @@
 # PC 子项目
 
+## Windows 命令行 EXE
+
+`pc/src/host/eyepqc.py` 提供统一前台入口；打包后只需单个 `eyepqc.exe`、外置 JSON 配置及配置引用的
+本机材料，无需在运行机器安装 Python。Windows OpenSSH Client 仍须安装并在 PATH 中。
+
+```powershell
+# 在仓库根目录构建；仅首次/更新打包依赖时加 -InstallDependencies。
+& ./pc/build_exe.ps1 -InstallDependencies
+& ./build/pc_cli/dist/eyepqc.exe --version
+& ./build/pc_cli/dist/eyepqc.exe --help
+# 复制 pc/eyepqc.example.json 到 EXE 同目录为 eyepqc.json，再按实际文件位置编辑。
+& ./build/pc_cli/dist/eyepqc.exe check
+& ./build/pc_cli/dist/eyepqc.exe status
+# 确认旧服务已正常退出后，才执行 run；Ctrl+C 停止本次启动的 relay 和 SSH 子进程。
+& ./build/pc_cli/dist/eyepqc.exe run
+```
+
+构建使用独立 `build/pc_cli/venv`、固定 PyInstaller 6.22.3、console/onefile 模式。
+产物不打入配置、账户、证书、SSH key、板端身份或任何 `tmp/` 内容；不会安装后台服务、自动重连或操作 JTAG。
+示例所有路径均相对 **配置文件所在目录**；也可使用明确的本机绝对路径。
+`run --config <文件>`、`check --config <文件>` 可选择其他配置，配置文件不能含内联密码或 token。
+`serial_port: null` 自动发现唯一板卡 CDC；绑定固定 `127.0.0.1:8765`，SSH 默认云端 TCP2222。
+`tunnel: null` 仅启动本机 relay；非空 tunnel 使用严格 host key 验证与专用身份文件。
+
+`check` 读取所选的本机账户、公钥配对与 TLS 材料，验证格式及证书/私钥匹配，不打开 USB 或建立网络连接。
+SSH 身份/known_hosts 仅检查路径与大小，不证明云端主机身份已实测。
+`status` 只读 Windows TCP 快照，显示默认本机8765和远端2222相关连接；配置改用其他 SSH 端口时，
+该端口不会被此快照列出。TCP 建立不代表 SSH 属于本入口、板卡就绪、手机登录或视频认证通过。
+
+切换到统一 EXE 前，须由操作者正常停止原有独立 relay **以及** SSH 隧道；只停 relay 保留旧 SSH 时，
+新隧道可能因云端反向端口仍被占用而退出，统一入口会停止新 relay。入口不会接管、查杀现有进程或改变账户选择。
+当前8765已监听时，`run` 在读取配置/私密材料与启动 SSH 前拒绝运行。SSH 退出显示其数值返回码，
+配置/TLS失败显示静态检查方向，不原样打印可能包含秘密的底层异常。
+
+```powershell
+# 交互输入新密码；拒绝覆盖，不把密码放到命令行。
+& ./build/pc_cli/dist/eyepqc.exe account --file <新的私有账户文件> --username viewer
+```
+
+账户创建不自动生效。操作者须决定使用哪份账户文件，更新配置的 `accounts_file`，再正常重启入口。
+已有 `accounts-new.json` 也不会被自动选中。外置配置应留在用户可控目录，限制 Windows 私有材料目录 ACL。
+首次手机视频验证仍需已有 G6 固件、板端身份、有效 WSS 证书及匹配的 Android 配对；EXE 的 help/check
+和离线 fixture 测试不能代替实板/手机通过 EXE 的联合验收。
+
 ## 登录后自动分发配对配置
 
 Android0.7在账号登录成功后自动获取公开schema2，无需用户传JSON。PC启动时显式指定唯一公开配置：

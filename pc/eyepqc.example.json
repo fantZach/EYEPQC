@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "serial_port": null,
+  "accounts_file": "private/accounts.json",
+  "pairing_file": "public/pairing.json",
+  "tls_cert": "public/server-chain.pem",
+  "tls_key": "private/server-key.pem",
+  "tunnel": {
+    "host": "124.70.38.245",
+    "ssh_port": 2222,
+    "identity_file": "private/id_ed25519",
+    "known_hosts": "public/tunnel_known_hosts"
+  }
+}

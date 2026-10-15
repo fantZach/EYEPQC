@@ -1,5 +1,15 @@
 # Implementation progress
 
+## 2026-10-15：PC统一命令行EXE
+
+按用户要求，PC子代理接手编码/测试/打包，主协调者负责审查、共享文档和统一提交。
+`eyepqc.exe`提供run/check/status/account：复用原relay与受限SSH、前台Ctrl+C清理自有子进程，
+拒绝重复监听、配置/底层错误脱敏；不新增后台服务、自动重连或板卡provisioning。
+固定PyInstaller6.22.3独立环境构建单EXE（10,266,628字节），配置/账户/TLS/SSH材料均在外部，
+本机路径配置继续引用旧accounts.json，不自动启用新密码。PC62项通过，包括CLI12项及冻结EXE临时材料检查；
+help/version/status/真实占用拒绝通过，主协调者独立复核产物哈希和归档文件清单。
+当前relay/SSH和手机链路未切换，EXE尚无真实USB/视频/隧道联合验收。准确证据见 [CLI记录](pc_cli_20261015.md)。
+
 ## 2026-10-15：手机45fps反馈与Android0.8界面交互
 
 用户明确反馈现有连接正常、fps45；这是本轮改界面前的实际手机反馈，不是新版UI或定时长门禁证明。

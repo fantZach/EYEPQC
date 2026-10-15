@@ -388,7 +388,7 @@ class Relay:
                            logger=logger)
 
 
-async def run(args):
+async def run(args, *, ready=None):
     tls = None
     if bool(args.tls_cert) != bool(args.tls_key):
         raise ValueError("--tls-cert and --tls-key must be supplied together")
@@ -401,6 +401,8 @@ async def run(args):
                   pairing_file=args.pairing_file)
     async with await relay.start(args.host, args.port, tls=tls) as server:
         print(f"RELAY_READY {'wss' if tls else 'ws'}://{args.host}:{args.port}/stream", flush=True)
+        if ready is not None:
+            ready.set()
         await server.serve_forever()
 
 
