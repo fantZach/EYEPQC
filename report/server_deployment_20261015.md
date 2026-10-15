@@ -5,6 +5,46 @@
 首次SSH22主机身份按用户“直接连接”授权采用TOFU，固定已观察的Ed25519公钥，保持StrictHostKeyChecking=yes。
 这不是云控制台独立核验，不将ssh-keyscan本身作为可信身份来源。
 
+## 安全组放行后：最新验证
+
+用户回复“放行了”后，PC专用账号/密钥通过公网SSH2222完成认证，原cloud_tunnel.py成功建立固定-R。
+从本机连接云端124.70.38.245:8765，1459字节随机合成负载经真实SSH原样到达PC127.0.0.1:8765，
+云端入口收到32字节SHA256回复且一致，测试窗口0.031秒。这是单次字节往返，不是视频延迟或带宽测量。
+独立探针结果在ignored `tmp/cloud_124_70_38_245_20261015/tcp_route_result_1.json`。
+
+实际SSH五项权限拒绝通过，结果为同目录 `ssh_restrictions_3.json`：
+
+- session/exec被CHANNEL_OPEN_FAILURE拒绝，没有执行远程命令；Windows客户端返回4294967295。
+- 远端额外监听8766请求被拒绝，exit255。
+- root用户名、未授权另一把key均被拒绝，exit255；不尝试密码或重复猜测。
+- 本地-L转发的实际通道请求被administratively prohibited拒绝，未返回目标SSH banner。
+
+第一次探针对session拒绝文本断言过窄，真实OpenSSH MaxSessions0默认可标作connect failed；
+核对[官方serverloop实现](https://github.com/openssh/openssh-portable/blob/master/serverloop.c)后改为核对CHANNEL_OPEN_FAILURE。
+第二次在负测夹具key的严格ACL检查处中止，未放宽权限；换用与正测相同生成方式的新负测key后完整通过。
+前两份FAIL JSON保留，不作为服务策略错误或删除的失败证据。
+
+## 公网WSS材料及模拟USB验证
+
+本机 `tmp/cloud_wss_20261015_1` 已准备匹配云IP的证书、schema2配对JSON、独立viewer测试账号；
+原局域网材料未修改，密码仅在本机受限ACL的 `private/login.txt`，不发到聊天/仓库/云端。
+复用现有debug CA，DER SHA256仍为263c8c06420a2b72726d93c746766d3efd8040fe6d711af49f240ebbc1b4dc8b；
+云地址叶证书DER SHA256为37cd77d6eadea6c2a5d142a515893605bbb9d12bfb7778bd2b912ea6774b7dba，
+到期2026-10-22 13:04:02（Asia/Shanghai）。当前0.6 debug APK若仍信任同一CA，不因新IP需要重打包。
+板卡身份pin沿用原公开身份a14a7f6fe9e862b90e66e413e4d0fcdbfc63e1b8bc0c0ff31e11324482927928。
+配置端点为wss://124.70.38.245:8765/stream，JSON只有version/endpoint/public_key_hex/public_key_sha256。
+
+通过真实公网SSH/TCP，PC临时启动原Relay与模拟CDC，完成：
+不可信CA拒绝、错误主机名拒绝、错密码HTTP401、正确证书与账号WebSocket升级成功、模拟CDC释放五项PASS。
+最终结果 `tmp/cloud_wss_20261015_1/cloud_wss_result_4.json`；关闭日志code1000/errornone。
+前三次夹具清理等待基于忙轮询下的短sleep次数，实际等待不足，未断言通过；FAIL结果保留。
+最终夹具使用与实际串口相符的20ms读取等待和单调时间截止，清理0.109秒内完成，没有改Relay运行时代码。
+
+没有打开真实USB、执行ML-KEM业务握手、发送视频或在Android真机运行。
+这是真实云网络/TLS/账号+模拟CDC验证，不是此前软件回环，也不是完整G9。
+测试后临时本机监听/探针和前台SSH隧道均停止，未留下模拟服务；云端独立systemd服务仍按部署启用。
+8765公开监听随授权PC的-R建立/结束而出现/释放，不是systemd本身常驻的业务监听。
+
 ## 已完成的远端变更
 
 - 首次用用户提供的root凭据在SSH密码提示交互登录；密码未放命令行、部署文件或Git，没有修改root密码。
@@ -39,7 +79,7 @@ UFW inactive，iptables INPUT/FORWARD/OUTPUT策略为ACCEPT；没有改变主机
 | authorized_keys | b77e144b1a2bda0716813d04d120662a9bae981a399cbaf7ce73d0c0bd380ce9 |
 | service | 319e26007c6855ef7b95e2fa71341054674eb07f095ce5475bcb9019124340f3 |
 
-## 公网连接未完成
+## 放行前公网连接失败（历史，保留）
 
 PC用实际cloud_tunnel.py/专用key/严格known_hosts连接公网2222，两次均在握手前被关闭，exit255。
 sshd日志未见对应外网连接；同期云端eth0上12秒仅筛选目的2222的TCP SYN捕获为0，未捕获payload。
@@ -48,7 +88,7 @@ sshd日志未见对应外网连接；同期云端eth0上12秒仅筛选目的2222
 
 已请用户核对/放行安全组入站TCP2222和TCP8765，保留SSH22，不开放全部端口。
 TCP8765仅在授权PC建立-R后才出现监听；daemon active不意味着手机WSS或反向隧道已就绪。
-当前无反向隧道、WSS云地址证书、手机公网视频或G9通过声明，没有操作板卡/JTAG/SD/COM。
+当时无反向隧道/WSS云地址证书；放行后的阶段结果见上方最新验证。手机公网视频和G9仍未通过，未操作板卡/JTAG/SD/COM。
 实际key授权及禁止操作需公网可达后补测；原QueueFull和P2P失败证据不被覆盖。
 
 ## 恢复与安全
