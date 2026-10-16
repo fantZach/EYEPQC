@@ -1,4 +1,4 @@
-"""Foreground PC relay CLI. No board provisioning or embedded credentials."""
+"""Foreground PC relay CLI; explicit optional development USB bootstrap, no embedded credentials."""
 
 import argparse
 import asyncio
@@ -16,7 +16,7 @@ import cloud_tunnel
 import relay
 import cli_settings
 
-VERSION = '1.2.1'
+VERSION = '1.3.0'
 PORT = 8765
 
 
@@ -141,6 +141,11 @@ def main(argv=None):
                             ('check', 'Validate local files only; no USB or network connection')):
         sub = commands.add_parser(name, help=help_text)
         sub.add_argument('--config', type=Path, help='explicit legacy JSON; otherwise built-in defaults and user settings')
+        if name == 'run':
+            sub.add_argument('--dev-usb-bootstrap', action='store_true',
+                             help='Explicit trusted local USB development initialization before listening; not production security')
+            sub.add_argument('--dev-identity-file', type=Path,
+                             help='Explicit ACL-protected local test ML-KEM secret key; never stored in settings or the EXE')
     configure = commands.add_parser('config', help='Manage local parameters and paths without opening materials')
     edits = configure.add_subparsers(dest='config_command', required=True)
     edits.add_parser('show', help='Show effective configuration and settings location')
@@ -226,6 +231,18 @@ def main(argv=None):
             if args.command == 'check':
                 print('CONFIG_OK offline_only=true board_validated=false network_started=false')
             else:
+                if args.dev_usb_bootstrap != (args.dev_identity_file is not None):
+                    raise ServiceError('--dev-usb-bootstrap and --dev-identity-file must be supplied together')
+                if args.dev_usb_bootstrap:
+                    if not settings.serial_port or settings.serial_port.lower() == 'auto':
+                        raise ServiceError('development bootstrap requires a configured explicit COM port; use config set serial_port COMx')
+                    import dev_usb_bootstrap
+                    hint = 'development USB bootstrap failed; verify trusted local board/profile, explicit COM, private ACL and public pairing; no listener started'
+                    settings.dev_bootstrap_factory = lambda: dev_usb_bootstrap.open_bootstrapped(
+                        settings.serial_port, args.dev_identity_file, settings.pairing_file)
+                    device = settings.dev_bootstrap_factory()
+                    dev_usb_bootstrap.close_device(device)
+                    print('DEV_USB_READY development_only=true identity_in_sd=false', flush=True)
                 hint = 'relay/TLS/SSH startup failed; check configured files, OpenSSH and service logs'
                 asyncio.run(run_services(settings, ssh))
         return 0

@@ -29,6 +29,36 @@
 #endif
 #include <stdint.h>
 #include <string.h>
+#ifdef G6_DEV_USB_BOOTSTRAP
+#if defined(G6_PRODUCTION) || !defined(G6_SECURE_CLEANUP)
+#error "Development USB bootstrap requires cleanup and excludes production"
+#endif
+#include "g6_dev_bootstrap.h"
+#include "xil_io.h"
+int usb_cdc_bootstrap_rx_pending(void);
+int usb_cdc_bootstrap_rx_interrupted(void);
+void usb_cdc_bootstrap_rx_clear(void);
+static struct eye_bootstrap usb_bootstrap;
+static uint64_t bootstrap_wire_started;
+static uint32_t bootstrap_irq_saved;
+static int bootstrap_irq_held;
+static uint32_t bootstrap_irq_disable(void) {
+    uint32_t saved = 0;
+#if defined(__arm__)
+    __asm__ volatile("mrs %0, cpsr\n\tcpsid i" : "=r"(saved) :: "memory", "cc");
+#endif
+    return saved;
+}
+static void bootstrap_irq_release(void) {
+    if (!bootstrap_irq_held) return;
+#if defined(__arm__)
+    if (!(bootstrap_irq_saved & 0x80U)) __asm__ volatile("cpsie i" ::: "memory", "cc");
+#else
+    (void)bootstrap_irq_saved;
+#endif
+    bootstrap_irq_held = 0;
+}
+#endif
 #ifdef G6_PRODUCTION
 #include "g6_production_provider.h"
 #include "g6_hmac_drbg.h"
@@ -61,7 +91,7 @@ int usb_cdc_secure_cleanup_tx(uint8_t *buffer, unsigned capacity);
 #endif
 int usb_cdc_take_control(uint8_t *out, uint32_t capacity);
 
-#ifndef G6_PRODUCTION
+#if !defined(G6_PRODUCTION) && !defined(G6_DEV_USB_BOOTSTRAP)
 volatile uint8_t g6_sk_load[1632] __attribute__((aligned(64)));
 volatile uint8_t g6_seed_load[32] __attribute__((aligned(64)));
 volatile uint32_t g6_ready __attribute__((aligned(64)));
@@ -334,10 +364,15 @@ static void mark_fault(void) {
     /* A terminal development fault cannot resume with the loaded test key. */
     wipe(private_key, sizeof private_key);
     wipe(random_seed, sizeof random_seed);
+    random_counter = 0U;
+#ifndef G6_DEV_USB_BOOTSTRAP
     wipe((void *)g6_sk_load, sizeof g6_sk_load);
     wipe((void *)g6_seed_load, sizeof g6_seed_load);
-    random_counter = 0U;
     g6_ready = 0U;
+#else
+    eye_boot_fault(&usb_bootstrap);
+    usb_cdc_bootstrap_rx_clear();
+#endif
 #endif
 #ifdef G6_PRODUCTION
     eye_hmac_drbg_uninstantiate(&production_drbg);
@@ -358,6 +393,56 @@ static void fail_closed(void) {
 #endif
     mark_fault();
 }
+#ifdef G6_DEV_USB_BOOTSTRAP
+static uint64_t bootstrap_now_ms(void) {
+    XTime now;
+    XTime_GetTime(&now);
+    return now / (COUNTS_PER_SECOND / 1000U);
+}
+static int bootstrap_activate(const uint8_t pin[32], const uint8_t sk[1632],
+                               const uint8_t seed[32]) {
+    uint8_t computed[32] = {0};
+    unsigned different = 0U;
+    int status = eye_mlkem_check_sk(sk);
+    if (!status) status = eye_sha256(computed, sk + 768U, 800U);
+    for (unsigned i = 0; i < 32U; ++i) different |= computed[i] ^ pin[i];
+    if (!status && different) status = 1;
+    if (!status) status = eye_session_init(&session, sk + 768U);
+    if (!status) {
+        /* Commit identity + READY as one ISR-atomic transition. Crypto checks
+         * run with IRQs enabled, then recheck the original receiving epoch. */
+        bootstrap_irq_saved = bootstrap_irq_disable();
+        bootstrap_irq_held = 1;
+        if (!usb_cdc_ready() || usb_cdc_connection_epoch() != usb_bootstrap.epoch ||
+                bootstrap_now_ms() - usb_bootstrap.started_ms >= 10000U)
+            status = 1;
+    }
+    if (!status) {
+        memcpy(private_key, sk, sizeof private_key);
+        memcpy(random_seed, seed, sizeof random_seed);
+        random_counter = 0U;
+    }
+    wipe(computed, sizeof computed);
+    return status;
+}
+static int bootstrap_control(const uint8_t *message, unsigned length) {
+    enum eye_boot_state previous = usb_bootstrap.state;
+    int status = eye_boot_process(&usb_bootstrap, message, length, bootstrap_now_ms(),
+                                  usb_cdc_connection_epoch(), bootstrap_activate);
+    bootstrap_irq_release();
+    if (status) fail_closed();
+    uint8_t reply[EYE_BOOT_ACK];
+    eye_boot_reply(&usb_bootstrap, reply);
+    int sent = send_control(reply, sizeof reply);
+    wipe(reply, sizeof reply);
+    if (sent) { fail_closed(); return 1; }
+    if (previous != EYE_BOOT_READY && usb_bootstrap.state == EYE_BOOT_READY) {
+        g6_status = 1U;
+        xil_printf("G6_DEV_USB_READY boot_mode=0x%02x\r\n", Xil_In32(0xf800025cU) & 15U);
+    }
+    return status;
+}
+#endif
 static int retire_disconnected_session(unsigned send_status,
                                        unsigned resume_status,
                                        unsigned ready_at_failure,
@@ -565,6 +650,9 @@ static int take_control(void *context, uint8_t *out, unsigned capacity) {
 }
 static int process_control(void *context, const uint8_t *message, unsigned length) {
     (void)context;
+#ifdef G6_DEV_USB_BOOTSTRAP
+    if (eye_boot_prefix(message, length)) return bootstrap_control(message, length);
+#endif
 #ifdef G6_AUTO_RECOVERY
     ++diag_received_control_count;
 #endif
@@ -640,7 +728,7 @@ int main(void) {
     if (!status) status = usb_cdc_init();
 #endif
     if (status) { xil_printf("G6_INIT_FAIL %d\r\n", status); for (;;) {} }
-#ifndef G6_PRODUCTION
+#if !defined(G6_PRODUCTION) && !defined(G6_DEV_USB_BOOTSTRAP)
     while (g6_ready != PROVISION_MAGIC) {}
     for (unsigned i = 0; i < sizeof private_key; ++i) private_key[i] = g6_sk_load[i];
     for (unsigned i = 0; i < sizeof random_seed; ++i) random_seed[i] = g6_seed_load[i];
@@ -654,12 +742,40 @@ int main(void) {
         for (;;) {}
     }
 #endif
+#ifdef G6_DEV_USB_BOOTSTRAP
+    xil_printf("G6_DEV_USB_WAIT boot_mode=0x%02x\r\n", Xil_In32(0xf800025cU) & 15U);
+#else
     g6_status = 1;
+#endif
     int was_connected = 0, capture_errors = 0;
     uint32_t connection_epoch = usb_cdc_connection_epoch();
     uint8_t control[1036] = {0};
     for (;;) {
         uint32_t current_epoch = usb_cdc_connection_epoch();
+#ifdef G6_DEV_USB_BOOTSTRAP
+        if (usb_bootstrap.state != EYE_BOOT_READY) {
+            uint64_t now_ms = bootstrap_now_ms();
+            if (usb_bootstrap.state == EYE_BOOT_WAIT && current_epoch != connection_epoch &&
+                    !usb_cdc_bootstrap_rx_interrupted()) bootstrap_wire_started = 0U;
+            if (usb_bootstrap.state != EYE_BOOT_FAULT &&
+                    (eye_boot_tick(&usb_bootstrap, now_ms, current_epoch, usb_cdc_ready()) ||
+                     usb_cdc_bootstrap_rx_interrupted() ||
+                     (bootstrap_wire_started && now_ms - bootstrap_wire_started >= 10000U)))
+                fail_closed();
+            if (!usb_cdc_ready()) continue;
+            if (usb_cdc_bootstrap_rx_pending() && !bootstrap_wire_started)
+                bootstrap_wire_started = now_ms ? now_ms : 1U;
+            int length = usb_cdc_take_control(control, sizeof control);
+            if (length) {
+                bootstrap_wire_started = 0U;
+                if (length < 0) fail_closed();
+                else (void)bootstrap_control(control, (unsigned)length);
+                wipe(control, sizeof control);
+            }
+            connection_epoch = current_epoch;
+            continue;
+        }
+#endif
         if (current_epoch != connection_epoch) {
             retire_disconnected_session(UINT32_MAX, 0U,
                                         (unsigned)usb_cdc_ready(), current_epoch);

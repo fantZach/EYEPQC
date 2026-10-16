@@ -1,8 +1,39 @@
 # PC 子项目
 
-## 1.2.1 当前用户安装包
+## 1.3 开发态 SD / 本地 USB 初始化（候选，未实板验收）
 
-`build/pc_installer/dist/EYEPQC-Setup-1.2.1.exe` 是 Windows x64 安装向导，不需要管理员权限。
+普通 `eyepqc run` 保持原样，不读取板端身份私钥，也不尝试初始化协议。
+启用专门的开发态 SD 固件后，可用可信本机 PC 替代 JTAG 提供每次启动的测试身份与新随机种子：
+
+```powershell
+# 配置具体视频 USB CDC；开发初始化拒绝 auto/空串口。此命令不打开串口。
+eyepqc config set serial_port COM7
+# 私钥是操作者单独准备的本机文件，不打进 EXE/安装包、SD、JSON 或日志。
+eyepqc run --dev-usb-bootstrap --dev-identity-file "$env:LOCALAPPDATA/EYEPQC/pc/data/private/dev-identity.bin"
+```
+
+这两个 `--dev-*` 参数必须成对显式使用，不保存到 settings；安装器仍只迁移原六份文件，
+不会扫描、复制或生成开发身份文件。文件必须是精确 1632 字节 ML-KEM-512 私钥，
+位于本机、非链接路径，文件与其受保护父目录均须符合当前用户和 SYSTEM 独占 ACL。
+其嵌入公钥及 hash 必须匹配当前 schema2 pairing；不要把真实私钥或 seed 发到聊天。
+私钥内的 FIPS203 `H(ek)` 按 SHA3-256 校验；应用配对 pin 仍按 SHA256 校验，两者不可混用。
+
+启动先拒绝已有监听，再做原账号/TLS 检查；独占具体 COM，仅发送无秘密 QUERY。
+只有严格开发态 WAIT 回包、私钥/公钥 pin/ACL 都通过，才生成 OS fresh 32-byte seed，
+分两块发送并校验每片状态/offset，完整 READY 后真正关闭串口，然后才开启 WSS/隧道。
+每次已认证观看连接都重新独占打开：READY 只查询核 pin，不重复注入、不读私钥；
+板卡再次冷启动为 WAIT 时才重新读取该显式文件并生成新 seed。原观看清理继续关闭真实句柄。
+未知/普通固件、FAULT、乱序/错误 ACK、超时均脱敏失败，不 JTAG、不重刷、不抢占其他进程。
+
+这是**明文可信本地 USB 的开发方案，不是生产安全**：PC 知道私钥和 seed；
+未初始化设备没有身份，QUERY/pin 不是硬件认证；Python/驱动临时副本完整物理清除不保证。
+仅自有可变缓冲在成功/异常路径尽力清零。手机 suite2、账号登录及视频格式不变，
+远程手机不能转发 EYBS 初始化控制记录。契约与实际 SD 验收边界见
+[G6 SD bootstrap](../doc/g6_sd_usb_bootstrap.md)。
+
+## 1.3.0 当前用户安装包候选
+
+`build/pc_installer/dist/EYEPQC-Setup-1.3.0.exe` 是 Windows x64 安装向导候选，不需要管理员权限；旧 1.2.1 包保留。
 安装程序与材料分离，移动桌面上的 EXE 不再改变材料路径：
 
 | 内容 | 当前用户目录 |
@@ -48,7 +79,7 @@ eyepqc run
 
 ```powershell
 & ./pc/build_installer.ps1 -Compiler <本机可信ISCC.exe路径>
-# 已构建1.2.1 CLI时：
+# 已构建1.3 CLI时：
 & ./pc/build_installer.ps1 -SkipExeBuild -Compiler <本机可信ISCC.exe路径>
 ```
 
@@ -79,7 +110,7 @@ eyepqc run
 ```
 
 构建使用独立 `build/pc_cli/venv`、固定 PyInstaller 6.22.3、console/onefile 模式；`-Name` 可保留正在运行的旧产物。
-当前省略 `-Name` 构建 `eyepqc-1.2.1.exe`，不会覆盖旧 1.2 实例文件，实际用哪个名称不改变命令语法。
+当前省略 `-Name` 构建 `eyepqc-1.3.exe`，不会覆盖旧 1.2/1.2.1 实例文件，实际用哪个名称不改变命令语法。
 内置默认值为自动 CDC、固定 `127.0.0.1:8765`、SSH `124.70.38.245:2222`，隧道开启；1.2 材料相对用户 `data/` 目录为
 `private/accounts.json`、`public/pairing.json`、`public/server-chain.pem`、`private/server-key.pem`、
 `private/id_ed25519`、`public/tunnel_known_hosts`。默认值不包含开发机器的硬编码用户绝对路径或任何秘密材料。

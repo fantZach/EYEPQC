@@ -1,5 +1,12 @@
 # EYEPQC 编程与调试步骤
 
+2026-10-16 G6免JTAG开发态SD启动：用户明确同意SD只存程序、可信PC经本地USB提供测试身份及每启动新seed。
+独立 `development_usb_bootstrap_secure_cleanup` profile已构建；原手机suite2协议不变，JTAG/default/production隔离。
+匹配视频XSA的FSBL/BOOT与79项校验、ARM启动、板端真实代码/PC-C线协议定向检查通过；仍不是生产安全。
+F:新BOOT已按排他新建/flush/读回方式写入，旧G0保留卡上及本地备份，尚待读卡器重插复核和实际无JTAG冷启动。
+协议、安全边界与后续验收见 [USB初始化契约](g6_sd_usb_bootstrap.md)、[板端记录](../report/board_g6_sd_20261015.md)。
+PC使用显式开发开关与受ACL保护的私钥路径；普通run不读取身份私钥。软件通过不能替代真实启动、初始化和认证视频。
+
 2026-10-15 PC1.2.1安装与账号维护：PC子代理复用现有CLI/账号库，实现当前用户安装、六项本地材料导入、
 用户PATH注册及账号list/add/passwd/delete；私有材料不打进安装包，已有账号/身份和卸载后的data/settings保留。
 主协调已补齐本机用户PATH并广播通知；发现旧安装设置仍引用仓库tmp后，逐项确认六份副本完全一致，

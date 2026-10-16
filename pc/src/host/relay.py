@@ -1,4 +1,4 @@
-"""Windows USB CDC ↔ WebSocket ciphertext relay; no business keys or decoding."""
+"""Windows USB CDC ↔ WebSocket ciphertext relay; optional explicitly supplied local dev initializer."""
 
 import argparse
 from accounts import Accounts
@@ -92,7 +92,7 @@ def open_cdc(port=None):
 
 class Relay:
     def __init__(self, token=None, serial_factory=open_cdc, *, accounts=None, queue_records=64,
-                 partial_timeout=2.0, send_timeout=5.0, pairing_file=None):
+                 partial_timeout=2.0, send_timeout=5.0, pairing_file=None, prepare_serial=False):
         if queue_records < 1 or partial_timeout <= 0 or send_timeout <= 0:
             raise ValueError("queue and timeouts must be positive")
         if (token is None) == (accounts is None):
@@ -108,6 +108,7 @@ class Relay:
         self.cleanup_failed = False
         self.token = token
         self.serial_factory = serial_factory
+        self.prepare_serial = prepare_serial
         self.queue_records = queue_records
         self.partial_timeout = partial_timeout
         self.send_timeout = send_timeout
@@ -298,7 +299,19 @@ class Relay:
                      network_records=0, network_bytes=0, queue_peak=0,
                      video_frames_dropped=0, video_records_dropped=0)
         try:
-            device = self.serial_factory()
+            if self.prepare_serial:
+                opening = asyncio.create_task(asyncio.to_thread(self.serial_factory))
+                try:
+                    device = await asyncio.shield(opening)
+                except asyncio.CancelledError:
+                    # Wait for bounded initialization so cancellation cannot orphan an exclusive serial handle.
+                    try:
+                        device = await asyncio.shield(opening)
+                    except (OSError, ValueError, RuntimeError):
+                        pass
+                    raise
+            else:
+                device = self.serial_factory()
             device.dtr = False
             device.reset_input_buffer()
             device.reset_output_buffer()
@@ -395,10 +408,11 @@ async def run(args, *, ready=None):
     if args.tls_cert:
         tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         tls.load_cert_chain(args.tls_cert, args.tls_key)
+    initializer = getattr(args, 'dev_bootstrap_factory', None)
     relay = Relay(read_token(args.token_file) if args.token_file else None,
-                  lambda: open_cdc(args.serial_port),
+                  initializer if initializer is not None else lambda: open_cdc(args.serial_port),
                   accounts=Accounts(args.accounts_file) if args.accounts_file else None,
-                  pairing_file=args.pairing_file)
+                  pairing_file=args.pairing_file, prepare_serial=initializer is not None)
     async with await relay.start(args.host, args.port, tls=tls) as server:
         print(f"RELAY_READY {'wss' if tls else 'ws'}://{args.host}:{args.port}/stream", flush=True)
         if ready is not None:

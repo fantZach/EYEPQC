@@ -167,9 +167,9 @@ def prepare_secure_cleanup_usb(workspace, gcc):
 
 
 def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
-              dev_secure_cleanup=False):
+              dev_secure_cleanup=False, dev_usb_bootstrap=False):
     secure_cleanup_enabled = (name == 'g6_usb' and
-                              (production_provider is not None or dev_secure_cleanup))
+                              (production_provider is not None or dev_secure_cleanup or dev_usb_bootstrap))
     app = workspace / name
     build = app / 'build'
     build.mkdir(parents=True)
@@ -180,6 +180,8 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
         defines.append('G6_USB')
         if production_provider is not None:
             defines.append('G6_PRODUCTION')
+        if dev_usb_bootstrap:
+            defines.append('G6_DEV_USB_BOOTSTRAP')
         if secure_cleanup_enabled:
             defines.append('G6_SECURE_CLEANUP')
     sources = [ROOT / 'board/src/ps/src/g3_camera.c']
@@ -272,7 +274,7 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
                                ', '.join(missing_cleanup))
     expected = {'g3_job': 128, 'g3_frame': 65600, 'g3_sealed': 68096}
     if name == 'g6_usb':
-        if production_provider is None:
+        if production_provider is None and not dev_usb_bootstrap:
             expected.update(g6_sk_load=1632, g6_seed_load=32, g6_ready=4)
         expected.update(g6_status=4)
         expected.update(g6_frames=4, g6_dropped=4, g6_control_errors=4,
@@ -310,7 +312,12 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
             if current[0] < previous[1]:
                 raise RuntimeError('Overlapping production-owned DDR ranges: ' +
                                    previous[2] + ' / ' + current[2])
-    if name == 'g6_usb' and dev_secure_cleanup:
+    if name == 'g6_usb' and dev_usb_bootstrap:
+        forbidden_bootstrap = {'g6_sk_load', 'g6_seed_load', 'g6_ready',
+                               'g6_production_security_init', 'production_drbg'}
+        if forbidden_bootstrap.intersection(abi) or 'usb_bootstrap' not in abi:
+            raise RuntimeError('Development USB bootstrap ELF profile isolation failed')
+    if name == 'g6_usb' and (dev_secure_cleanup or dev_usb_bootstrap):
         # Bind every development secret/readback range to this ELF so a later
         # read-only AP0 capture can verify terminal-fault cleanup by identity.
         development_owned = {
@@ -372,6 +379,13 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
         if production_provider is not None:
             manifest['security_profile'] = 'external_provider_unvalidated'
             manifest['production_secure_cleanup'] = manifest['secure_cleanup_implementation']
+        elif dev_usb_bootstrap:
+            manifest['security_profile'] = 'development_usb_bootstrap_secure_cleanup'
+            manifest['development_secure_cleanup'] = manifest['secure_cleanup_implementation']
+            manifest['usb_bootstrap'] = dict(version=1, total_bytes=1696,
+                                             trusted_local_usb_only=True,
+                                             identity_and_seed_storage='volatile_ram',
+                                             identity_or_seed_embedded=False)
         elif dev_secure_cleanup:
             manifest['security_profile'] = 'development_jtag_mailbox_secure_cleanup'
             manifest['development_secure_cleanup'] = manifest['secure_cleanup_implementation']
@@ -396,6 +410,8 @@ def main():
                         help='Compile an explicit G6_PRODUCTION provider source; its quality is not security-certified')
     parser.add_argument('--g6-dev-secure-cleanup', action='store_true',
                         help='Add bounded USB/DMA cleanup to the development JTAG/host-seed profile; remains experimental')
+    parser.add_argument('--g6-dev-usb-bootstrap', action='store_true',
+                        help='Explicit development-only USB identity/fresh PC seed bootstrap, no JTAG mailbox or SD secrets')
     args = parser.parse_args()
     xsa, workspace, tools = args.xsa.resolve(), args.output.resolve(), args.tool_root.resolve()
     provider_source = args.g6_production_provider.resolve() if args.g6_production_provider else None
@@ -403,6 +419,9 @@ def main():
         parser.error('--g6-dev-secure-cleanup requires --apps to include g6_usb')
     if args.g6_dev_secure_cleanup and provider_source is not None:
         parser.error('--g6-dev-secure-cleanup cannot be combined with --g6-production-provider')
+    if args.g6_dev_usb_bootstrap and ('g6_usb' not in args.apps or
+                                     args.g6_dev_secure_cleanup or provider_source is not None):
+        parser.error('--g6-dev-usb-bootstrap requires g6_usb and cannot mix JTAG/production profiles')
     if provider_source is not None and 'g6_usb' not in args.apps:
         parser.error('--g6-production-provider requires --apps to include g6_usb')
     if provider_source is not None and not provider_source.is_file():
@@ -415,6 +434,13 @@ def main():
             parser.error('Expected xc7z020clg400-2 XSA')
         if not {'m01.bit', 'ps7_init.tcl'} <= set(archive.namelist()):
             parser.error('XSA must contain bitstream and PS initialization')
+        if args.g6_dev_usb_bootstrap and args.boot_images:
+            hwh = ET.fromstring(archive.read('system.hwh'))
+            parameters = {p.attrib['NAME']: p.attrib.get('VALUE') for p in
+                          hwh.findall('.//MODULE[@MODTYPE="processing_system7"]/PARAMETERS/PARAMETER')}
+            if (parameters.get('PCW_SD0_PERIPHERAL_ENABLE') != '1' or
+                    parameters.get('PCW_SD0_SD0_IO') != 'MIO 40 .. 45'):
+                parser.error('SD bootstrap requires this XSA to enable SD0 on board MIO40..45')
     workspace.mkdir(parents=True)
     provider_for_build = None
     if provider_source is not None:
@@ -430,7 +456,8 @@ def main():
     for name in args.apps:
         manifests[name] = build_app(name, workspace, cpu, gcc, xsa,
                                     provider_for_build if name == 'g6_usb' else None,
-                                    args.g6_dev_secure_cleanup and name == 'g6_usb')
+                                    args.g6_dev_secure_cleanup and name == 'g6_usb',
+                                    args.g6_dev_usb_bootstrap and name == 'g6_usb')
         (workspace / (name + '_manifest.json')).write_text(json.dumps(manifests[name], indent=2) + '\n', encoding='utf-8')
         print('ARM_ELF_OK', name, flush=True)
     if args.boot_images:
@@ -439,7 +466,7 @@ def main():
             for path in (fsbl, fsbl.with_suffix('.map'), workspace / name / 'boot/BOOT.BIN'):
                 manifest['artifacts'][path.relative_to(workspace).as_posix()] = digest(path)
             manifest['development_provisioning_required'] = (
-                manifest.get('security_profile', '').startswith('development_jtag_mailbox'))
+                manifest.get('security_profile', '').startswith('development_'))
             (workspace / (name + '_manifest.json')).write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     if 'g3_camera' in manifests:
         (workspace / 'build_manifest.json').write_text(json.dumps(manifests['g3_camera'], indent=2) + '\n', encoding='utf-8')
@@ -469,6 +496,7 @@ def main():
     (workspace / 'software_build.json').write_text(json.dumps(dict(
         xsa_sha256=xsa_hash, tool_root=str(tools), applications=list(manifests),
         g6_dev_secure_cleanup=args.g6_dev_secure_cleanup,
+        g6_dev_usb_bootstrap=args.g6_dev_usb_bootstrap,
         generated_inputs=build_inputs, external_inputs=external_inputs,
         build_scripts={p.relative_to(ROOT).as_posix(): digest(p) for p in
                        (ROOT / 'board/prj/build_software.py', ROOT / 'board/prj/generate_bsp.tcl',

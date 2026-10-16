@@ -56,7 +56,28 @@ static void usb_memory_barrier(void) {
 static u8 rx_ring[2048], control_record[1039];
 static volatile u32 rx_head, rx_tail, rx_bad;
 static u32 control_used, control_target;
+#ifdef G6_DEV_USB_BOOTSTRAP
+static volatile u32 bootstrap_rx_interrupted;
+static u32 bootstrap_data_seen;
+static void bootstrap_rx_wipe(void *p, u32 n) {
+    volatile u8 *bytes = p;
+    while (n--) *bytes++ = 0;
+}
+#endif
 static void rx_reset(void) {
+#ifdef G6_DEV_USB_BOOTSTRAP
+    /* An incomplete QUERY carries no material and may be retried. A DATA
+     * header is identifiable before its first secret payload byte arrives. */
+    u32 pending = (rx_head - rx_tail) & 2047U;
+    int pending_data = pending >= 9U && rx_ring[rx_tail] == 1U;
+    static const u8 data_prefix[6] = {'E','Y','B','S',1,2};
+    for (u32 i = 0; pending_data && i < sizeof data_prefix; ++i)
+        if (rx_ring[(rx_tail + 3U + i) & 2047U] != data_prefix[i]) pending_data = 0;
+    if (bootstrap_data_seen || pending_data) bootstrap_rx_interrupted = 1U;
+    bootstrap_data_seen = 0U;
+    bootstrap_rx_wipe(rx_ring, sizeof rx_ring);
+    bootstrap_rx_wipe(control_record, sizeof control_record);
+#endif
     rx_head = rx_tail = rx_bad = control_used = control_target = 0;
 }
 static void rx_push(u8 value) {
@@ -324,6 +345,11 @@ static void ep1_out(void *ref, u8 ep, u8 event, void *data) {
                 }
 #endif
             }
+#ifdef G6_DEV_USB_BOOTSTRAP
+            /* Only the completed CPU-owned OUT payload, before DMA release. */
+            bootstrap_rx_wipe(buf, len);
+            Xil_DCacheFlushRange((UINTPTR)buf, (len + 31U) & ~31U);
+#endif
             XUsbPs_EpBufferRelease(handle);
         }
         XUsbPs_EpPrime(u, 1, XUSBPS_EP_DIRECTION_OUT);
@@ -411,13 +437,38 @@ int usb_cdc_ready(void) {
 u32 usb_cdc_test_epoch(void) { return test_epoch; }
 u32 usb_cdc_connection_epoch(void) { return connection_epoch; }
 
+#ifdef G6_DEV_USB_BOOTSTRAP
+int usb_cdc_bootstrap_rx_pending(void) { return control_used || rx_head != rx_tail; }
+int usb_cdc_bootstrap_rx_interrupted(void) { return bootstrap_rx_interrupted != 0U; }
+void usb_cdc_bootstrap_rx_clear(void) {
+    u32 saved = 0;
+#if defined(__arm__) && !defined(G6_USB_NATIVE_TEST)
+    __asm__ volatile("mrs %0, cpsr\n\tcpsid i" : "=r"(saved) :: "memory", "cc");
+#endif
+    rx_reset();
+    bootstrap_rx_interrupted = 0U;
+#if defined(__arm__) && !defined(G6_USB_NATIVE_TEST)
+    if (!(saved & 0x80U)) __asm__ volatile("cpsie i" ::: "memory", "cc");
+#else
+    (void)saved;
+#endif
+}
+#endif
+
 #ifdef G6_USB
 int usb_cdc_take_control(u8 *out, u32 capacity) {
     if (!out || rx_bad) return -1;
     while (rx_tail != rx_head) {
         u8 value = rx_ring[rx_tail];
+#ifdef G6_DEV_USB_BOOTSTRAP
+        rx_ring[rx_tail] = 0;
+#endif
         rx_tail = (rx_tail + 1U) & 2047U;
         control_record[control_used++] = value;
+#ifdef G6_DEV_USB_BOOTSTRAP
+        if (control_used == 9U && !memcmp(control_record + 3, "EYBS\x01\x02", 6U))
+            bootstrap_data_seen = 1U;
+#endif
         if (control_used == 3) {
             u32 length = ((u32)control_record[1] << 8) | control_record[2];
             if (control_record[0] != 1 || length < 12 || length > 1036) {
@@ -430,6 +481,9 @@ int usb_cdc_take_control(u8 *out, u32 capacity) {
             u32 length = control_target - 3;
             if (length > capacity) { rx_bad = 1; return -1; }
             memcpy(out, control_record + 3, length);
+#ifdef G6_DEV_USB_BOOTSTRAP
+            bootstrap_rx_wipe(control_record, sizeof control_record);
+#endif
             control_used = control_target = 0;
             return (int)length;
         }
