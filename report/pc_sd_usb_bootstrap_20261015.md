@@ -155,3 +155,16 @@ Board 代理另外分析 READY ACK 完成边界与 DTR 关闭的竞态；其证�
 安装退出0，安装EXE哈希与上述1.3.1候选一致，`--version`为1.3.1，默认离线check为CONFIG_OK。
 settings、原六项运行材料和测试身份共8项文件哈希前后一致，用户PATH完全不变；未启动服务或访问COM7。
 安装日志 `build/pc_installer/install_1.3.1_dtr_fix_20261016.log`；真实视频仍须与更新的SD固件联测。
+
+### 后续实际播放及未修复的握手竞态
+
+修正版SD上板后，用户反馈Android正常显示45fps；COM4也捕获WAIT/READY mode0x05。
+同次用户日志的首个viewer仍在OPEN前2.282秒TimeoutError，后一次连接成功；期间出现
+websockets `connection.py:889 -> asyncio/server.py:196 -> server.py:527` AssertionError。
+
+PC子代理只读诊断并以真实authorize+延迟verify+客户端提前断连的纯软件fixture复现相同堆栈：
+连接await期间成为CLOSED，websockets 15.0.1仍尝试发送101，违反其CONNECTING断言。
+验证锁释放，USB factory没有调用；这不证明密码或ML-KEM失败，也不能解释首次USB QUERY超时。
+仅临时wrapper验证非CONNECTING时取消握手能消除该断言且下一连接成功，未改源码、未打包或部署。
+首个QUERY的250ms DTR等待+2秒STATUS上限与耗时相符，但实际USB时序仍不足以唯一定位。
+当前手机播放未被打断，本报告不宣称这些剩余问题已修复或完成持续/重连验收。

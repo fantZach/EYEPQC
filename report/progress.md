@@ -66,6 +66,30 @@ EXE哈希匹配，默认check为CONFIG_OK，settings+原六文件+测试身份�
 G0备份 `079482ff600bac35203dd75e72080940e8cc2bcd9a3d5d485dd51ffec584ec1c`，三者读回一致。
 未删除文件、未格式化/写原始盘、未启动服务或操作板卡；新版独立拔插持久性及实板验收仍待完成。
 
+### 修正版SD启动到Android播放已跑通，首次连接异常保留
+
+用户随后回复“已上版”，直接将卡放回板上；没有报告本轮整读卡器重插复核，故该子项不补记通过。
+主协调在COM4启动新只读采集器，原始日志 `data/captures/g6_sd_fixed_cold_20261016_1241.log`：
+匹配修正版应用分区checksum `0xffdd3343`，FSBL SD启动、`SUCCESSFUL_HANDOFF`、
+`G6_DEV_USB_WAIT boot_mode=0x05` 和 `G6_DEV_USB_READY boot_mode=0x05` 均已捕获。
+用户执行开发初始化入口，贴出DEV_USB_READY及后续RELAY_SESSION_OPEN，并明确反馈
+“可以正常连接显示，fps45”。据此记录真实Android播放功能成功；45fps来自用户APP观察，
+不是自动计时/逐帧计数或持续时长验收。主协调只读核对8765监听及已建立连接由当前eyepqc拥有，未接触COM7或重启服务。
+
+同一用户日志仍包含首次viewer取得串口前2.282秒TimeoutError，以及websockets握手
+`send_response` 的AssertionError，随后连接成功。不能将这些错误抹去或把整轮标为无错误。
+子代理只读调查原因，不更改/替换正在播放的程序。完整物理断电/核心灯灭及无JTAG连接未获本轮确认，
+Windows仍列出FTDI设备（不据此推断线缆是否接到板端）；完整冷启动和重连门禁保持未关闭。
+
+PC子代理以真实 `Relay.authorize` 的纯软件延迟密码验证/客户端提前断连fixture，精确复现
+websockets 15.0.1同一断言堆栈：await期间连接成为CLOSED，库仍发送101并断言CONNECTING。
+验证锁正常释放且USB factory未调用，不是密码错误或ML-KEM失败的证据。临时wrapper验证
+“认证收尾后非CONNECTING则取消握手”的最小候选可避免断言并允许下一连接；没有修改/部署该候选。
+Board只读确认READY epoch清理分支本身不丢弃RX，另发现重复SET_CONTROL_LINE_STATE仍无条件rx_reset；
+该路径可能抹去排队QUERY，但缺实际USB控制/BULK时序，不将其认定为本次超时的唯一根因。
+2.282秒与250ms DTR等待+2秒STATUS截止相符；bootstrap记录不计入relay的usb_records，不能据0记录断定无回应。
+当前功能已成功，剩余连接可靠性问题留待正式回归/修复；没有更换正在播放的1.3.1或中断服务。
+
 ## 2026-10-15：PC1.2.1当前用户安装、PATH与账号维护
 
 由PC子代理编码，主协调负责审查、本机配置及统一提交。安装器只使用本地已核验签名/固定hash的编译器，
