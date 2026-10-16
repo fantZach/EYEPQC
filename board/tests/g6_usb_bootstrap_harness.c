@@ -9,6 +9,8 @@
 #undef main
 extern int eye_mlkem_keypair_derand(uint8_t *, uint8_t *, const uint8_t *);
 volatile struct g6_secure_cleanup_diag g6_secure_cleanup_diag;
+volatile uint32_t XUsbPs_Ch9ClearHaltInCount, XUsbPs_Ch9ClearHaltOutCount;
+volatile uint32_t XUsbPs_Ch9ClearHaltLastEndpoint;
 static uint64_t fake_now;
 static uint32_t fake_epoch = 7U;
 static unsigned rx_clears;
@@ -19,8 +21,8 @@ static unsigned query_trace_count;
 static uint8_t last_send[128];
 static uint8_t material[EYE_BOOT_TOTAL], public_key[800];
 int xil_printf(const char *f, ...) {
-    if (!strcmp(f, "G6_DEV_USB_QUERY state=%u epoch=%lu\r\n") ||
-            !strcmp(f, "G6_DEV_USB_QUERY_TX result=%d ready=%u epoch=%lu\r\n"))
+    if (!strcmp(f, "G6_DEV_USB_QUERY state=%u epoch=%u clear_in=%u clear_out=%u last_ep=%u\r\n") ||
+            !strcmp(f, "G6_DEV_USB_QUERY_TX result=%d ready=%u epoch=%u\r\n"))
         ++query_trace_count;
     return 0;
 }

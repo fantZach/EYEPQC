@@ -1,6 +1,7 @@
 """Offline-only real C/ML-KEM bootstrap and profile-builder rejection tests."""
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -10,6 +11,51 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class BootstrapTests(unittest.TestCase):
+    def test_query_metadata_uses_actual_bsp_formatter_and_32_bit_epoch(self):
+        # Native ABI != ARM32: guard the format and execute BSP output, not ARM varargs corruption.
+        bsp = ROOT / 'build/vitis/g6_sd_usb_bootstrap_20261016_5/bsp/ps7_cortexa9_0'
+        source = (ROOT / 'board/src/ps/src/g6_usb.c').read_text()
+        formats = [value for value in re.findall(r'xil_printf\(("(?:[^"\\]|\\.)*")', source)
+                   if value.startswith('"G6_DEV_USB_QUERY')]
+        self.assertEqual(formats, ['"G6_DEV_USB_QUERY state=%u epoch=%u clear_in=%u clear_out=%u last_ep=%u\\r\\n"',
+            '"G6_DEV_USB_QUERY_TX result=%d ready=%u epoch=%u\\r\\n"'])
+        harness = r'''
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include "xil_printf.h"
+static char output[256]; static unsigned used;
+void outbyte(char c) { assert(used + 1 < sizeof output); output[used++] = c; output[used] = 0; }
+int main(void) {
+    const unsigned epochs[] = {1U, 37U, UINT32_MAX};
+    for (unsigned i = 0; i < sizeof epochs / sizeof epochs[0]; ++i) {
+        char expected[256]; used = 0;
+        xil_printf(@ENTRY@, 2U, epochs[i], 7U, 11U, 129U);
+        xil_printf(@TX@, 0, 1U, epochs[i]);
+        snprintf(expected, sizeof expected,
+            "G6_DEV_USB_QUERY state=2 epoch=%u clear_in=7 clear_out=11 last_ep=129\r\n"
+            "G6_DEV_USB_QUERY_TX result=0 ready=1 epoch=%u\r\n", epochs[i], epochs[i]);
+        assert(!strcmp(output, expected));
+    }
+    used = 0; xil_printf("%lu", (s64)UINT64_C(4294967333));
+    assert(!strcmp(output, "4294967333"));
+    puts("ACTUAL_BSP_QUERY_PRINTF_PASS"); return 0;
+}
+'''.replace('@ENTRY@', formats[0]).replace('@TX@', formats[1])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            fixture, output = path / 'printf.c', path / 'printf.exe'
+            fixture.write_text(harness)
+            result = subprocess.run(['C:/msys64/ucrt64/bin/gcc.exe', '-std=c11', '-O2', '-DSDT',
+                '-I', str(bsp / 'include'), str(fixture),
+                str(bsp / 'libsrc/standalone_v9_5/src/xil_printf.c'), '-o', str(output)],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = subprocess.run([str(output)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('ACTUAL_BSP_QUERY_PRINTF_PASS', result.stdout)
+
     def test_actual_sdk_rx_cpu_buffers(self):
         workspace = ROOT / 'build/vitis/g6_handshake_recovery_20261015_1'
         sdk = Path('D:/AmdDesignTools/2026.1/Vitis/data/embeddedsw')

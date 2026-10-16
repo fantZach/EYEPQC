@@ -38,6 +38,8 @@
 int usb_cdc_bootstrap_rx_pending(void);
 int usb_cdc_bootstrap_rx_interrupted(void);
 void usb_cdc_bootstrap_rx_clear(void);
+extern volatile uint32_t XUsbPs_Ch9ClearHaltInCount, XUsbPs_Ch9ClearHaltOutCount;
+extern volatile uint32_t XUsbPs_Ch9ClearHaltLastEndpoint;
 static struct eye_bootstrap usb_bootstrap;
 static uint64_t bootstrap_wire_started;
 static uint32_t bootstrap_irq_saved;
@@ -433,8 +435,10 @@ static int bootstrap_control(const uint8_t *message, unsigned length) {
                 !eye_boot_u16(message + 6) && !eye_boot_u16(message + 8) &&
                 eye_boot_u16(message + 10) == EYE_BOOT_TOTAL;
     if (query)
-        xil_printf("G6_DEV_USB_QUERY state=%u epoch=%lu\r\n",
-                   (unsigned)usb_bootstrap.state, (unsigned long)usb_cdc_connection_epoch());
+        xil_printf("G6_DEV_USB_QUERY state=%u epoch=%u clear_in=%u clear_out=%u last_ep=%u\r\n",
+                   (unsigned)usb_bootstrap.state, (unsigned)usb_cdc_connection_epoch(),
+                   (unsigned)XUsbPs_Ch9ClearHaltInCount, (unsigned)XUsbPs_Ch9ClearHaltOutCount,
+                   (unsigned)XUsbPs_Ch9ClearHaltLastEndpoint);
     enum eye_boot_state previous = usb_bootstrap.state;
     int status = eye_boot_process(&usb_bootstrap, message, length, bootstrap_now_ms(),
                                   usb_cdc_connection_epoch(), bootstrap_activate);
@@ -446,8 +450,8 @@ static int bootstrap_control(const uint8_t *message, unsigned length) {
     int sent = send_control(reply, sizeof reply);
     wipe(reply, sizeof reply);
     if (query)
-        xil_printf("G6_DEV_USB_QUERY_TX result=%d ready=%u epoch=%lu\r\n", sent,
-                   (unsigned)usb_cdc_ready(), (unsigned long)usb_cdc_connection_epoch());
+        xil_printf("G6_DEV_USB_QUERY_TX result=%d ready=%u epoch=%u\r\n", sent,
+                   (unsigned)usb_cdc_ready(), (unsigned)usb_cdc_connection_epoch());
     if (sent) {
         unsigned ready = (unsigned)usb_cdc_ready();
         uint32_t epoch = usb_cdc_connection_epoch();

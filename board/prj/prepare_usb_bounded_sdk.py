@@ -335,6 +335,8 @@ def patch_ch9(source: str) -> tuple[str, int]:
         '/* Readable from a debugger/diagnostic snapshot; incremented on descriptor\n'
         ' * queue failure before the standard-request path stalls EP0. */\n'
         'volatile u32 XUsbPs_Ch9DescriptorSendFailures = 0U;\n'
+        'volatile u32 XUsbPs_Ch9ClearHaltInCount, XUsbPs_Ch9ClearHaltOutCount;\n'
+        'volatile u32 XUsbPs_Ch9ClearHaltLastEndpoint;\n'
         'volatile XUsbPs_Ch9OwnershipDiag XUsbPs_Ch9OwnershipDiagnostics = {0};',
         "CH9 telemetry symbol",
     )
@@ -396,6 +398,35 @@ def patch_ch9(source: str) -> tuple[str, int]:
     start = source.index(handler_signature, first_signature + len(handler_signature))
     end = source.index('static int XUsbPs_HandleVendorReq(XUsbPs *InstancePtr,', start)
     request_handler = source[start:end]
+    clear_start = request_handler.index('\t\tcase XUSBPS_REQ_CLEAR_FEATURE:')
+    clear_end = request_handler.index('\t\tcase XUSBPS_REQ_SET_FEATURE:', clear_start)
+    request_handler = request_handler[:clear_start] + '''		case XUSBPS_REQ_CLEAR_FEATURE: {
+			u32 address = SetupData->wIndex;
+			u32 ep = address & 15U;
+			/* Match the CDC descriptor: EP1 IN/OUT and EP2 IN only. */
+			if (SetupData->bmRequestType != XUSBPS_STATUS_ENDPOINT ||
+			    SetupData->wValue != XUSBPS_ENDPOINT_HALT || SetupData->wLength != 0U ||
+			    (address != 0x01U && address != 0x81U && address != 0x82U) ||
+			    ep >= InstancePtr->DeviceConfig.NumEndpoints) {
+				Error = 1;
+				break;
+			}
+			/* CLEAR_HALT synchronizes DATA0 even when the endpoint isn't stalled. */
+			if (address & 0x80U) {
+				XUsbPs_SetBits(InstancePtr, XUSBPS_EPCRn_OFFSET(ep), XUSBPS_EPCR_TXR_MASK);
+				XUsbPs_ClrBits(InstancePtr, XUSBPS_EPCRn_OFFSET(ep), XUSBPS_EPCR_TXS_MASK);
+				++XUsbPs_Ch9ClearHaltInCount;
+			} else {
+				XUsbPs_SetBits(InstancePtr, XUSBPS_EPCRn_OFFSET(ep), XUSBPS_EPCR_RXR_MASK);
+				XUsbPs_ClrBits(InstancePtr, XUSBPS_EPCRn_OFFSET(ep), XUSBPS_EPCR_RXS_MASK);
+				++XUsbPs_Ch9ClearHaltOutCount;
+			}
+			XUsbPs_Ch9ClearHaltLastEndpoint = address;
+			XUsbPs_EpBufferSend(InstancePtr, 0, NULL, 0);
+			break;
+		}
+
+''' + request_handler[clear_end:]
     send_calls = re.findall(r'XUsbPs_EpBufferSend\((.*?)\);', request_handler, re.DOTALL)
     if len(send_calls) < 10:
         raise ValueError(f"CH9 EP0 send anchors: expected at least ten, found {len(send_calls)}")

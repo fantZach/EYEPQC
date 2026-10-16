@@ -90,3 +90,7 @@ PC 1.3.2 在异步密码校验完成后确认连接仍为CONNECTING；已断开�
 重连、再次冷启动、新随机材料、错误/半包拒绝分别记录，不能以 JTAG 暖启动或模拟器替代。
 合并候选增加两条合法QUERY的开发态UART元数据：入口state/epoch及TX结果/ready/epoch，不打印payload、pin、私钥或seed。
 日志会改变执行时序；它用于定位应用是否收到QUERY及TX返回，不是USB总线抓包或无扰动性能证据。
+`_5` 的epoch曾用不适配ARM32 BSP的 `%lu`，旧日志epoch全部无效；后续使用 `%u`/unsigned，并以真实BSP formatter回归格式。
+标准CLEAR_FEATURE(ENDPOINT_HALT)需同步复位目标方向的数据序号；生成CH9只对现有端点01/81/82及合法请求执行RXR/TXR并清STALL，
+不在普通DTR切换时盲目复位，也不改变应用会话/密钥格式。参见 [Microsoft USB reset-pipe语义](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/usb/ns-usb-_urb_header)。
+合法QUERY附带clear_in/clear_out/last_ep公开处理计数；仅表示控制请求进入该路径，不证明其ACK成功或现场唯一根因。

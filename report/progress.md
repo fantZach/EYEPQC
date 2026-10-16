@@ -1,5 +1,33 @@
 # Implementation progress
 
+## 2026-10-16 20:22：严格对齐定位及CLEAR_HALT候选（待部署）
+
+用户对 `_5` 反馈仍第一次失败、第二次成功，主协调开启COM4只读采集
+`data/captures/g6_query_runtime_20261016_2022.log`。用户按要求仅APP重连两次，再正常停止PC服务，未重启板卡。
+只发单条QUERY做严格对应：20:25:42成功49字节/31ms，对应UART行7–8、TX1/ready0（消费ACK后正常close）；
+20:25:53失败，对应UART行9–10、entry state2及TX0/ready1，而PC原句柄2秒+延读2秒仍零字节。
+此例排除QUERY未到板端应用；设备端成功完成USB发送不等于主机应用已经收到。
+随后同句柄连续6次QUERY均完整READY49字节，对应UART行11–22（前五TX0，最后正常关闭边缘TX1）；
+再两个独立句柄分别成功49字节/16ms（行23–24）及零字节4秒（行25–26）。无DATA/身份读取或超时重发。
+原数据 `tmp/query_probe_aligned_1_20261016_2025.jsonl`、`query_probe_aligned_2_20261016_2026.jsonl`、
+`query_probe_same_handle_20261016_2028.jsonl`、`query_probe_after_six_20261016_2030.jsonl`（最后实际20:31）。
+公开汇总 `tmp/query_handle_combined_summary_20261016_2031.json` 固定源哈希和UART逐组行号。
+日志量化0ms不表示物理零延迟；旧epoch %lu在实际BSP按64位取参而ARM32实参32位，所有旧epoch数字均不作为证据。
+
+同句柄成功/重开交替将范围缩到端口重开时的USB IN/主机交付同步；DATA PID模型可解释，但无总线事务证据，不认定唯一根因。
+未启用全USB抓包或安装驱动，避免采集其他设备载荷。主协调只读核对服务所有权，用户正常Ctrl+C后才独占COM7。
+Board子代理以实际generated CH9反例确认CLEAR_FEATURE(ENDPOINT_HALT)原代码只清STALL，不复位设备方向toggle，
+这是明确的标准行为缺失；新代码只允许CDC实际01/81/82、正确recipient/direction/feature/length及NumEndpoints范围，
+目标方向RXR/TXR后清STALL，保持bounded EP0及sticky fault，普通DTR与密钥/业务协议不变。
+新增clearhalt IN/OUT处理计数和last_ep，仅在主线程合法QUERY日志输出；ISR不打印，不记录payload/私钥/seed。
+epoch改为%u/unsigned，以生产格式约束和真实BSP输出回归；未声称native测试重现ARM32参数串槽。
+
+独立 `_6` 候选BOOT 4,303,824字节，SHA256 `08702a82f60594800b811ff2017d1dfb165c7cf88834a77d91f19552aa5b7e1b`；
+主协调复跑BSP/79哈希/709生成输入/应用及FSBL启动验证通过，实际生成文件包含方向reset与计数，旧产物保留。
+12个顶层测试+14子项的最终合并重跑30.41秒通过，含16组合法/非法请求及1次EP0发送失败；详见Board报告。
+该候选尚未写卡，PC不重打包/不升级，当前服务停止。必须由新实板日志确认Windows是否真的发CLEAR_HALT、
+再逐次验证首次连接与重连；源码规范修复不等于现场问题已通过。
+
 ## 2026-10-16晚间：首次查询失败复现、生成代码覆盖遗漏与合并镜像
 
 用户在PC1.3.2/已写入的 `_3` 复测仍首次2.266秒超时，期间也有两次正常STOP及后续一次查询超时；
