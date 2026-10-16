@@ -4,6 +4,7 @@
 独立 `development_usb_bootstrap_secure_cleanup` profile已构建；原手机suite2协议不变，JTAG/default/production隔离。
 匹配视频XSA的FSBL/BOOT与79项校验、ARM启动、板端真实代码/PC-C线协议定向检查通过；仍不是生产安全。
 F:新BOOT已按排他新建/flush/读回方式写入，旧G0保留卡上及本地备份，尚待读卡器重插复核和实际无JTAG冷启动。
+随后用户回复整读卡器已重插，主协调重新识别卡并复读新BOOT/旧备份，长度与SHA256均一致，重插持久性通过；实际冷启动仍待验证。
 协议、安全边界与后续验收见 [USB初始化契约](g6_sd_usb_bootstrap.md)、[板端记录](../report/board_g6_sd_20261015.md)。
 PC使用显式开发开关与受ACL保护的私钥路径；普通run不读取身份私钥。软件通过不能替代真实启动、初始化和认证视频。
 

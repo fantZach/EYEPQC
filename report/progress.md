@@ -22,6 +22,9 @@ F:卡重新核对为Disk1/DD-TEK READER/31,266,439,168字节/MBR/FAT32/EYEPQC，
 新BOOT以CreateNew/Flush(true)/读回方式部署，旧镜像重命名保留卡上及本地，未格式化或写原始盘。
 新BOOT为4,303,056字节、SHA256 `c4b92d1628a9fbaebc3926a3508b07f7866cf544ece3c5a81b1b905165c099e2`；
 读卡器重插持久性、实际SD冷启动/UART boot_mode与USB初始化/认证视频仍待验证。
+随后用户确认整读卡器重插，主协调重新识别F:卡并独立复读两文件：新BOOT仍为上述哈希，旧G0备份仍为
+`079482ff600bac35203dd75e72080940e8cc2bcd9a3d5d485dd51ffec584ec1c`，重插持久性检查通过；
+未启动/复位板卡，尚不关闭实际无JTAG冷启动与认证视频门禁。
 详见 [冻结契约](../doc/g6_sd_usb_bootstrap.md) 与 [板端实现和部署记录](board_g6_sd_20261015.md)。
 
 ## 2026-10-15：PC1.2.1当前用户安装、PATH与账号维护
