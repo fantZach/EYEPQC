@@ -425,6 +425,8 @@ static int bootstrap_activate(const uint8_t pin[32], const uint8_t sk[1632],
     wipe(computed, sizeof computed);
     return status;
 }
+static int retire_disconnected_session(unsigned send_status, unsigned resume_status,
+                                       unsigned ready_at_failure, uint32_t epoch_at_failure);
 static int bootstrap_control(const uint8_t *message, unsigned length) {
     enum eye_boot_state previous = usb_bootstrap.state;
     int status = eye_boot_process(&usb_bootstrap, message, length, bootstrap_now_ms(),
@@ -433,9 +435,20 @@ static int bootstrap_control(const uint8_t *message, unsigned length) {
     if (status) fail_closed();
     uint8_t reply[EYE_BOOT_ACK];
     eye_boot_reply(&usb_bootstrap, reply);
+    uint32_t epoch_before_send = usb_cdc_connection_epoch();
     int sent = send_control(reply, sizeof reply);
     wipe(reply, sizeof reply);
-    if (sent) { fail_closed(); return 1; }
+    if (sent) {
+        unsigned ready = (unsigned)usb_cdc_ready();
+        uint32_t epoch = usb_cdc_connection_epoch();
+        /* The host can consume READY and close before the DMA completion check. */
+        if (!status && usb_bootstrap.state == EYE_BOOT_READY && sent == 1 &&
+                (!ready || epoch != epoch_before_send)) {
+            if (retire_disconnected_session((unsigned)sent, 0U, ready, epoch)) return 1;
+        } else {
+            fail_closed(); return 1;
+        }
+    }
     if (previous != EYE_BOOT_READY && usb_bootstrap.state == EYE_BOOT_READY) {
         g6_status = 1U;
         xil_printf("G6_DEV_USB_READY boot_mode=0x%02x\r\n", Xil_In32(0xf800025cU) & 15U);

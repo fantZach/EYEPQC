@@ -13,13 +13,15 @@ static uint64_t fake_now;
 static uint32_t fake_epoch = 7U;
 static unsigned rx_clears;
 static int change_epoch_during_activation;
+static int send_result, disconnect_after_send;
+static int fake_ready = 1, drop_dtr_after_send, cleanup_failure;
 static uint8_t last_send[128];
 static uint8_t material[EYE_BOOT_TOTAL], public_key[800];
 int xil_printf(const char *f, ...) { (void)f; return 0; }
 uint32_t Xil_In32(uintptr_t p) { assert(p == 0xf800025cU); return 5; }
 void XTime_GetTime(XTime *p) { *p = fake_now * 1000U; }
 void Xil_DCacheFlushRange(uintptr_t p, unsigned n) { (void)p; (void)n; }
-int usb_cdc_ready(void) { return 1; }
+int usb_cdc_ready(void) { return fake_ready; }
 uint32_t usb_cdc_connection_epoch(void) {
     if (change_epoch_during_activation && usb_bootstrap.received == EYE_BOOT_TOTAL) {
         change_epoch_during_activation = 0;
@@ -32,11 +34,16 @@ int usb_cdc_bootstrap_rx_interrupted(void) { return 0; }
 void usb_cdc_bootstrap_rx_clear(void) { ++rx_clears; }
 int usb_cdc_send(uint8_t *p, uint32_t n) {
     assert(n == EYE_BOOT_ACK + 3U && p[0] == 1U);
-    memcpy(last_send, p, n); return 0;
+    memcpy(last_send, p, n);
+    if (disconnect_after_send) ++fake_epoch;
+    if (drop_dtr_after_send) fake_ready = 0;
+    return send_result;
 }
 int g3_usb_cleanup_stop_dma_and_clear_gcm(void) { return 0; }
 int g3_usb_cleanup_wipe_frame_and_sealed(void) { return 0; }
-int usb_cdc_secure_cleanup_tx(uint8_t *p, unsigned n) { memset(p, 0, n); return 0; }
+int usb_cdc_secure_cleanup_tx(uint8_t *p, unsigned n) {
+    memset(p, 0, n); return cleanup_failure;
+}
 int g3_usb_flush(void) { return 0; }
 int usb_cdc_take_control(uint8_t *p, uint32_t n) { (void)p; (void)n; return 0; }
 int usb_cdc_init(void) { return 0; }
@@ -60,6 +67,8 @@ static void fresh(void) {
     memset(random_seed, 0, sizeof random_seed);
     phase = WAIT_HELLO; rx_clears = 0; fake_now = 100;
     change_epoch_during_activation = 0;
+    send_result = disconnect_after_send = 0;
+    drop_dtr_after_send = cleanup_failure = 0; fake_ready = 1;
 }
 static unsigned message(uint8_t *out, unsigned type, unsigned offset, unsigned length) {
     memcpy(out, "EYBS", 4); out[4] = 1; out[5] = type;
@@ -94,11 +103,48 @@ int main(void) {
     assert(phase == STREAM && session.video_key[0] == 0x34);
     assert(!retire_disconnected_session(UINT32_MAX, 0U, 0U, ++fake_epoch));
     assert(usb_bootstrap.state == EYE_BOOT_READY && !memcmp(private_key, sk, 1632));
+    send_result = disconnect_after_send = 1;
+    assert(!bootstrap_control(packet, message(packet, 1, 0, 0)));
+    assert(usb_bootstrap.state == EYE_BOOT_READY && phase == WAIT_HELLO);
+    assert(!memcmp(private_key, sk, 1632));
+    send_result = disconnect_after_send = 0;
     assert(bootstrap_control(packet, message(packet, 2, 0, 1)));
     faulted();
     assert(!bootstrap_control(packet, message(packet, 1, 0, 0)));
     assert(last_send[15] == EYE_BOOT_FAULT && zero(last_send + 17, 32));
     assert(bootstrap_control(packet, message(packet, 2, 0, 1024))); faulted();
+    fresh();
+    assert(!bootstrap_control(packet, message(packet, 2, 0, 1024)));
+    send_result = disconnect_after_send = 1;
+    assert(!bootstrap_control(packet, message(packet, 2, 1024, 672)));
+    assert(usb_bootstrap.state == EYE_BOOT_READY && phase == WAIT_HELLO);
+    assert(!memcmp(private_key, sk, 1632) && !memcmp(random_seed, material + 1664, 32));
+    send_result = 2; disconnect_after_send = 0;
+    assert(bootstrap_control(packet, message(packet, 1, 0, 0))); faulted();
+    fresh(); send_result = disconnect_after_send = 1;
+    assert(bootstrap_control(packet, message(packet, 2, 0, 1024))); faulted();
+    fresh();
+    assert(!bootstrap_control(packet, message(packet, 2, 0, 1024)));
+    assert(!bootstrap_control(packet, message(packet, 2, 1024, 672)));
+    send_result = 1;
+    assert(bootstrap_control(packet, message(packet, 1, 0, 0))); faulted();
+    fresh();
+    assert(!bootstrap_control(packet, message(packet, 2, 0, 1024)));
+    assert(!bootstrap_control(packet, message(packet, 2, 1024, 672)));
+    send_result = drop_dtr_after_send = 1;
+    assert(!bootstrap_control(packet, message(packet, 1, 0, 0)));
+    assert(usb_bootstrap.state == EYE_BOOT_READY && phase == WAIT_HELLO);
+    assert(!memcmp(private_key, sk, 1632));
+    fake_ready = 1; drop_dtr_after_send = 0;
+    disconnect_after_send = cleanup_failure = 1;
+    assert(bootstrap_control(packet, message(packet, 1, 0, 0))); faulted();
+    for (int error = 4; error <= 5; ++error) {
+        fresh();
+        assert(!bootstrap_control(packet, message(packet, 2, 0, 1024)));
+        assert(!bootstrap_control(packet, message(packet, 2, 1024, 672)));
+        send_result = error;
+        assert(bootstrap_control(packet, message(packet, 1, 0, 0))); faulted();
+    }
     for (unsigned bad = 0; bad < 7; ++bad) {
         fresh(); unsigned n = message(packet, 2, 0, 1024);
         if (bad == 0) packet[0] ^= 1;

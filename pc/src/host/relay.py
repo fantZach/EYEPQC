@@ -312,12 +312,12 @@ class Relay:
                     raise
             else:
                 device = self.serial_factory()
-            device.dtr = False
-            device.reset_input_buffer()
-            device.reset_output_buffer()
-            await asyncio.sleep(0.25)
-            device.reset_input_buffer()
-            device.dtr = True
+                device.dtr = False
+                device.reset_input_buffer()
+                device.reset_output_buffer()
+                await asyncio.sleep(0.25)
+                device.reset_input_buffer()
+                device.dtr = True
             print(f"RELAY_SESSION_OPEN peer={websocket.remote_address} "
                   f"serial={getattr(device, 'port', 'simulated')}", flush=True)
             queue = asyncio.Queue(maxsize=self.queue_records)

@@ -18,7 +18,7 @@ class InstallerLifecycleTests(unittest.TestCase):
         self.assertTrue(root.is_relative_to(repo / 'build/pc_installer') or
                         root.is_relative_to(Path(tempfile.gettempdir()).resolve()))
         self.assertGreater(len(root.parts), len(Path(tempfile.gettempdir()).parts))
-        setup = repo / 'build/pc_installer/dist/EYEPQC-Setup-1.3.0-fixture.exe'
+        setup = repo / 'build/pc_installer/dist/EYEPQC-Setup-1.3.1-fixture.exe'
         self.assertTrue(setup.is_file())
         app = root / 'bin'
         self.assertFalse((app / 'eyepqc.exe').exists(), 'use a fresh fixture root')
@@ -100,7 +100,7 @@ class InstallerLifecycleTests(unittest.TestCase):
         self.assertTrue(root.is_relative_to(repo / 'build/pc_installer') or
                         root.is_relative_to(Path(tempfile.gettempdir()).resolve()))
         self.assertGreater(len(root.parts), len(Path(tempfile.gettempdir()).parts))
-        setup = repo / 'build/pc_installer/dist/EYEPQC-Setup-1.3.0-fixture.exe'
+        setup = repo / 'build/pc_installer/dist/EYEPQC-Setup-1.3.1-fixture.exe'
         environment = r'Software\EYEPQC\InstallerFixture\Environment'
         ownership = r'Software\EYEPQC\InstallerFixture\PathOwnership'
         uninstall_key = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\{BC45B197-2603-498A-B857-C58A97E11DC0}_is1'

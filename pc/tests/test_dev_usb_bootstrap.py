@@ -280,6 +280,40 @@ class CliBootstrapTests(unittest.TestCase):
 
 
 class PreparationCancellation(unittest.IsolatedAsyncioTestCase):
+    async def test_prepared_ready_handle_reaches_reader_without_second_dtr_epoch_or_buffer_reset(self):
+        class PreparedDevice(FakeDevice):
+            @property
+            def dtr(self):
+                return self._dtr
+
+            @dtr.setter
+            def dtr(self, value):
+                self._dtr = value
+                self.transitions.append(value)
+
+        device = PreparedDevice.__new__(PreparedDevice)
+        device.transitions = []
+        PreparedDevice.__init__(device, bytes(32), ready=True)
+        device.dtr = True  # The factory has already completed QUERY and owns the ready connection.
+        device.transitions.clear()
+        device.reset_input_buffer = unittest.mock.Mock()
+        device.reset_output_buffer = unittest.mock.Mock()
+        instance = relay.Relay('fixture-token', lambda: device, prepare_serial=True)
+        socket = SimpleNamespace(remote_address='fixture', close=AsyncMock(), close_code=None)
+
+        async def reader(*args):
+            self.assertTrue(device.dtr)
+            self.assertEqual(device.transitions, [])
+            device.reset_input_buffer.assert_not_called()
+            device.reset_output_buffer.assert_not_called()
+
+        instance.usb_reader = reader
+        instance.network_sender = AsyncMock()
+        instance.network_reader = AsyncMock()
+        await instance.handle(socket)
+        self.assertTrue(device.closed)
+        self.assertEqual(device.transitions, [False])  # Only normal final cleanup changes DTR.
+
     async def test_cancelled_preparation_waits_then_closes_only_its_owned_handle(self):
         started, finish = threading.Event(), threading.Event()
         device = FakeDevice(bytes(32), ready=True)

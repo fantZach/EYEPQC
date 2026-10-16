@@ -23,6 +23,7 @@ eyepqc run --dev-usb-bootstrap --dev-identity-file "$env:LOCALAPPDATA/EYEPQC/pc/
 分两块发送并校验每片状态/offset，完整 READY 后真正关闭串口，然后才开启 WSS/隧道。
 每次已认证观看连接都重新独占打开：READY 只查询核 pin，不重复注入、不读私钥；
 板卡再次冷启动为 WAIT 时才重新读取该显式文件并生成新 seed。原观看清理继续关闭真实句柄。
+1.3.1 将已完成 QUERY 的高 DTR 句柄直接交给转发器，不再二次切换 DTR 或清空缓冲。
 未知/普通固件、FAULT、乱序/错误 ACK、超时均脱敏失败，不 JTAG、不重刷、不抢占其他进程。
 
 这是**明文可信本地 USB 的开发方案，不是生产安全**：PC 知道私钥和 seed；
@@ -31,9 +32,9 @@ eyepqc run --dev-usb-bootstrap --dev-identity-file "$env:LOCALAPPDATA/EYEPQC/pc/
 远程手机不能转发 EYBS 初始化控制记录。契约与实际 SD 验收边界见
 [G6 SD bootstrap](../doc/g6_sd_usb_bootstrap.md)。
 
-## 1.3.0 当前用户安装包候选
+## 1.3.1 当前用户安装包候选
 
-`build/pc_installer/dist/EYEPQC-Setup-1.3.0.exe` 是 Windows x64 安装向导候选，不需要管理员权限；旧 1.2.1 包保留。
+`build/pc_installer/dist/EYEPQC-Setup-1.3.1.exe` 是 Windows x64 安装向导候选，不需要管理员权限；旧包保留。
 安装程序与材料分离，移动桌面上的 EXE 不再改变材料路径：
 
 | 内容 | 当前用户目录 |
@@ -110,7 +111,7 @@ eyepqc run
 ```
 
 构建使用独立 `build/pc_cli/venv`、固定 PyInstaller 6.22.3、console/onefile 模式；`-Name` 可保留正在运行的旧产物。
-当前省略 `-Name` 构建 `eyepqc-1.3.exe`，不会覆盖旧 1.2/1.2.1 实例文件，实际用哪个名称不改变命令语法。
+当前省略 `-Name` 构建 `eyepqc-1.3.1.exe`，不会覆盖旧实例文件，实际用哪个名称不改变命令语法。
 内置默认值为自动 CDC、固定 `127.0.0.1:8765`、SSH `124.70.38.245:2222`，隧道开启；1.2 材料相对用户 `data/` 目录为
 `private/accounts.json`、`public/pairing.json`、`public/server-chain.pem`、`private/server-key.pem`、
 `private/id_ed25519`、`public/tunnel_known_hosts`。默认值不包含开发机器的硬编码用户绝对路径或任何秘密材料。

@@ -99,6 +99,40 @@ SHA256 pin 比较；该错误会在发送 DATA 前拒绝本来有效的身份，
 重连及第二次冷启动。PC 知道测试私钥/seed，USB 为明文，未初始化 QUERY 不认证硬件；
 这是可信本地 PC 开发方案，不是生产安全或脱离 PC 自主运行。
 
+## 1.3.1 READY 句柄交接修正
+
+2026-10-16 主聊天实板报告首次开发初始化成功，随后观看连接分别出现 QUERY 超时、
+OPEN 后非法记录、再 QUERY 失败。本 PC 代理没有操作硬件，不将下列离线复现称为这些
+现场失败的唯一根因或实机已修复。
+
+发现确定的 PC 缺陷：开发 factory 已完成 DTR 清理、QUERY/READY 并返回高 DTR 的真实句柄，
+`Relay.handle` 随后又无条件切 DTR false→true、清空缓冲并等待 250 ms，制造多余 USB epoch。
+新测试先在旧实现失败：读者启动前检测到 `[False, True]`，而应为 `[]`；
+`Ran 1 test in 0.318s; FAILED`。最小修复仅将原 DTR/reset 初始化放回普通 factory 分支，
+准备好的开发句柄直接交给转发循环；取消/异常后等待并关闭自有句柄的逻辑未改变。
+没有自动重试 QUERY、忽略 ACK、放宽记录解析或恢复 FAULT。
+
+修正后的定向结果均为退出码 0：
+
+- `test_dev_usb_bootstrap.py`：17/17，3.616 秒；含 READY 不读私钥、NIST H(ek)、
+  factory 取消收尾及新交接检测。
+- `test_relay.py`：21/21，12.141 秒；普通 relay 的 DTR 低电平等待、控制转发、STOP 排空、
+  读取取消、单观看者和故障清理仍通过。
+- 新 1.3.1 EXE 的隔离 managed config：1/1，7.489 秒。
+- 新 1.3.1 EXE 的隔离证书/账号/配对离线 check：1/1，3.379 秒。
+
+按主聊天批准将 CLI/安装器版本升到 1.3.1，在新路径离线构建，不覆写 1.3 产物：
+
+| 候选 | 字节数 | SHA256 |
+| --- | ---: | --- |
+| `build/pc_cli/dist/eyepqc-1.3.1.exe` | 10291539 | `8DEB509EC27C4D7C54E84CC607F2CDBAA9899A1329802A9F8C926F979EADF8EE` |
+| `build/pc_installer/dist/EYEPQC-Setup-1.3.1.exe` | 12132570 | `5E34F9C80AB6C0CC220F5D43595439FC355E8431F279FCEEBF180C72D6D29677` |
+
+README、打包默认值及 frozen/lifecycle 测试引用已同步版本。源码与产物已冻结交还主聊天；
+没有重跑不受影响的完整 PC suite，没有安装或改动实际用户数据/服务/USB/SD。
+Board 代理另外分析 READY ACK 完成边界与 DTR 关闭的竞态；其证据以 Board 报告为准。
+两端修正后仍需主聊天重新进行无 JTAG 冷启动、USB 初始化、认证播放与重连验收。
+
 ## 主协调本机部署补验（2026-10-16）
 
 主协调仅将现有开发测试身份复制到当前用户受保护的
@@ -113,3 +147,11 @@ SHA256 pin 比较；该错误会在发送 DATA 前拒绝本来有效的身份，
 安装前后 settings、六项原有运行材料及新增测试身份逐项哈希未变，用户 PATH 原值未变。
 安装没有启动服务；实际 USB 初始化、冷启动和视频仍待板卡准备后验证，不能据安装成功标记通过。
 升级日志为 ignored `build/pc_installer/install_1.3_20261016.log`；旧 EXE 和失败候选均保留。
+
+### 1.3.1 主协调实际升级（2026-10-16 12:34 UTC+8）
+
+子代理源码及产物冻结后，主协调再次确认没有eyepqc进程或8765监听，将已安装1.3.0排他备份为
+`build/pc_cli/installed-1.3.0-before-dtr-fix-20261016.exe`，核对新Setup哈希后离线升级。
+安装退出0，安装EXE哈希与上述1.3.1候选一致，`--version`为1.3.1，默认离线check为CONFIG_OK。
+settings、原六项运行材料和测试身份共8项文件哈希前后一致，用户PATH完全不变；未启动服务或访问COM7。
+安装日志 `build/pc_installer/install_1.3.1_dtr_fix_20261016.log`；真实视频仍须与更新的SD固件联测。

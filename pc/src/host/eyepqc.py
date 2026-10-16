@@ -16,7 +16,7 @@ import cloud_tunnel
 import relay
 import cli_settings
 
-VERSION = '1.3.0'
+VERSION = '1.3.1'
 PORT = 8765
 
 

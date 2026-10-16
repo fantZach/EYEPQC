@@ -27,6 +27,35 @@ F:卡重新核对为Disk1/DD-TEK READER/31,266,439,168字节/MBR/FAT32/EYEPQC，
 未启动/复位板卡，尚不关闭实际无JTAG冷启动与认证视频门禁。
 详见 [冻结契约](../doc/g6_sd_usb_bootstrap.md) 与 [板端实现和部署记录](board_g6_sd_20261015.md)。
 
+### 实板初始化成功，观看交接失败（本轮未验收）
+
+主协调复用只读COM4采集器（DTR/RTS关闭），原始日志为
+`data/captures/g6_sd_cold_20261016_1223.log`。捕获匹配FSBL的SD启动、`SUCCESSFUL_HANDOFF`、
+`G6_DEV_USB_WAIT boot_mode=0x05`，以及一次真实板端 `G6_DEV_USB_READY boot_mode=0x05`。
+用户回复JTAG已拔后，Windows的FTDI设备亦消失；但原日志混有拔除前后多个启动，
+没有逐次K1断电/核心灯灭的完整确认，故不能把整个日志算作完整无JTAG冷启动验收。
+
+用户首次普通run未执行初始化，收到EYBS非业务记录被relay拒绝；换用显式开发参数后，
+主机DEV_USB_READY与板端READY相符，但首个观看连接在OPEN前2.266秒查询超时；随后一次
+mobile_controls=2、usb_records=1、network_records=0，以1008关闭。没有认证视频成功证据。
+主协调仅只读检查进程、串口、日志，没有抢占COM7、JTAG恢复或放宽协议校验。
+Board/PC子代理分别调查确认包送达后正常DTR关闭误入FAULT、prepared句柄交接再次切换DTR的问题；
+修复、离线回归和新产物单独记录，仍须更新SD后重新实测。
+
+只读采集器按原600秒主机计时自然结束，退出0；不是600秒连续板端运行验收。
+原日志9664字节，SHA256 `ffe9e4785c0f4a52d58dc720157709f25acd6ac70fdf025a800ebd969585e306`，保留全部启动/失败现场。
+Board真实固件harness先在O0/O3复现READY ACK关闭竞态失败；修后板端bootstrap/旧清理/production
+共6个顶层测试23.194秒通过。只有READY且实际断连证据可正常清理保留身份，其余错误仍fail-closed。
+PC交接测试旧版失败0.318秒，修后bootstrap17项3.616秒、普通relay21项12.141秒通过；
+新EXE隔离配置/材料check各1项通过，没有以旧全套结果冒充当前全套或实板验收。
+
+新工作区 `build/vitis/g6_sd_usb_bootstrap_20261016_2` 保留原XSA/FSBL/bitstream匹配流程；
+BOOT 4,303,120字节，SHA256 `5bd5c59e3a394ba7f9af35d84bfcda0be10840e9ad14658e0e1fcc289962f791`。
+子代理构建后，主协调独立复跑verify，79项哈希/709生成输入/BSP/应用及FSBL启动均通过；board_validated仍false。
+主协调确认无eyepqc进程或8765监听后，以离线安装器实际升级当前用户CLI至1.3.1；安装退出0、
+EXE哈希匹配，默认check为CONFIG_OK，settings+原六文件+测试身份共8项哈希及用户PATH均不变。
+没有启动转发服务；SD仍为旧候选，必须更新并重新验证真实无JTAG启动、初始化、认证视频和重连。
+
 ## 2026-10-15：PC1.2.1当前用户安装、PATH与账号维护
 
 由PC子代理编码，主协调负责审查、本机配置及统一提交。安装器只使用本地已核验签名/固定hash的编译器，
