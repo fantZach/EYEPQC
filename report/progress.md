@@ -110,6 +110,21 @@ Board子代理只在开发bootstrap的重复DTR=true/RTS更新时直接ACK，不
 Setup `6a340b1f3c7aca3788bc34fa62860916671d0bc54225b6c8a5994ffc5e45da17`，主协调复核包哈希及--version1.3.2。
 旧产物保留；没有安装新CLI、写SD、接触COM7或停止原服务。仍需用户正常停止、换卡后部署和真实首次连接/重连复测。
 
+2026-10-16 12:52 UTC+8，用户将卡接回后，主协调只读确认eyepqc进程和8765监听均已退出，未杀进程。
+重新识别F:/Disk1/DD-TEK READER/31,266,439,168字节/MBR/FAT32/EYEPQC，旧BOOT及两份旧备份哈希与前次一致。
+旧BOOT另存本地 `board/output/g6_sd_deploy_20261016_3/BOOT.G6.pre-duplicate-dtr-fix.BIN`；
+新镜像以CreateNew/WriteThrough/Flush(true)写入BOOT.NEW并读回后，旧BOOT重命名为
+`F:/BOOT.G6.PRE_DUP_DTR_FIX.20261016.BAK`，再将新文件提升为BOOT.BIN。
+新BOOT SHA256 `f469663a1d7cc15c05d209c5c532d1ec9228229d4be5b41004657ac6fb9e3bf0`，
+新增旧版备份 `5bd5c59e3a394ba7f9af35d84bfcda0be10840e9ad14658e0e1fcc289962f791`，更早G6/G0备份均未变化。
+未格式化、写原始盘或删除文件。独立读卡器拔插及新镜像真实启动/首次连接/重连仍待验证。
+
+主协调排他备份实际安装1.3.1至 `build/pc_cli/installed-1.3.1-before-auth-fix-20261016.exe`，
+核对新Setup哈希后实际升级当前用户1.3.2。安装退出0，安装EXE哈希与新包一致、--version1.3.2、
+默认check为CONFIG_OK；settings+原六文件+测试身份共8项哈希及用户PATH完全未变。
+日志 `build/pc_installer/install_1.3.2_auth_fix_20261016.log`。升级后再次确认无eyepqc进程/8765监听，
+未启动转发器、访问COM7或用JTAG掩盖验收。
+
 ## 2026-10-15：PC1.2.1当前用户安装、PATH与账号维护
 
 由PC子代理编码，主协调负责审查、本机配置及统一提交。安装器只使用本地已核验签名/固定hash的编译器，
