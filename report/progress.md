@@ -56,6 +56,16 @@ BOOT 4,303,120字节，SHA256 `5bd5c59e3a394ba7f9af35d84bfcda0be10840e9ad14658e0
 EXE哈希匹配，默认check为CONFIG_OK，settings+原六文件+测试身份共8项哈希及用户PATH均不变。
 没有启动转发服务；SD仍为旧候选，必须更新并重新验证真实无JTAG启动、初始化、认证视频和重连。
 
+2026-10-16 12:39 UTC+8，用户回复已将卡接回后，主协调重新确认F:/Disk1/DD-TEK READER/
+31,266,439,168字节/MBR/FAT32/EYEPQC；旧G6与G0哈希均符合上一轮记录。
+旧G6排他备份至 `board/output/g6_sd_deploy_20261016_2/BOOT.G6.pre-dtr-fix.BIN`，
+修正版以CreateNew/WriteThrough/Flush(true)写 `BOOT.NEW` 并读回，再将旧BOOT重命名为
+`F:/BOOT.G6.PRE_DTR_FIX.20261016.BAK`、新文件提升为 `F:/BOOT.BIN`。
+最终新BOOT SHA256 `5bd5c59e3a394ba7f9af35d84bfcda0be10840e9ad14658e0e1fcc289962f791`；
+原G6备份 `c4b92d1628a9fbaebc3926a3508b07f7866cf544ece3c5a81b1b905165c099e2`，
+G0备份 `079482ff600bac35203dd75e72080940e8cc2bcd9a3d5d485dd51ffec584ec1c`，三者读回一致。
+未删除文件、未格式化/写原始盘、未启动服务或操作板卡；新版独立拔插持久性及实板验收仍待完成。
+
 ## 2026-10-15：PC1.2.1当前用户安装、PATH与账号维护
 
 由PC子代理编码，主协调负责审查、本机配置及统一提交。安装器只使用本地已核验签名/固定hash的编译器，
