@@ -17,6 +17,7 @@ import serial
 from serial.tools import list_ports
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
+from websockets.protocol import CONNECTING
 
 from protocol import (MessageType, USB_CONTROL, USB_LIMITS, USB_VIDEO, UsbRecordDecoder,
                       decode_control, decode_video, encode_usb_record)
@@ -136,6 +137,9 @@ class Relay:
                     raise
             finally:
                 self.verifying = False
+            # The peer may disconnect while the password worker owns this handshake.
+            if connection.state is not CONNECTING:
+                raise asyncio.CancelledError
             if user is None:
                 return connection.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
             if request.path == "/pairing.json":

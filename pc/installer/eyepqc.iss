@@ -10,16 +10,16 @@
 AppId={{BC45B197-2603-498A-B857-C58A97E11DC0}
 AppName=EYEPQC PC Installer Fixture
 DefaultDirName={#FixtureRoot}\bin
-OutputBaseFilename=EYEPQC-Setup-1.3.1-fixture
+OutputBaseFilename=EYEPQC-Setup-1.3.2-fixture
 #else
 AppId={{9B9AF3F4-737E-48FD-B6A3-6B0A82BA6A7D}
 AppName=EYEPQC PC
 DefaultDirName={localappdata}\EYEPQC\pc\bin
-OutputBaseFilename=EYEPQC-Setup-1.3.1
+OutputBaseFilename=EYEPQC-Setup-1.3.2
 #endif
-AppVersion=1.3.1
+AppVersion=1.3.2
 AppPublisher=EYEPQC
-VersionInfoVersion=1.3.1
+VersionInfoVersion=1.3.2
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -35,7 +35,7 @@ CloseApplications=no
 RestartApplications=no
 RestartIfNeededByRun=no
 UninstallDisplayIcon={app}\eyepqc.exe
-UninstallDisplayName=EYEPQC PC 1.3.1 (user data retained)
+UninstallDisplayName=EYEPQC PC 1.3.2 (user data retained)
 SetupLogging=yes
 ChangesEnvironment=yes
 

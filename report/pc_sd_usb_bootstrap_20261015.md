@@ -133,6 +133,53 @@ README、打包默认值及 frozen/lifecycle 测试引用已同步版本。源�
 Board 代理另外分析 READY ACK 完成边界与 DTR 关闭的竞态；其证据以 Board 报告为准。
 两端修正后仍需主聊天重新进行无 JTAG 冷启动、USB 初始化、认证播放与重连验收。
 
+## 1.3.2 认证期间断开握手修正
+
+主聊天反馈匹配 SD 修正后能够播放约 45 fps，同时前置出现一次 QUERY 超时及
+`websockets/asyncio/connection.py:889` → `asyncio/server.py:196` → `server.py:527`
+的 `AssertionError`。本 PC 代理只做离线/本机临时回环测试，没有触碰正在播放的服务或硬件。
+
+已通过本机固定版本 websockets 15.0.1 的真实 TLS/socket 复现后者：后台 scrypt 验证尚未完成时，
+客户端断开使 protocol 进入 CLOSED；验证返回后库仍试图发送 101，违反 CONNECTING 断言。
+新正式回归先在旧版本失败（1 项/0.776 秒，精确相同断言栈），修正后单测
+1 项/1.405 秒通过，且确认验证锁释放、旧握手不触发 USB、服务器注销旧连接、下一连接正常。
+
+最小修复在 `Relay.authorize` 的 worker 收尾及 `verifying=False` 后、任何响应/owner 更新前，
+检查公开的 `connection.state`；不再 CONNECTING 则抛出 `asyncio.CancelledError`，
+沿库既有取消路径终止该握手，不用 HTTP 错误替代已失效的 101。
+保留等待后台验证线程收尾、限速、认证、409 明确接管和 fail-closed 行为。
+
+### QUERY 重试方案明确未实施
+
+经 PC / Board 互审和主协调确认，撤销最初考虑的零字节超时自动 QUERY 重试方案，
+没有添加重试、quiet-window、额外 barrier、接收过滤或静默吞 ACK。
+EYBS v1 无 request-id：首 ACK 恰好迟到后重查会多出一个相同 STATUS，
+WAIT 下可能污染 DATA ACK，READY 下可能污染业务读者；短暂安静不能可靠证明无在途响应。
+原 QUERY 仍单次、绝对两秒有界失败，partial、FAULT、错误状态/格式或 ACK 一律拒绝，DATA 从不重发。
+
+首次现场 QUERY 超时的唯一真实原因仍未确证。Board 另行修复开发 profile 的重复 DTR 请求
+无条件抹 RX 的确定错误；本报告不以该静态缺陷或软件测试替代新 SD 实板重验。
+
+### 定向验证与新候选
+
+实际结果均为退出码 0，没有重复不受影响的完整 PC suite：
+
+- `test_accounts.py`：13/13，22.558 秒；含真实 TLS/socket 断开、后续连接、认证、限速、接管、清理失败保护。
+- `test_dev_usb_bootstrap.py`：17/17，3.698 秒；QUERY 路径未修改。
+- `test_relay.py`：21/21，14.229 秒。
+- 新 1.3.2 EXE 隔离 managed config：1/1，7.465 秒。
+- 新 1.3.2 EXE 隔离材料离线 check：1/1，0.783 秒。
+
+CLI/安装器版本及 frozen/lifecycle 测试引用同步为 1.3.2，现有本机工具离线构建：
+
+| 候选 | 字节数 | SHA256 |
+| --- | ---: | --- |
+| `build/pc_cli/dist/eyepqc-1.3.2.exe` | 10289332 | `A0B909FF674CC4902672476B98678196F31CFFE3284ECFA32A906132B3BCE160` |
+| `build/pc_installer/dist/EYEPQC-Setup-1.3.2.exe` | 12129259 | `6A340B1F3C7ACA3788BC34FA62860916671D0BC54225B6C8A5994FFC5E45DA17` |
+
+旧 1.3.1 两份产物保留并重新复核 hash 与上表前一节一致；未安装、部署或修改真实 settings/材料。
+源码/产物冻结交还主聊天，后续安装和新 SD 现场验证由主聊天安排，不把本轮软件结果称为新版本实机验收。
+
 ## 主协调本机部署补验（2026-10-16）
 
 主协调仅将现有开发测试身份复制到当前用户受保护的

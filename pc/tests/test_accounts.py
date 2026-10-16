@@ -1,4 +1,4 @@
-import asyncio, base64, datetime, hashlib, http.client, ipaddress, json, logging, ssl, sys, tempfile, threading, time, unittest
+import asyncio, base64, datetime, hashlib, http.client, io, ipaddress, json, logging, ssl, sys, tempfile, threading, time, unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src/host'))
@@ -126,6 +126,49 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(logger, 'level', logging.DEBUG), patch('relay.serve', new_callable=AsyncMock) as serve:
             await self.relay.start(tls=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER))
             self.assertFalse(serve.call_args.kwargs['logger'].isEnabledFor(logging.DEBUG))
+
+    async def test_disconnect_during_password_verification_cancels_handshake_without_usb_or_assertion(self):
+        started, release = threading.Event(), threading.Event()
+        original = self.accounts.verify
+        def delayed(header):
+            started.set()
+            if not release.wait(2):
+                raise TimeoutError('fixture verifier wait')
+            return original(header)
+        output = io.StringIO()
+        handler = logging.StreamHandler(output)
+        logger = logging.getLogger('eyepqc.relay.websocket')
+        logger.addHandler(handler)
+        self.addCleanup(logger.removeHandler, handler)
+        port = self.server.sockets[0].getsockname()[1]
+        with patch.object(self.accounts, 'verify', delayed):
+            _, writer = await asyncio.open_connection('127.0.0.1', port, ssl=self.client_tls)
+            try:
+                request = ('GET /stream HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n'
+                           'Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n'
+                           'Sec-WebSocket-Version: 13\r\nAuthorization: ' + basic() + '\r\n\r\n')
+                writer.write(request.encode('ascii'))
+                await writer.drain()
+                self.assertTrue(await asyncio.to_thread(started.wait, 1))
+                connection = next(iter(self.server.handlers))
+                writer.transport.abort()
+                await asyncio.wait_for(connection.wait_closed(), 1)
+            finally:
+                writer.transport.abort()
+                release.set()
+            for _ in range(200):
+                if not self.relay.verifying and not self.server.handlers:
+                    break
+                await asyncio.sleep(.01)
+            self.assertFalse(self.relay.verifying)
+            self.assertFalse(self.server.handlers)
+        self.assertFalse(self.devices)
+        self.assertNotIn('AssertionError', output.getvalue())
+        self.assertNotIn('unexpected internal error', output.getvalue())
+        self.assertNotIn('opening handshake failed', output.getvalue())
+        async with self.client():
+            await self.ready()
+            self.assertEqual(len(self.devices), 1)
 
     async def rejected(self, status, suffix='', header=None):
         self.accounts.allowance = 5

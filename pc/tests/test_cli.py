@@ -246,7 +246,9 @@ class ConfigurationTests(unittest.TestCase):
 class FrozenTests(unittest.TestCase):
     def test_built_executable_checks_isolated_fixture_without_network(self):
         directory = Path(__file__).resolve().parents[2] / 'build/pc_cli/dist'
-        exe = directory / 'eyepqc-1.3.1.exe'
+        exe = directory / 'eyepqc-1.3.2.exe'
+        if not exe.is_file():
+            exe = directory / 'eyepqc-1.3.1.exe'
         if not exe.is_file():
             exe = directory / 'eyepqc-1.3.exe'
         if not exe.is_file():

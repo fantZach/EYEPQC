@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$Python = '', [switch]$InstallDependencies, [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')][string]$Name = 'eyepqc-1.3.1')
+param([string]$Python = '', [switch]$InstallDependencies, [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')][string]$Name = 'eyepqc-1.3.2')
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 if (-not $Python) { $Python = Join-Path $repo '.venv/Scripts/python.exe' }

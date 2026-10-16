@@ -19,17 +19,19 @@ class BootstrapTests(unittest.TestCase):
                     sdk / 'XilinxProcessorIPLib/drivers/usbps_v2_11/examples',
                     sdk / 'lib/bsp/standalone_v9_5/src/common/intr']
         with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / 'rx.exe'
-            command = ['C:/msys64/ucrt64/bin/gcc.exe', '-std=c11', '-O0', '-Wall', '-Wextra',
-                       '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections',
-                       '-DG6_USB_NATIVE_TEST', '-U__arm__']
-            command += [item for include in includes for item in ('-I', str(include))]
-            result = subprocess.run(command + [str(ROOT / 'board/tests/g6_usb_bootstrap_rx_harness.c'),
-                                               '-o', str(output)], capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            result = subprocess.run([str(output)], capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn('G6_BOOTSTRAP_ACTUAL_RX_WIPE_PASS', result.stdout)
+            for optimization in ('-O0', '-O3'):
+                with self.subTest(optimization=optimization):
+                    output = Path(directory) / (optimization[1:] + '-rx.exe')
+                    command = ['C:/msys64/ucrt64/bin/gcc.exe', '-std=c11', optimization, '-Wall', '-Wextra',
+                               '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections',
+                               '-DG6_USB_NATIVE_TEST', '-U__arm__']
+                    command += [item for include in includes for item in ('-I', str(include))]
+                    result = subprocess.run(command + [str(ROOT / 'board/tests/g6_usb_bootstrap_rx_harness.c'),
+                                                       '-o', str(output)], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    result = subprocess.run([str(output)], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn('G6_BOOTSTRAP_ACTUAL_RX_WIPE_PASS', result.stdout)
 
     def test_real_firmware_and_mlkem(self):
         compiler = Path('C:/msys64/ucrt64/bin/gcc.exe')

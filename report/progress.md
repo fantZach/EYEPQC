@@ -90,6 +90,26 @@ Board只读确认READY epoch清理分支本身不丢弃RX，另发现重复SET_C
 2.282秒与250ms DTR等待+2秒STATUS截止相符；bootstrap记录不计入relay的usb_records，不能据0记录断定无回应。
 当前功能已成功，剩余连接可靠性问题留待正式回归/修复；没有更换正在播放的1.3.1或中断服务。
 
+### 用户要求的后续修复：PC1.3.2及重复DTR保护（待部署）
+
+PC子代理正式实现认证收尾的CONNECTING保护，非CONNECTING时取消握手；保持密码worker取消等待及
+verifying释放，TLS、账号认证、接管及失败清理不变。真实TLS客户端提前断连回归旧版失败0.776秒，
+修后1.405秒通过，确认无断言/USB触发且下一连接成功。账号13项22.558秒、bootstrap17项3.698秒、
+relay21项14.229秒通过；新1.3.2 EXE隔离配置1项7.465秒、离线材料校验1项0.783秒通过。
+
+没有实施QUERY重试：协议无request-id，迟到ACK与重查ACK无法可靠消歧，不能靠短quiet窗口或忽略记录解决。
+Board子代理只在开发bootstrap的重复DTR=true/RTS更新时直接ACK，不清RX/epoch/业务状态；
+真实DTR升降、USB reset、接收DATA中断清零/终态FAULT保持原样。真实C RX测试先在QUERY被抹断言失败，
+修后O0/O3通过完整/局部QUERY与DATA、RTS/业务状态保留及真实断连清理；板端6个顶层回归24.729秒通过。
+这消除了确定可复现的丢QUERY路径，不证明此前现场超时只有该一个原因。
+
+独立新工作区 `build/vitis/g6_sd_usb_bootstrap_20261016_3`，BOOT 4,303,120字节，SHA256
+`f469663a1d7cc15c05d209c5c532d1ec9228229d4be5b41004657ac6fb9e3bf0`。
+主协调独立复跑verify：79哈希/709生成输入/BSP/应用及FSBL ARM启动均通过，board_validated仍false。
+新EXE SHA256 `a0b909ff674cc4902672476b98678196f31cffe3284ecfa32a906132b3bce160`，
+Setup `6a340b1f3c7aca3788bc34fa62860916671d0bc54225b6c8a5994ffc5e45da17`，主协调复核包哈希及--version1.3.2。
+旧产物保留；没有安装新CLI、写SD、接触COM7或停止原服务。仍需用户正常停止、换卡后部署和真实首次连接/重连复测。
+
 ## 2026-10-15：PC1.2.1当前用户安装、PATH与账号维护
 
 由PC子代理编码，主协调负责审查、本机配置及统一提交。安装器只使用本地已核验签名/固定hash的编译器，

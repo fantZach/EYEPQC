@@ -190,6 +190,13 @@ void XUsbPs_ClassReq(XUsbPs *u, XUsbPs_SetupData *s) {
         XUsbPs_EpBufferSend(u, 0, line_coding, 7);
         return;
     case 0x22: /* SET_CONTROL_LINE_STATE */
+#ifdef G6_DEV_USB_BOOTSTRAP
+        /* Repeated DTR/RTS updates aren't a disconnect and must not drop QUERY. */
+        if ((s->wValue & 1) && dtr) {
+            XUsbPs_EpBufferSend(u, 0, NULL, 0);
+            return;
+        }
+#endif
         if (!((s->wValue & 1) && dtr)) ++connection_epoch;
         dtr = s->wValue & 1;
         mode = 0;

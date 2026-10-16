@@ -72,6 +72,10 @@ Python、系统驱动或硬件临时副本的完整物理清除不由本实现�
 WAIT 才重新读取受 ACL 保护的显式私钥并生成新 seed。错误或 FAULT 静态脱敏失败，
 不得重刷/JTAG 注入/抢占其他进程。沿用原串口清理，避免新增持久句柄租借抽象。
 PC 1.3.1 对已完成QUERY/READY的真实句柄直接交接，不再二次切换DTR或清空缓冲；普通run路径不变。
+后续驱动修复仅作用于开发bootstrap：已DTR=true时，重复的DTR=true/RTS更新只ACK，不重置RX/epoch/业务状态。
+真实DTR升降及USB reset仍沿原清理路径；不放宽半包、超时或终态FAULT。
+QUERY没有请求编号，故不增加超时重试、quiet-drain或ACK过滤，避免迟到双响应污染DATA或业务流。
+PC 1.3.2 在异步密码校验完成后确认连接仍为CONNECTING；已断开则取消握手，不发送101或占用USB。
 
 ## 构建与实际验收
 
