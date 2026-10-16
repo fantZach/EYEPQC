@@ -54,7 +54,7 @@ WAIT 尚未收 DATA 的断连允许之后重新连接；不得接收未经初始
 
 完整材料须通过私钥一致性及公钥 SHA256/pin 核对后才进入 READY；擦除收包暂存和 CPU-owned 副本。
 READY 允许只读 QUERY，禁止重新装载，DATA/非法 bootstrap 不能改变身份或复活故障。
-2026-10-16 ACK关闭边缘修正：仅已READY、USB send返回断连码1且DTR实际降低或epoch改变时，
+2026-10-16 ACK关闭边缘修正：仅尚未DATA的WAIT或已READY、USB send返回断连码1且DTR实际降低或epoch改变时，
 沿用有界正常会话清理并保留启动身份；RECV、无断连证据的错误、真正TX错误及清理失败仍终态FAULT。
 正常 DTR/epoch 断连、STOP、REKEY 清理业务会话但保留本次启动身份，沿用已有 G6 行为；
 真实 FAULT 不允许用 bootstrap 重新初始化，需物理重新启动。
@@ -73,6 +73,7 @@ WAIT 才重新读取受 ACL 保护的显式私钥并生成新 seed。错误或 F
 不得重刷/JTAG 注入/抢占其他进程。沿用原串口清理，避免新增持久句柄租借抽象。
 PC 1.3.1 对已完成QUERY/READY的真实句柄直接交接，不再二次切换DTR或清空缓冲；普通run路径不变。
 后续驱动修复仅作用于开发bootstrap：已DTR=true时，重复的DTR=true/RTS更新只ACK，不重置RX/epoch/业务状态。
+生成器必须沿用原源文件的CDC状态/所有权逻辑，只替换EP0发送接口；回归须实际执行最终生成C，不能只测试原源文件。
 真实DTR升降及USB reset仍沿原清理路径；不放宽半包、超时或终态FAULT。
 QUERY没有请求编号，故不增加超时重试、quiet-drain或ACK过滤，避免迟到双响应污染DATA或业务流。
 PC 1.3.2 在异步密码校验完成后确认连接仍为CONNECTING；已断开则取消握手，不发送101或占用USB。
@@ -87,3 +88,5 @@ PC 1.3.2 在异步密码校验完成后确认连接仍为CONNECTING；已断开�
 真实验收须用户将卡放回、设置 SD 启动、完全断电后上电，并从 UART 记录只读 boot mode、
 开发 profile WAIT/READY；不接 JTAG，PC 以 USB 初始化后完成原 suite2 认证视频。
 重连、再次冷启动、新随机材料、错误/半包拒绝分别记录，不能以 JTAG 暖启动或模拟器替代。
+合并候选增加两条合法QUERY的开发态UART元数据：入口state/epoch及TX结果/ready/epoch，不打印payload、pin、私钥或seed。
+日志会改变执行时序；它用于定位应用是否收到QUERY及TX返回，不是USB总线抓包或无扰动性能证据。

@@ -1,5 +1,37 @@
 # Implementation progress
 
+## 2026-10-16晚间：首次查询失败复现、生成代码覆盖遗漏与合并镜像
+
+用户在PC1.3.2/已写入的 `_3` 复测仍首次2.266秒超时，期间也有两次正常STOP及后续一次查询超时；
+不把此前源码修复当作现场通过。用户正常停止服务后，主协调只发送QUERY做中午0/50ms两组各6次实验：
+每组1/3/5均零字节，原句柄延读至约4秒仍无响应；2/4/6均完整49字节READY。
+无半包/迟到完整响应，Win32 DTR调用均返回成功，每句柄恰一条15字节QUERY，不发DATA。
+原日志 `tmp/query_probe_0ms_20261016_1258.jsonl` 与 `tmp/query_probe_50ms_20261016_1259.jsonl`，
+公开汇总 `tmp/query_probe_timeline_20261016_2009.json` 固定原文件哈希；奇偶现象不能独自判定丢包方向或硬件toggle根因。
+
+晚间USB重接后已是另一启动状态：250ms对照只完成首个WAIT49字节后依设计停止，不与中午READY组混算。
+随后一次既有开发初始化helper返回静态失败，没有记录实际DATA发送阶段，不能声称它只做查询或未发送材料。
+之后单条查询明确得到FAULT(state3/code1/49字节)，主协调停止COM7操作，没有重试DATA/JTAG恢复或伪称通过。
+此阶段日志为 `tmp/query_probe_250ms_20261016_2008.jsonl`（实际20:07）及
+`tmp/query_probe_after_prepare_failure_20261016_2009.jsonl`；两者未完成多次试验。
+
+主协调检查 `_3` 最终生成文件，发现 `prepare_usb_bounded_sdk.py` 的整段ClassReq模板覆盖了源文件DTR修复及所有权处理。
+之前测试include原源文件，未执行最终generated C，故原“修复已进镜像”的证据不足。Board子代理新增真实生成+原生执行测试，
+旧生成器O0/O3均失败；修后透传源CDC逻辑、只替换EP0发送接口。新测试覆盖重复DTR、真实断连及TX所有权清理。
+另用实际固件harness先复现WAIT QUERY ACK收到后正常close仍被误判FAULT；仅WAIT/READY且真实断连证据走正常清理，
+RECV、无断连证据、真实发送错误及清理失败仍终态FAULT。新增合法QUERY两行非秘密UART元数据用于下轮定位，观测会改变时序。
+
+最终工作区 `build/vitis/g6_sd_usb_bootstrap_20261016_5`； `_4` 仅为生成链修复中间产物，未部署，旧产物均未覆盖。
+含诊断的最终10项/14子项26.80秒通过，主协调独立verify的BSP/79哈希/709生成输入/应用及FSBL启动通过，board_validated仍false。
+BOOT 4,303,696字节，SHA256 `1ffcef7daea201da6735ab6992e5c0fd40af95ec9f707e96763bcba5567bcfca`。
+
+用户按断电/断开视频USB/取卡问题回复ok后，主协调识别F:/Disk1/DD-TEK READER/31,266,439,168字节/MBR/FAT32/EYEPQC。
+旧BOOT匹配f469...；排他备份至 `board/output/g6_sd_deploy_20261016_5/BOOT.G6.before-generator-wait-fix.BIN`。
+新文件CreateNew/WriteThrough/Flush(true)/读回后，将旧BOOT保留为 `F:/BOOT.G6.PRE_GEN_FIX.20261016.BAK`，再提升新BOOT。
+20:13最终新BOOT与源哈希一致，新增旧版备份为 `f469663a1d7cc15c05d209c5c532d1ec9228229d4be5b41004657ac6fb9e3bf0`；
+原三份G6/G0备份均保持原哈希。无删除、格式化或原始盘写入，PC仍为1.3.2且无服务/监听。
+尚待独立读卡器拔插和 `_5` 实板QUERY/UART对照、初始化、首次手机连接及重连验证，不宣称交替超时已消除。
+
 ## 2026-10-16：G6开发态免JTAG SD启动准备
 
 用户明确接受SD仅启动程序、可信PC经USB提供测试身份和每次启动新seed，不向SD/BOOT嵌入实际私钥。

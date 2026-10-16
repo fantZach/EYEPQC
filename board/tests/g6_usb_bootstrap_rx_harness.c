@@ -1,9 +1,16 @@
 /* Reuse SDK stubs, not the old harness main; no debugger/hardware calls. */
 #define G6_DEV_USB_BOOTSTRAP 1
 #define main legacy_fixture_main
+#ifdef G6_USB_PROBE_FIXTURE
+#include G6_USB_PROBE_FIXTURE
+#else
 #include "../../sim/tb/test_g6_usb_idle_fastpath.c"
+#endif
 #undef main
 #include <assert.h>
+void XUsbPs_BoundedMarkEndpointFaulted(XUsbPs *instance, u8 ep) {
+    (void)instance; (void)ep; endpoint_faulted = 1U;
+}
 static void push(const uint8_t *p, unsigned n) { while (n--) rx_push(*p++); }
 int main(void) {
     uint8_t query[] = {1,0,12,'E','Y','B','S',1,1,0,0,0,0,6,0xa0};
@@ -60,6 +67,14 @@ int main(void) {
     assert(!dtr && !configured && connection_epoch == 10);
     assert(usb_cdc_bootstrap_rx_interrupted());
     assert(bytes_are(rx_ring, sizeof rx_ring, 0) && bytes_are(control_record, sizeof control_record, 0));
+    reset_fixture();
+    tx_pending = 1; tx_ready = 0;
+    setup.wValue = 0;
+    u32 failures = usb_recovery_failures;
+    /* Mock FLUSH never clears: failed quiesce must not release owned TX. */
+    XUsbPs_ClassReq(&usb, &setup);
+    assert(!configured && usb_recovery_failures == failures + 1);
+    assert(tx_pending && !tx_ready);
     puts("G6_BOOTSTRAP_ACTUAL_RX_WIPE_PASS partial_query_retry=1 partial_data_fault=1");
     return 0;
 }

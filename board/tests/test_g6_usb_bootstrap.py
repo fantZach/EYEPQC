@@ -19,6 +19,23 @@ class BootstrapTests(unittest.TestCase):
                     sdk / 'XilinxProcessorIPLib/drivers/usbps_v2_11/examples',
                     sdk / 'lib/bsp/standalone_v9_5/src/common/intr']
         with tempfile.TemporaryDirectory() as directory:
+            generated = Path(directory) / 'generated'
+            command = [os.sys.executable, '-c',
+                       'import sys; from pathlib import Path; '
+                       'sys.path.insert(0, "board/prj"); import build_software; '
+                       'build_software.prepare_secure_cleanup_usb(Path(sys.argv[1]), Path(sys.argv[2]))',
+                       str(generated), 'D:/AmdDesignTools/2026.1/Vitis/gnu/aarch32/nt/gcc-arm-none-eabi/bin/arm-none-eabi-gcc.exe']
+            generated.mkdir()
+            result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            wrapper = generated / 'usb_probe_secure_cleanup_bounded_generated.c'
+            fixture = Path(directory) / 'generated_sdk_fixture.c'
+            original_fixture = (ROOT / 'sim/tb/test_g6_usb_idle_fastpath.c').read_text()
+            self.assertEqual(original_fixture.count(
+                '#include "../../board/prj/usb_probe_auto_recovery.c"'), 1)
+            fixture.write_text(original_fixture.replace(
+                '#include "../../board/prj/usb_probe_auto_recovery.c"',
+                '#include "' + wrapper.as_posix() + '"'))
             for optimization in ('-O0', '-O3'):
                 with self.subTest(optimization=optimization):
                     output = Path(directory) / (optimization[1:] + '-rx.exe')
@@ -30,6 +47,15 @@ class BootstrapTests(unittest.TestCase):
                                                        '-o', str(output)], capture_output=True, text=True)
                     self.assertEqual(result.returncode, 0, result.stderr)
                     result = subprocess.run([str(output)], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn('G6_BOOTSTRAP_ACTUAL_RX_WIPE_PASS', result.stdout)
+                    generated_output = Path(directory) / (optimization[1:] + '-generated-rx.exe')
+                    result = subprocess.run(command + [
+                        '-DG6_USB_PROBE_FIXTURE="' + fixture.as_posix() + '"',
+                        str(ROOT / 'board/tests/g6_usb_bootstrap_rx_harness.c'),
+                        '-o', str(generated_output)], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    result = subprocess.run([str(generated_output)], capture_output=True, text=True)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     self.assertIn('G6_BOOTSTRAP_ACTUAL_RX_WIPE_PASS', result.stdout)
 

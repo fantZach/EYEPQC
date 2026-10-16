@@ -428,6 +428,13 @@ static int bootstrap_activate(const uint8_t pin[32], const uint8_t sk[1632],
 static int retire_disconnected_session(unsigned send_status, unsigned resume_status,
                                        unsigned ready_at_failure, uint32_t epoch_at_failure);
 static int bootstrap_control(const uint8_t *message, unsigned length) {
+    int query = message && length == EYE_BOOT_HEADER && eye_boot_prefix(message, length) &&
+                message[4] == 1U && message[5] == 1U &&
+                !eye_boot_u16(message + 6) && !eye_boot_u16(message + 8) &&
+                eye_boot_u16(message + 10) == EYE_BOOT_TOTAL;
+    if (query)
+        xil_printf("G6_DEV_USB_QUERY state=%u epoch=%lu\r\n",
+                   (unsigned)usb_bootstrap.state, (unsigned long)usb_cdc_connection_epoch());
     enum eye_boot_state previous = usb_bootstrap.state;
     int status = eye_boot_process(&usb_bootstrap, message, length, bootstrap_now_ms(),
                                   usb_cdc_connection_epoch(), bootstrap_activate);
@@ -438,11 +445,15 @@ static int bootstrap_control(const uint8_t *message, unsigned length) {
     uint32_t epoch_before_send = usb_cdc_connection_epoch();
     int sent = send_control(reply, sizeof reply);
     wipe(reply, sizeof reply);
+    if (query)
+        xil_printf("G6_DEV_USB_QUERY_TX result=%d ready=%u epoch=%lu\r\n", sent,
+                   (unsigned)usb_cdc_ready(), (unsigned long)usb_cdc_connection_epoch());
     if (sent) {
         unsigned ready = (unsigned)usb_cdc_ready();
         uint32_t epoch = usb_cdc_connection_epoch();
-        /* The host can consume READY and close before the DMA completion check. */
-        if (!status && usb_bootstrap.state == EYE_BOOT_READY && sent == 1 &&
+        /* An idle QUERY or READY can be consumed before the host closes. */
+        if (!status && (usb_bootstrap.state == EYE_BOOT_WAIT ||
+                        usb_bootstrap.state == EYE_BOOT_READY) && sent == 1 &&
                 (!ready || epoch != epoch_before_send)) {
             if (retire_disconnected_session((unsigned)sent, 0U, ready, epoch)) return 1;
         } else {

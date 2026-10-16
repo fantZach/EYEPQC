@@ -15,9 +15,15 @@ static unsigned rx_clears;
 static int change_epoch_during_activation;
 static int send_result, disconnect_after_send;
 static int fake_ready = 1, drop_dtr_after_send, cleanup_failure;
+static unsigned query_trace_count;
 static uint8_t last_send[128];
 static uint8_t material[EYE_BOOT_TOTAL], public_key[800];
-int xil_printf(const char *f, ...) { (void)f; return 0; }
+int xil_printf(const char *f, ...) {
+    if (!strcmp(f, "G6_DEV_USB_QUERY state=%u epoch=%lu\r\n") ||
+            !strcmp(f, "G6_DEV_USB_QUERY_TX result=%d ready=%u epoch=%lu\r\n"))
+        ++query_trace_count;
+    return 0;
+}
 uint32_t Xil_In32(uintptr_t p) { assert(p == 0xf800025cU); return 5; }
 void XTime_GetTime(XTime *p) { *p = fake_now * 1000U; }
 void Xil_DCacheFlushRange(uintptr_t p, unsigned n) { (void)p; (void)n; }
@@ -69,6 +75,7 @@ static void fresh(void) {
     change_epoch_during_activation = 0;
     send_result = disconnect_after_send = 0;
     drop_dtr_after_send = cleanup_failure = 0; fake_ready = 1;
+    query_trace_count = 0;
 }
 static unsigned message(uint8_t *out, unsigned type, unsigned offset, unsigned length) {
     memcpy(out, "EYBS", 4); out[4] = 1; out[5] = type;
@@ -88,6 +95,17 @@ int main(void) {
     assert(!eye_mlkem_keypair_derand(public_key, sk, coins));
     assert(!eye_sha256(material, public_key, 800));
     memcpy(material + 32, sk, sizeof sk); memset(material + 1664, 0x5b, 32);
+    fresh(); send_result = disconnect_after_send = 1;
+    assert(!bootstrap_control(packet, message(packet, 1, 0, 0)));
+    assert(usb_bootstrap.state == EYE_BOOT_WAIT && phase == WAIT_HELLO);
+    assert(query_trace_count == 2);
+    assert(zero(private_key, sizeof private_key) && zero(random_seed, 32));
+    send_result = disconnect_after_send = 0;
+    assert(!bootstrap_control(packet, message(packet, 1, 0, 0)));
+    assert(last_send[15] == EYE_BOOT_WAIT);
+    fresh(); send_result = drop_dtr_after_send = 1;
+    assert(!bootstrap_control(packet, message(packet, 1, 0, 0)));
+    assert(usb_bootstrap.state == EYE_BOOT_WAIT && phase == WAIT_HELLO);
     fresh();
     assert(!bootstrap_control(packet, message(packet, 1, 0, 0)));
     assert(last_send[15] == EYE_BOOT_WAIT && zero(last_send + 17, 32));
@@ -113,6 +131,12 @@ int main(void) {
     assert(!bootstrap_control(packet, message(packet, 1, 0, 0)));
     assert(last_send[15] == EYE_BOOT_FAULT && zero(last_send + 17, 32));
     assert(bootstrap_control(packet, message(packet, 2, 0, 1024))); faulted();
+    fresh();
+    assert(!bootstrap_control(packet, message(packet, 2, 0, 1024)));
+    send_result = disconnect_after_send = 1;
+    assert(bootstrap_control(packet, message(packet, 1, 0, 0))); faulted();
+    fresh(); send_result = 1;
+    assert(bootstrap_control(packet, message(packet, 1, 0, 0))); faulted();
     fresh();
     assert(!bootstrap_control(packet, message(packet, 2, 0, 1024)));
     send_result = disconnect_after_send = 1;

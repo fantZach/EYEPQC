@@ -1,5 +1,11 @@
 # EYEPQC 编程与调试步骤
 
+2026-10-16晚间更正：首次查询仍失败。中午0/50ms两组各6次查询均奇数零字节4秒、偶数完整READY；未证明唯一物理根因。
+发现旧生成器整段覆盖CDC处理，导致 `_3` 实际生成固件未包含源码DTR修复；旧源码fixture不足，不能据其声称修复已进入BOOT。
+新回归直接执行最终generated C，并修正生成器透传原CDC逻辑；另补WAIT QUERY正常关闭误FAULT的失败反例及修复。
+合并 `_5` 的10项/14子项与79项软件/ARM校验通过，新BOOT SHA256 `1ffcef7daea201da6735ab6992e5c0fd40af95ec9f707e96763bcba5567bcfca`。
+20:13已保留旧版本并写入F:/BOOT.BIN、读回一致；PC保持1.3.2、服务停止，尚待独立读卡器拔插及新固件查询/视频实测。
+
 2026-10-16 G6免JTAG开发态SD启动：用户明确同意SD只存程序、可信PC经本地USB提供测试身份及每启动新seed。
 独立 `development_usb_bootstrap_secure_cleanup` profile已构建；原手机suite2协议不变，JTAG/default/production隔离。
 匹配视频XSA的FSBL/BOOT与79项校验、ARM启动、板端真实代码/PC-C线协议定向检查通过；仍不是生产安全。

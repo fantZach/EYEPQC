@@ -568,6 +568,10 @@ def patch_probe(source: str) -> str:
     old = source[start:end]
     if old.count('static void ep0(') != 1:
         raise ValueError("probe EP0/class handler block changed")
+    control_start = old.index('    case 0x22: /* SET_CONTROL_LINE_STATE */')
+    control_end = old.index('    case 0x23: /* SEND_BREAK */', control_start)
+    control_lines = old[control_start:control_end].replace(
+        'XUsbPs_EpBufferSend(u, 0, NULL, 0);', '(void)probe_ep0_send(u, NULL, 0);')
     new = '''static int probe_ep0_send(XUsbPs *u, const u8 *buf, u32 len) {
     int status = XST_SUCCESS, error = 0;
     XUsbPs_Ch9QueueEp0Reply(u, 0, buf, len, &status, &error);
@@ -584,22 +588,7 @@ void XUsbPs_ClassReq(XUsbPs *u, XUsbPs_SetupData *s) {
     case 0x21: /* GET_LINE_CODING */
         (void)probe_ep0_send(u, line_coding, 7);
         return;
-    case 0x22: /* SET_CONTROL_LINE_STATE */
-        if (!((s->wValue & 1) && dtr)) ++connection_epoch;
-        dtr = s->wValue & 1;
-        mode = 0;
-        test_epoch = test_epoch_bytes = 0;
-#ifdef G6_USB
-        rx_reset();
-#endif
-        jpeg_receiving = jpeg_ready = jpeg_bad = 0;
-        if (!dtr && configured) {
-            if (eye_usb_rearm_data(u, 0)) { ++usb_recovery_failures; configured = 0; }
-            tx_ready = 1;
-        }
-        if (dtr) block_no = 0;
-        (void)probe_ep0_send(u, NULL, 0);
-        return;
+@CONTROL_LINE_STATE@
     case 0x23: /* SEND_BREAK */
         (void)probe_ep0_send(u, NULL, 0);
         return;
@@ -634,6 +623,8 @@ static void ep0(void *ref, u8 ep, u8 event, void *data) {
     }
 }
 '''
+    # Keep CDC state/ownership behavior in usb_probe.c, not a stale second copy.
+    new = new.replace('@CONTROL_LINE_STATE@\n', control_lines)
     source = source[:start] + new + source[end:]
     if 'XUsbPs_EpBufferSend(u, 0,' in source:
         raise ValueError("probe class EP0 send bypasses bounded wrapper")
