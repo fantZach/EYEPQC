@@ -1,124 +1,106 @@
 # EYEPQC
 
-基于领航者 CF7020B / Zynq-7020 与 OV5640 的 JPEG 加密视频系统。
-板端使用 Vitis Standalone、ML-KEM-512 和 AES-128-GCM，保留已验证的 USB Slave 传输。
-目标链路为 **开发板 → USB → PC → 网络 → 移动端**，远程服务器可选。
-平台已确认：**PC 使用 Windows，移动端使用 Android**。
-
-2026-10-13 新阶段：账号密码登录、同账号显式接管、稳定身份认证临时 ML-KEM 公钥、
-长连接每 30 分钟重新握手。独立方案与安全前置见 [账号与临时 KEM 方案](doc/account_ephemeral_plan.md)。
-此方案正在实现，不代表手机、实板、可信熵源或完整视频 SD 自启动已通过。
-
-2026-10-14 用户选择公网服务器中转并要求先完成四端代码；新增独立 `server/`。
-第一版复用 OpenSSH 反向 TCP 隧道，PC 主动连接云端，Android 使用原 WSS/schema2；
-TLS 和账号校验仍在 PC，云端不持有视频密钥。P2P探针暂停，失败证据保留。
-软件/部署/公网实测分别记录，见 [公网中转契约](doc/cloud_relay_plan.md)。
+基于领航者 CF7020B / Zynq-7020、OV5640、Windows PC 和 Android 的加密视频 MVP。
+板端采集 JPEG 并进行 AES-128-GCM 加密，Android 与板端完成 ML-KEM-512 握手、验 Tag、解密和显示。
+PC 提供 USB 接入、WSS 账号登录及密文转发；远程访问使用可选的 OpenSSH 反向隧道。
 
 ```text
-OV5640 → 开发板：采集 JPEG / AES-GCM 加密
-                  ⇅ USB CDC（密文视频向外，控制消息双向）
-                 PC：USB 接入 / 密文转发
-                  ⇅ 局域网直连，或经可选公网中转服务
-               移动端：ML-KEM 握手 / 验 Tag / 解密 / JPEG 显示
+OV5640 → Zynq-7020 ⇄ USB Slave ⇄ Windows PC ⇄ Android
+                                     ⇅          ⇅
+                                SSH 反向隧道 → 公网 TCP 中转
 ```
 
-先在同一局域网内由 PC 提供接入服务，无需租服务器。公网阶段可将中转服务部署到已有或租用的服务器；
-板卡仍通过 PC 联网，无需改成 USB Host 或迁移到 PetaLinux。
+## 1.0 发布
+
+[下载 v1.0.0](https://github.com/fantZach/EYEPQC/releases/tag/v1.0.0) ·
+[发布说明与安装前提](doc/releases/v1.0.0.md) · [更新记录](CHANGELOG.md)
+
+项目版本为 **v1.0.0 开发态 MVP**，组件版本独立：PC **1.3.2**、Android **0.8**。
+手机播放及手动换钥已有用户反馈约 **45 fps**，不是持续帧率或全门禁验收。
+最新板端 SD 候选仅通过离线检查，尚未上板；首次 USB 查询超时/第二次连接成功的问题仍待实板复测。
+本次不分发未验收的 `BOOT.BIN`，板端由源码和构建说明交付。
+
+此仓库当前为私有仓库，Release 下载需要仓库访问权限。发布不改变仓库可见性。
 
 ## 四个子项目
 
-| 子项目 | 目录 | 职责与当前状态 |
+| 子项目 | 入口 | 职责 |
 |---|---|---|
-| 开发板 | [board/](board/README.md) | 已有 PL RTL、PS 裸机代码、第三方密码核、约束、构建及板测工具 |
-| PC | [pc/](pc/README.md) | USB↔WSS 账号密文桥已完成实板短测；新增公网反向隧道，公网部署另验 |
-| 移动端 | [mobile/](mobile/README.md) | Android 0.6 视频和手动换钥后用户反馈约45fps；完整 G8/G9 未通过 |
-| 服务器 | [server/](server/README.md) | 独立维护的受限 OpenSSH 中转、Linux 配置/部署工具；公网部署与验收另行执行 |
+| 开发板 | [board/](board/README.md) | PL RTL、PS 裸机固件、约束、Vivado/Vitis 构建与板测工具 |
+| Windows PC | [pc/](pc/README.md) | USB↔WSS 密文桥、账号管理、CLI/安装包、SSH 上行隧道 |
+| Android | [mobile/](mobile/README.md) | 账号登录、自动取得公开配对信息、握手、换钥、解密播放 |
+| 服务器 | [server/](server/README.md) | 受限 OpenSSH 透明 TCP 中转及 Linux 部署工具 |
 
-公网中转由独立 server 子项目维护，PC 子项目维护 Windows 上行隧道和 USB/WSS 接入。
-原有 **板卡↔PC 本地解密演示** 保留；账号/suite2 实机短测见 [实机报告](report/account_ephemeral_board_20261014.md)，完整 G8 和公网 G9 仍待验收。
-移动端采用原生 Java Activity、OkHttp 4.12.0、Bouncy Castle 1.81 lightweight ML-KEM；最低 Android 8.0/API 26，目标 API 35。
+四端共用一个 Git 仓库，不是 submodule。服务器无需接触业务视频密钥；局域网直连无需服务器。
+板卡继续使用 Vitis Standalone 与 USB Slave，不需要 USB 网卡或 PetaLinux。
 
-```text
-EYEPQC/
-├── board/
-│   ├── src/rtl/          # 摄像头、AXIS、AES-GCM、独立加速实验
-│   ├── src/ps/           # Cortex-A9 裸机固件
-│   ├── src/third_party/  # 固定版本密码库及许可证
-│   ├── prj/             # Vivado/Vitis 构建、板测和交付工具
-│   └── xdc/             # 板级约束
-├── pc/src/host/          # 现有 Python 主机与开发验证工具
-├── mobile/              # 移动端职责、协议接入与验收计划
-├── server/              # 公网受限 TCP 中转及 Linux 部署配置
-├── doc/                 # 共享目标、协议和实施步骤
-├── sim/                 # 跨板端/主机的集成测试、RTL testbench、向量
-├── data/kat/            # 公开标准测试向量
-├── report/              # 历史证据与当前进度
-├── skill/               # 项目协作技能
-├── requirements.txt     # 共享 Python 开发/验证环境
-└── run_demo.ps1          # 仓库级快捷入口
+## 开始使用
+
+已配置的 Windows PC 可安装 Release 中的 PC 安装包，并在新终端检查：
+
+```powershell
+eyepqc --version
+eyepqc config show
+eyepqc check
+eyepqc account list
 ```
 
-`build/`、`data/captures/`、`board/output/`、`board/vendor/` 和 `.venv/` 保留原位置并继续由 Git 忽略。
-四子项目是同一 Git 仓库中的职责划分，不是 Git submodule；`sim/` 为共享验收设施。
+安装器不包含账号数据库、TLS/SSH 私钥、板端身份或真实 `pairing.json`。
+首次部署须先按 [PC 说明](pc/README.md) 准备运行材料；仅下载安装包不能直接启动视频。
+Android 附件是含专用公开测试 CA 的 **debug APK**，仅用于受控联测，不是生产签名版本。
+板端构建、SD 初始化与联测顺序见 [板端说明](board/README.md) 和 [SD 开发态协议](doc/g6_sd_usb_bootstrap.md)。
 
-## 快速开始：现有 PC 基线
-
-以下命令均从仓库根目录执行，需要 Python 3.12+；C/RTL 检查另需 GCC、Icarus 或相应 AMD 工具。
+开发环境从仓库根目录执行：
 
 ```powershell
 python -m venv .venv
-& ./.venv/Scripts/python.exe -m pip install -r requirements.txt
+& ./.venv/Scripts/python.exe -m pip install -r requirements.txt -r pc/requirements.txt
 & ./sim/scripts/run_m00.ps1
-# 无板卡的演示窗口（软件参考，不是手机端或实板验收）
+# 无板卡软件演示，不代表真机验收
 & ./run_demo.ps1 -Mode Demo -Offline
-# 完整电脑端回归；工具位置按本机安装调整
-& ./run_demo.ps1 -Mode Check -ToolRoot 'D:/AmdDesignTools/2026.1'
 ```
 
-接线与重新构建见 [bringup](doc/bringup.md)，GUI 录像/回放见 [演示说明](doc/demo.md)，
-固定图片加密见 [AES MVP](doc/aes_mvp.md)。`run_demo.ps1` 默认 `Check`，也支持 `Build`、`Prepare`、
-`Preflight`、`JtagCheck`、`G3`、`G6`、`G7`、`Demo`。硬件模式会操作板卡，执行前须核对构建与接线。
+需要 Python 3.12+；C/RTL 检查另需 GCC、Icarus 或 AMD 工具。
+硬件构建使用 Vivado/Vitis 2026.1 与 Zynq-7000 器件包，接线及工具前提见 [bringup](doc/bringup.md)。
+硬件模式会操作板卡，必须先核对接线、镜像和当前服务，不要与运行中的视频服务抢占串口。
 
-## 新链路与安全边界
+## 协议与安全边界
 
-目标模式下，移动端固定校验板卡公钥，与板卡完成 ML-KEM、双向 Finished 和会话控制。
-PC/中转服务只路由原样控制记录和加密视频，不持有业务会话密钥；接收端验 Tag、反重放后才显示完整 JPEG。
-现有 `pc/src/host/handshake.py` 与 `g6_board.py` 是迁移参考和调试基线，不能直接当作纯转发器运行。
+账号模式使用 WSS 和 schema2，配对信息只含公开连接/身份信息，不含登录密码或 token。
+板端与 Android 完成身份认证临时 ML-KEM、HKDF 和双向 Finished，长连接每 30 分钟重新握手。
+同账号新设备须显式接管；PC 本地密码数据库使用加盐 scrypt。
 
-当前开发态由 PC 经 JTAG 注入测试私钥/seed，PC 因而仍在可信调试边界内。
-真实板端熵源、生产密钥存储及生命周期、secure boot/JTAG 防护和全域清零尚未闭环。
-仅搬移握手代码不能宣称 PC 不可信场景下已具备生产级端到端安全。
+**当前不是生产安全系统。** 开发态测试身份/seed 由可信 PC 经 JTAG 或显式 USB 初始化提供；
+PC 因而仍属于可信调试边界。USB 初始化材料是本地明文，不能宣称对该 PC 的前向保密。
+真实板端熵源、生产密钥存储、安全启动/JTAG 防护和完整故障验收尚未闭环。
+不要提交或分发私钥、密码、真实运行材料和原始视频。详见 [安全说明](SECURITY.md)。
 
-新链路的职责、双向路由、会话断连和验收规则见 [三端架构](doc/architecture.md)，
-准确字节格式仍以 [协议](doc/protocol.md) 为准，实施顺序见 [steps](doc/steps.md)。
+协议入口：[三端架构](doc/architecture.md)、[字节协议](doc/protocol.md)、
+[账号与临时 KEM](doc/account_ephemeral_plan.md)、[公网中转](doc/cloud_relay_plan.md)。
 
-## 已有证据与待完成工作
+## 验证状态与文档导航
 
-- 历史 G6 开发态 USB 动态握手、认证视频与换钥通过，视频约 47 fps；不代表手机端帧率。
-- G7 原 2 小时长期子项由用户对约 50 分钟实测作例外验收，未实测满 2 小时；G0/G7 整体仍未通过。
-- candidate014 仅离线候选，板测与故障恢复门禁待做；独立 Keccak 加速实验未集成到正式视频工程。
-- PC 密文桥与 Android 调试 APK 已有，局域网三端软件互操作已验证；真实板卡/手机和 45 fps 待验，可选公网中转未实现。
+- 实施顺序和剩余门禁：[doc/steps.md](doc/steps.md)。
+- 最新进度及原始证据引用：[report/progress.md](report/progress.md)。
+- 1.0 的确切验证范围、已知问题和附件：[发布说明](doc/releases/v1.0.0.md)。
+- 历史 G7 约 50 分钟实测由用户例外接受，**不是实际满两小时**；故障子项及完整 G8/G9 不据此通过。
+- G0 自检 SD 冷启动证据不等于 G6 视频固件完整冷启动验收；历史报告只对各自记录的构建有效。
 
-最新变更与验证见 [progress](report/progress.md)，板测细节见 [下一阶段计划](report/next_stage_plan.md)、
-[验收矩阵](report/acceptance_matrix_20261009.md) 和 [G6](doc/g6.md)。历史报告只对其记录的构建有效。
+目录约定：`board/`、`pc/`、`mobile/`、`server/` 为四端，`doc/` 为共享设计，
+`sim/` 为共享测试，`data/kat/` 为公开标准向量，`report/` 为历史验证记录。
+`build/`、`tmp/`、`.venv/`、`data/captures/`、`board/output/`、`board/vendor/` 是本机忽略目录，不随源码发布。
+历史 `src/rtl`、`src/ps`、`src/third_party`、`prj/` 已迁入 `board/`，`src/host` 已迁入 `pc/src/host/`；
+旧报告路径/哈希保持原样，不能手改清单把旧产物标成新构建。
 
-## 目录迁移与构建注意事项
+## 贡献、许可与提交校验
 
-2026-10-12 起：`src/rtl`、`src/ps`、`src/third_party` 移至 `board/src/`，
-`prj/` 移至 `board/prj/`，`src/host/` 移至 `pc/src/host/`。
-当前文档命令、构建入口和测试路径已同步调整；`report/` 的历史命令、路径与哈希保留为当时证据，
-重现时需按上述映射转换。根目录 `run_demo.ps1` 与 G7 启动脚本继续可用。
-
-旧 `build/` 的工程、XSA/ELF 和 manifest 不做自动改写。旧路径或源码哈希不匹配时预检会拒绝，
-请按新目录在新的输出目录重建所需硬件/软件，再进行板测；不可手改清单将旧产物标成新构建已验证。
-
-## Git 提交校验
+[贡献说明](CONTRIBUTING.md) · [第三方许可](THIRD_PARTY_NOTICES.md)。
+项目自研部分尚未指定统一开源许可证；不能把第三方许可当作整个项目的授权。
 
 ```powershell
 git config --local core.hooksPath .githooks
 git hook run pre-commit
 ```
 
-提交时保留暂存空白检查及 M00（含向量一致性）、M10、M12、G5 四项快速检查。
-需要本地 `.venv` 与 GCC，不需要板卡。涉及其他模块时单独运行对应深度测试。
-hook 检查当前工作区，部分暂存时应核对工作区与提交内容一致；Linux/macOS 首次需赋予 hook 执行权限。
+提交检查保留暂存空白、M00、M10、M12、G5 四项快速测试；模块深度测试单独执行。
+hook 检查当前工作区，部分暂存时应核对提交内容一致；Linux/macOS 首次需给 hook 执行权限。

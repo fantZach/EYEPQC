@@ -4,10 +4,23 @@
 采集 OV5640 JPEG、完成 ML-KEM Decaps 和 AES-GCM 加密，将密文交给 PC 转发。
 目标架构见 [三端架构](../doc/architecture.md)，共享协议见 [protocol](../doc/protocol.md)。
 
-2026-10-15握手恢复修复：普通G6也使用发送失败时DTR/epoch证据区分正常断连，安全清理旧会话后才接受新握手；
-真实致命错误清除身份后保持FAULT，开发态同样不能被断连路径改回WAIT_HELLO。
-当前易失实测构建为 `build/vitis/g6_handshake_recovery_20261015_1`，75项哈希/BSP/ARM预检通过，
-JTAG开发态已加载；SD/Flash不改。强制关闭客户端与低带宽后重连记录见 [修复报告](../report/handshake_recovery_20261015.md)。
+## v1.0.0 交付状态
+
+本次发布交付板端源码、构建脚本和文档，**不附带 BOOT.BIN**：最新 SD 候选尚未完成实板验收，
+包含 AMD FSBL/BSP 和生成 bitstream 的二进制分发许可材料也尚未闭环。使用者需在自己的 AMD 工具环境中构建。
+
+- 最新本机构建：`build/vitis/g6_sd_usb_bootstrap_20261016_6`，开发态 USB bootstrap profile。
+- 2026-10-21 重新执行 `verify_software.py`：79 项哈希、709 项生成输入、实际 BSP 查表、ARM 应用/FSBL 启动检查通过；
+  `board_accessed=false`、`board_validated=false`。这不是上板通过。
+- 本机候选 BOOT.BIN：4,303,824 字节，SHA-256
+  `08702a82f60594800b811ff2017d1dfb165c7cf88834a77d91f19552aa5b7e1b`。
+- 先前镜像仍出现“第一次连接失败、第二次成功”；最新候选的数据序号/QUERY 诊断修正仅通过离线回归，
+  尚未写卡验证，不能声称已经修复首次连接问题。历史手机约 45 fps 不代表本候选验收。
+- SD 只保存程序。可信 PC 每次冷启动后通过本地明文 USB 注入专用测试私钥和新 seed，PC 知道这些材料；
+  不将其写入源码、SD 镜像或发布附件，不宣称生产安全、针对恶意 PC 的前向保密或脱离 PC 的自主安全启动。
+
+完整流程和待验项见 [G6 开发态 SD 启动](../doc/g6_sd_usb_bootstrap.md)，
+历史握手恢复见 [修复报告](../report/handshake_recovery_20261015.md)。
 
 | 目录 | 内容 |
 |---|---|
@@ -33,7 +46,16 @@ JTAG开发态已加载；SD/Flash不改。强制关闭客户端与低带宽后�
 
 ## 三端 MVP 固件与准备入口
 
-本轮按新目录构建 `build/vitis/g6_mobile_bridge_20261012_1`，开发态 G6 ELF 与 73 项清单预检通过。
+当前 SD/USB 开发态候选的构建与离线检查入口如下；需要先由匹配的完整硬件工程生成启用 SD0 的 XSA。
+以下构建不会连接 JTAG、写入 SD 或启动视频服务，输出目录必须未被其他构建使用。
+
+```powershell
+& ./.venv/Scripts/python.exe board/prj/build_software.py --xsa build/vivado/g4_usb_1/m01.xsa --output build/vitis/g6_sd_local --tool-root D:/AmdDesignTools/2026.1 --apps g6_usb --g6-dev-usb-bootstrap --boot-images
+& ./.venv/Scripts/python.exe board/prj/verify_software.py build/vitis/g6_sd_local
+```
+
+以下保留的是 2026-10-12 JTAG 开发路线，不是当前 SD 候选的启动方式：
+历史构建 `build/vitis/g6_mobile_bridge_20261012_1` 的开发态 G6 ELF 与 73 项清单预检通过。
 复用历史 `build/vivado/g4_usb_1/m01.xsa`，其内置 bit 与本机历史 G6 所用 bit 相同；未重新实现 PL，未上板。
 新软件采用 `development_jtag_mailbox_secure_cleanup`，不代表 production provider/熵源已完成。
 
@@ -58,8 +80,17 @@ PC 经 JTAG 装载测试私钥仍属于可信开发环境；准备与公开身�
 
 控制 body 最大 1024 字节，临时 offer/reply 完整控制记录为 876/844 字节，USB 外层仍为 channel + BE16 长度。
 板端握手 15 秒及业务 1800 秒硬截止保持，客户端于 1785 秒提前重建；公网延迟或背压超限时按既有失败/清理规则停流。
-开发态 PC 已知 JTAG seed，不能声称对恶意 PC 前向保密；G6 视频 SD 自主启动仍未完成。
+开发态 PC 已知 JTAG 或 USB bootstrap seed，不能声称对恶意 PC 前向保密；G6 视频 SD 路线的状态以本页发布说明为准，
+脱离 PC 的自主安全启动仍未完成。
 公网 G9 不替代 G0/G7/G8。本轮仅接口审查和离线回归，详见 [板端云中转报告](../report/board_cloud_20261014.md)。
+
+## 第三方源码与许可
+
+ML-KEM 使用 [mlkem-native](src/third_party/mlkem/LICENSE)，SHA-256 等辅助实现来自
+[TinyCrypt](src/third_party/tinycrypt/LICENSE)，PL AES 核使用
+[Secworks AES](src/rtl/crypto/secworks_aes/LICENSE)。保留各文件原始版权与许可，
+版本和来源见 [M09](../doc/m09.md) 及 [AES 来源说明](src/rtl/crypto/secworks_aes/README.md)。
+AMD 工具、生成 IP/bitstream、FSBL/BSP 另受其原有条款约束，仓库中的第三方开源许可证不能代替这些条款。
 
 ## M01 硬件资料
 

@@ -1,1 +1,4 @@
 .githooks/* text eol=lf
+# Preserve upstream license formatting; source files retain normal whitespace checks.
+pc/licenses/*.txt -whitespace
+mobile/licenses/*.txt -whitespace
