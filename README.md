@@ -18,6 +18,9 @@ OV5640 → Zynq-7020 ⇄ USB Slave ⇄ Windows PC ⇄ Android
 保留下面已发布的 1.0；候选包、unsigned APK 和离线检查不会自动成为正式稳定版。
 公网继续使用现有 IP，Android 后续 release 构建提供显式部署 CA 入口，但仍严格校验地址、有效期和证书链。
 
+2026-10-31 新增 [SD 固定身份与持久随机状态配置](doc/g6_sd_identity.md)，取消日常 PC 的私钥/seed 注入。
+需部署匹配的新 BOOT 与卡上材料；旧 USB 模式继续兼容，未自动迁移当前运行环境，实板验收仍待用户执行。
+
 ## 已发布 1.0
 
 [下载 v1.0.0](https://github.com/fantZach/EYEPQC/releases/tag/v1.0.0) ·
@@ -78,8 +81,9 @@ python -m venv .venv
 板端与 Android 完成身份认证临时 ML-KEM、HKDF 和双向 Finished，长连接每 30 分钟重新握手。
 同账号新设备须显式接管；PC 本地密码数据库使用加盐 scrypt。
 
-**当前不是生产安全系统。** 开发态测试身份/seed 由可信 PC 经 JTAG 或显式 USB 初始化提供；
+**当前不是生产安全系统。** 原开发态测试身份/seed 由可信 PC 经 JTAG 或显式 USB 初始化提供；
 PC 因而仍属于可信调试边界。USB 初始化材料是本地明文，不能宣称对该 PC 的前向保密。
+新增 SD 本地模式不在日常运行时注入秘密，但首次配置端仍知道初始材料；确定性推进不能撤销它的推算能力。
 真实板端熵源、生产密钥存储、安全启动/JTAG 防护和完整故障验收尚未闭环。
 不要提交或分发私钥、密码、真实运行材料和原始视频。详见 [安全说明](SECURITY.md)。
 

@@ -10,6 +10,10 @@ pairing.json
 id_ed25519
 accounts.json
 login.txt
+# Private SD deployment materials (case-sensitive filesystems included).
+EYEKEY.BIN
+EYERNG0.BIN
+EYERNG1.BIN
 
 # Local runtimes and generated FPGA/software products.
 .venv/

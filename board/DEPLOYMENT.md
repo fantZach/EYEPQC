@@ -4,6 +4,10 @@
 板端仅 Vitis Standalone，不刷 Linux、不写 QSPI/eFuse，不启用 PS 网口。
 验收统一由用户完成；离线构建/打包不会自动将 `board_validated` 或任何 G 门禁改成通过。
 
+2026-10-31 新增可选 [SD 本地身份模式](../doc/g6_sd_identity.md)：固定身份私钥和可更新随机状态保存在卡上，
+日常 PC 直接 `eyepqc run`。需要专用固件与卡上材料；本教程后续原有 `_6`/USB 初始化路线不自动变成该模式。
+SD 被复制、旧快照回滚不在用户本轮威胁模型内；首次材料配置端仍须可信。新模式不等于受保护存储或硬件熵源。
+
 ## 1. 交付与前提
 
 - 本地候选 ZIP 包含 `BOOT.BIN`、脱敏 `manifest.json`、本教程、第三方许可和 `SHA256SUMS.txt`。
@@ -11,7 +15,7 @@
 - 最新 `_6` 固件仅完成离线验证。此前首次 USB QUERY 超时、第二次成功的问题仍需实板确认；不要据此教程称问题已解决。
 - Windows 需要视频 USB CDC 驱动、CH340 调试串口驱动、匹配 PC CLI、已准备好的 WSS/账号材料，以及受保护的板端测试身份文件。
 - 构建需要 Python 3.12+、根目录依赖、原生 GCC、Vivado/Vitis 2026.1 和 Zynq-7000 器件包。
-- 不把真实私钥、seed、账号或用户视频放入源码/BOOT/SD/候选包。PC 明文 USB 注入开发材料，PC 因而属于可信边界，不是生产安全。
+- 不把真实私钥、seed、账号或用户视频放入源码/BOOT/候选包。原 USB 模式不在 SD 保存秘密，PC 明文 USB 注入开发材料；新 SD 模式按独立教程保存三份私有文件。两者均不宣称生产安全。
 
 仓库协议、安全边界和 PC 完整部署入口：
 [USB 初始化契约](https://github.com/fantZach/EYEPQC/blob/main/doc/g6_sd_usb_bootstrap.md)、

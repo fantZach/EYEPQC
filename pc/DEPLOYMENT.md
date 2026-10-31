@@ -96,11 +96,17 @@ $Public = "$Data/public"
 由板端部署流程提供一个目录，内含**公开**的 `public.bin` 和 `public.sha256`。
 使用者先从独立可信渠道核对指纹，不能从同一未知下载链接同时取得公钥和“可信”指纹。
 
-全新部署尚无身份时，按 [板端教程](https://github.com/fantZach/EYEPQC/blob/main/board/DEPLOYMENT.md) 的显式开发身份生成路线，
-在新的绝对目录生成独立 ML-KEM-512 身份；已有受信身份必须复用，不因升级无意重建。
-其 `public/` 目录用于下一条 `--identity-dir`；`private/board-test-identity.bin` 单独复制到受保护的
-`$Private/board-test-identity.bin`，不能放到 public/、配对 JSON、SD 或候选压缩包。
-这仍是“可信 PC 提供开发身份”的路线，不是板端生产密钥存储。
+全新部署尚无身份时，按 [板端教程](https://github.com/fantZach/EYEPQC/blob/main/board/DEPLOYMENT.md) 选择与实际固件匹配的身份准备路线；
+已有受信身份不因升级无意重建。两条路线的公开 `public/` 目录均可用于下一条 `--identity-dir`：
+
+- **SD 本地身份 `G6_SD_IDENTITY`**：固定私钥和可更新随机状态只部署到 SD；PC 运行只需公开配对资料，
+  不把板端私钥复制到 `$Private`，不通过 USB 注入 seed。不要复制旧运行状态来“恢复”随机状态。
+- **原 USB 初始化 `G6_DEV_USB_BOOTSTRAP`**：按原 `prepare_dev_identity.py` 路线，将
+  `private/board-test-identity.bin` 单独复制到受保护的 `$Private/board-test-identity.bin`；
+  此路线不把秘密写入 SD，仍要求可信 PC 提供开发身份和 seed。
+
+两者都不能把私钥放到 public/、配对 JSON 或候选压缩包。SD 路线接受物理读卡风险，不等于生产密钥存储；
+复用 PC 曾持有的旧身份不能消除历史副本，初始材料准备者也必须可信。
 
 本项目当前公网 IP 为 `124.70.38.245`，没有域名；以下命令只生成本地材料，不连接该服务器。
 只有更换实例时才将地址同步替换为新 IP 和证书 SAN：
@@ -209,7 +215,18 @@ SAN/有效期满足本次手机地址、host key 经独立核对、公网端口�
 确认旧服务已停止，先 `eyepqc status` 查看端口所有者；它不读密钥、不访问 USB，也不证明所有者就是本程序。
 不要根据端口号直接批量杀进程。串口/板端镜像准备按 [板端教程](https://github.com/fantZach/EYEPQC/blob/main/board/DEPLOYMENT.md)。
 
-SD USB 开发初始化的程序需要匹配的 1632 字节测试身份文件，位置及 ACL 由板端部署者准备，
+新增 **SD 本地身份**固件须先由板端流程写入匹配的 BOOT 和身份/随机状态材料，并完成状态读写检查；
+构建参数为 `--g6-sd-identity`，不是原 USB bootstrap 镜像。PC 使用公开 pairing、账号及 TLS/SSH 配置即可：
+
+```powershell
+eyepqc run
+```
+
+普通 `run` 不读取板端身份、不生成板端 seed，也不发送 EYBS QUERY/DATA；板端启动/持久化失败不能由 PC 开关绕过。
+保留原有运行材料和备份，本步骤不自动删除旧 PC 身份。不得把 SD 运行状态的旧备份恢复到卡上继续运行。
+新固件尚需操作者完成断电、重连、换钥与视频验收；PC 启动成功本身不证明板卡就绪。
+
+以下命令仅供**原 SD USB 开发初始化**固件使用，需要匹配的 1632 字节测试身份文件，位置及 ACL 由板端部署者准备，
 其公钥必须匹配 pairing；不会由 PC 安装包创建或写入 SD：
 
 ```powershell
@@ -221,7 +238,7 @@ eyepqc run --dev-usb-bootstrap
 默认路径不受当前工作目录/EXE位置影响，不搜索其他目录或自动创建身份。视频 COM 口仍须显式设置。
 程序只在状态、pin、ACL 和材料通过后发送本地明文开发初始化，得到 READY 后才开启监听/隧道。
 PC 因而知道板端身份与 seed，不宣称针对恶意 PC 的生产端到端安全或前向保密。
-已有单独准备好的普通 G6 固件使用 `eyepqc run`；不要混用初始化 profile。
+SD 本地身份或其他单独准备好的普通 G6 固件使用 `eyepqc run`；不要混用初始化 profile。
 
 看到 `RELAY_READY` 与 `PC_RUNNING` 只表示本地就绪/SSH正在连接；手机再输入账号密码并连接。
 结束时手机先停止观看，PC 窗口 Ctrl+C；仅退出本次创建的 relay 和 SSH 子进程。

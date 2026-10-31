@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / 'pc/src/host'))
 from build_manifest import verify
 
 PROFILE = 'development_usb_bootstrap_secure_cleanup'
+SD_PROFILE = 'experimental_sd_local_identity'
 BOOT = 'g6_usb/boot/BOOT.BIN'
 LICENSES = {
     'licenses/secworks_aes.txt': 'board/src/rtl/crypto/secworks_aes/LICENSE',
@@ -55,19 +56,30 @@ def package(workspace, output):
     summary = json.loads((workspace / 'software_build.json').read_text(encoding='utf-8'))
     checked = json.loads((workspace / 'software_verification.json').read_text(encoding='utf-8'))
     manifest, count = verify(workspace, 'g6_usb_manifest.json')
+    profile = manifest.get('security_profile')
+    if profile == PROFILE:
+        profile_ok = (summary.get('g6_dev_usb_bootstrap') is True and
+                      summary.get('g6_sd_identity', False) is False and
+                      manifest.get('development_provisioning_required') is True and
+                      manifest.get('usb_bootstrap', {}).get('identity_or_seed_embedded') is False)
+    elif profile == SD_PROFILE:
+        profile_ok = (summary.get('g6_sd_identity') is True and
+                      summary.get('g6_dev_usb_bootstrap') is False and
+                      manifest.get('development_provisioning_required') is False and
+                      manifest.get('sd_identity', {}).get('identity_or_seed_embedded') is False)
+    else:
+        profile_ok = False
     if (summary.get('applications') != ['g6_usb'] or summary.get('boot_images') is not True or
-            summary.get('g6_dev_usb_bootstrap') is not True or
+            not profile_ok or
             summary.get('board_validated') is not False or
-            manifest.get('application') != 'g6_usb' or manifest.get('security_profile') != PROFILE or
+            manifest.get('application') != 'g6_usb' or
             manifest.get('board_validated') is not False or
-            manifest.get('development_provisioning_required') is not True or
-            manifest.get('usb_bootstrap', {}).get('identity_or_seed_embedded') is not False or
             checked.get('status') != 'PASS' or checked.get('board_accessed') is not False or
             checked.get('board_validated') is not False or checked.get('bsp_lookup') != 'PASS' or
             checked.get('arm_startup') != {'g6_usb': 'PASS', 'fsbl': 'PASS'} or
             checked.get('hash_checks') != {'g6_usb': count} or
             checked.get('generated_input_checks') != len(summary.get('generated_inputs', {}))):
-        raise ValueError('Expected a verified, unaccepted USB-bootstrap SD development build')
+        raise ValueError('Expected a verified, unaccepted supported SD development build')
     boot = regular_path(workspace / BOOT).read_bytes()
     if not boot or sha256(boot) != manifest['artifacts'].get(BOOT):
         raise ValueError('BOOT changed after verification; rebuild or recheck first')
@@ -76,6 +88,8 @@ def package(workspace, output):
             raise ValueError('Invalid input digest')
     files = {'BOOT.BIN': boot, 'DEPLOYMENT.md': (ROOT / 'board/DEPLOYMENT.md').read_bytes(),
              'THIRD_PARTY_NOTICES.md': (ROOT / 'board/THIRD_PARTY_NOTICES.md').read_bytes()}
+    if profile == SD_PROFILE:
+        files['SD_IDENTITY.md'] = (ROOT / 'doc/g6_sd_identity.md').read_bytes()
     files.update({name: (ROOT / source).read_bytes() for name, source in LICENSES.items()})
     # AMD links Vitis/data internally; resolve its read-only notice within the trusted install.
     sdk_root = Path(summary['tool_root']).resolve(strict=True)
@@ -86,7 +100,7 @@ def package(workspace, output):
     files['licenses/amd_embeddedsw.txt'] = sdk_license.read_bytes()
     public = {
         'component': 'board', 'target': 'CF7020B / XC7Z020 / OV5640',
-        'security_profile': PROFILE, 'development_only': True,
+        'security_profile': profile, 'development_only': True,
         'user_acceptance': 'pending', 'board_validated': False,
         'local_use_only': True, 'external_redistribution_license_review': 'pending',
         'identity_or_seed_embedded': False, 'first_usb_query_hardware_fix_verified': False,

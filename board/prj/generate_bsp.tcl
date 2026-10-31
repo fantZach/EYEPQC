@@ -11,7 +11,7 @@ if {[catch {
     set sw [hsi create_sw_design -proc ps7_cortexa9_0 -os standalone eye_bsp]
     hsi set_property CONFIG.stdin ps7_uart_0 [hsi get_os]
     hsi set_property CONFIG.stdout ps7_uart_0 [hsi get_os]
-    if {$boot eq "fsbl"} {hsi add_library xilffs 5.6}
+    if {$boot in {fsbl sd}} {hsi add_library xilffs 5.6}
     hsi generate_bsp -dir $output -hw $hw -sw $sw
     if {$boot eq "fsbl"} {
         hsi generate_app -dir "[file dirname $output]/fsbl" -hw $hw -sw $sw -app zynq_fsbl

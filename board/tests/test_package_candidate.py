@@ -27,7 +27,7 @@ class PackageTests(unittest.TestCase):
         self.boot = self.workspace / package_candidate.BOOT
         self.boot.parent.mkdir(parents=True)
         self.boot.write_bytes(b'public-boot-fixture')
-        for name in ['board/DEPLOYMENT.md', 'board/THIRD_PARTY_NOTICES.md',
+        for name in ['board/DEPLOYMENT.md', 'board/THIRD_PARTY_NOTICES.md', 'doc/g6_sd_identity.md',
                      *package_candidate.LICENSES.values(), 'sdk/Vitis/data/embeddedsw/license.txt']:
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -93,6 +93,47 @@ class PackageTests(unittest.TestCase):
             self.call()
         self.run.assert_not_called()
         self.assertEqual(self.output.read_bytes(), b'existing')
+
+    def sd_profile(self):
+        self.summary.update(g6_sd_identity=True, g6_dev_usb_bootstrap=False)
+        self.manifest.update(security_profile=package_candidate.SD_PROFILE,
+                             development_provisioning_required=False,
+                             sd_identity={'identity_or_seed_embedded': False})
+        self.save()
+
+    def test_sd_identity_profile_exports_only_boot_public_docs_and_not_materials(self):
+        self.sd_profile()
+        for name in ('EYEKEY.BIN', 'EYERNG0.BIN', 'EYERNG1.BIN'):
+            (self.workspace / name).write_bytes(b'SECRET-FIXTURE-NOT-FOR-EXPORT')
+        self.call()
+        with ZipFile(self.output) as archive:
+            self.assertEqual(set(archive.namelist()), {
+                'BOOT.BIN', 'manifest.json', 'SHA256SUMS.txt', 'DEPLOYMENT.md', 'SD_IDENTITY.md',
+                'THIRD_PARTY_NOTICES.md', 'licenses/amd_embeddedsw.txt', *package_candidate.LICENSES})
+            public = json.loads(archive.read('manifest.json'))
+            self.assertEqual(public['security_profile'], package_candidate.SD_PROFILE)
+            self.assertFalse(public['identity_or_seed_embedded'])
+            self.assertFalse(public['board_validated'])
+            for name in archive.namelist():
+                self.assertNotIn(b'SECRET-FIXTURE-NOT-FOR-EXPORT', archive.read(name))
+                self.assertNotIn(str(self.root).encode(), archive.read(name))
+
+    def test_sd_profile_rejects_missing_flags_embedded_keys_and_bootstrap_mixture(self):
+        self.sd_profile()
+        for category, field, value in (
+                ('summary', 'g6_sd_identity', False), ('summary', 'g6_dev_usb_bootstrap', True),
+                ('manifest', 'development_provisioning_required', True),
+                ('sd_identity', 'identity_or_seed_embedded', True)):
+            with self.subTest(field=field):
+                data = (self.summary if category == 'summary' else
+                        self.manifest['sd_identity'] if category == 'sd_identity' else self.manifest)
+                old = data[field]
+                data[field] = value
+                self.save()
+                with self.assertRaises(ValueError):
+                    self.call()
+                self.assertFalse(self.output.exists())
+                data[field] = old
 
     def test_linked_output_rejected_before_verification(self):
         with patch.object(Path, 'is_symlink', return_value=True), self.assertRaises(ValueError):

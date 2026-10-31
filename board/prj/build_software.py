@@ -33,12 +33,12 @@ def run(args, cwd, log):
     return result.stdout + result.stderr
 
 
-def build_bsp(workspace, xsa, tools, boot_images=False):
+def build_bsp(workspace, xsa, tools, boot_images=False, sd_identity=False):
     output = workspace / 'bsp'
     log = workspace / 'bsp_generate.log'
     text = run([tools / 'Vivado/bin/xsdb.bat', ROOT / 'board/prj/generate_bsp.tcl',
                 xsa, output, tools / 'Vitis/data/embeddedsw',
-                *(['fsbl'] if boot_images else [])], ROOT, log)
+                *(['fsbl'] if boot_images else ['sd'] if sd_identity else [])], ROOT, log)
     if 'EYEPQC_BSP_GENERATED' not in text:
         raise RuntimeError(f'BSP generation did not complete; see {log}')
     cpu = output / 'ps7_cortexa9_0'
@@ -167,9 +167,9 @@ def prepare_secure_cleanup_usb(workspace, gcc):
 
 
 def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
-              dev_secure_cleanup=False, dev_usb_bootstrap=False):
+              dev_secure_cleanup=False, dev_usb_bootstrap=False, sd_identity=False):
     secure_cleanup_enabled = (name == 'g6_usb' and
-                              (production_provider is not None or dev_secure_cleanup or dev_usb_bootstrap))
+                              (production_provider is not None or dev_secure_cleanup or dev_usb_bootstrap or sd_identity))
     app = workspace / name
     build = app / 'build'
     build.mkdir(parents=True)
@@ -182,6 +182,8 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
             defines.append('G6_PRODUCTION')
         if dev_usb_bootstrap:
             defines.append('G6_DEV_USB_BOOTSTRAP')
+        if sd_identity:
+            defines.append('G6_SD_IDENTITY')
         if secure_cleanup_enabled:
             defines.append('G6_SECURE_CLEANUP')
     sources = [ROOT / 'board/src/ps/src/g3_camera.c']
@@ -207,6 +209,9 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
         if production_provider is not None:
             sources.append(ROOT / 'board/src/ps/src/g6_hmac_drbg.c')
             sources.append(production_provider)
+        if sd_identity:
+            sources += [ROOT / 'board/src/ps/src' / f for f in
+                        ('g6_hmac_drbg.c', 'g6_sd_state.c', 'g6_sd_identity.c')]
         include.append(ROOT / 'board/src/third_party/tinycrypt/lib/include')
         include += [ROOT / 'board/src/third_party', ROOT / 'board/src/third_party/mlkem']
     linker = ROOT / 'board/prj/a9_ddr.ld'
@@ -274,7 +279,7 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
                                ', '.join(missing_cleanup))
     expected = {'g3_job': 128, 'g3_frame': 65600, 'g3_sealed': 68096}
     if name == 'g6_usb':
-        if production_provider is None and not dev_usb_bootstrap:
+        if production_provider is None and not dev_usb_bootstrap and not sd_identity:
             expected.update(g6_sk_load=1632, g6_seed_load=32, g6_ready=4)
         expected.update(g6_status=4)
         expected.update(g6_frames=4, g6_dropped=4, g6_control_errors=4,
@@ -317,6 +322,13 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
                                'g6_production_security_init', 'production_drbg'}
         if forbidden_bootstrap.intersection(abi) or 'usb_bootstrap' not in abi:
             raise RuntimeError('Development USB bootstrap ELF profile isolation failed')
+    if name == 'g6_usb' and sd_identity:
+        forbidden_sd = {'g6_sk_load', 'g6_seed_load', 'g6_ready', 'usb_bootstrap',
+                        'random_seed', 'random_counter', 'g6_production_security_init'}
+        required_sd = {'g6_sd_identity_init', 'g6_sd_identity_random',
+                       'g6_sd_identity_shutdown', 'eye_sd_state_random', 'f_sync'}
+        if forbidden_sd.intersection(abi) or required_sd.difference(abi):
+            raise RuntimeError('SD identity ELF profile isolation failed')
     if name == 'g6_usb' and (dev_secure_cleanup or dev_usb_bootstrap):
         # Bind every development secret/readback range to this ELF so a later
         # read-only AP0 capture can verify terminal-fault cleanup by identity.
@@ -372,13 +384,23 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
         manifest['external_sources_root'] = 'tool-root'
         manifest['secure_cleanup_implementation'] = 'bounded_usbps_overlay_and_dma_gcm_frame_tx_callbacks'
     if name == 'g6_usb':
-        manifest['protocol_suites'] = [2] if production_provider is not None else [1, 2]
+        manifest['protocol_suites'] = [2] if production_provider is not None or sd_identity else [1, 2]
         manifest['ephemeral_key_storage'] = 'application_ram_only'
         manifest['ephemeral_keygen_source'] = ('provider_entropy_64_bytes' if production_provider is not None
+                                              else 'sd_persistent_secret_ratchet_no_fresh_entropy' if sd_identity
                                               else 'pc_known_development_seed_no_forward_secrecy_claim')
         if production_provider is not None:
             manifest['security_profile'] = 'external_provider_unvalidated'
             manifest['production_secure_cleanup'] = manifest['secure_cleanup_implementation']
+        elif sd_identity:
+            manifest['security_profile'] = 'experimental_sd_local_identity'
+            manifest['development_secure_cleanup'] = manifest['secure_cleanup_implementation']
+            manifest['sd_identity'] = dict(files=['EYEKEY.BIN', 'EYERNG0.BIN', 'EYERNG1.BIN'],
+                                           random_state_bytes=80, identity_or_seed_embedded=False,
+                                           host_secret_provisioning=False,
+                                           physical_durability_validated=False,
+                                           fatfs_ctrl_sync='amd_noop_host_idle_dat0_poll_and_readback',
+                                           rollback_protected=False, fresh_entropy=False)
         elif dev_usb_bootstrap:
             manifest['security_profile'] = 'development_usb_bootstrap_secure_cleanup'
             manifest['development_secure_cleanup'] = manifest['secure_cleanup_implementation']
@@ -391,7 +413,7 @@ def build_app(name, workspace, cpu, gcc, xsa, production_provider=None,
             manifest['development_secure_cleanup'] = manifest['secure_cleanup_implementation']
         else:
             manifest['security_profile'] = 'development_jtag_mailbox'
-        manifest['development_provisioning_required'] = production_provider is None
+        manifest['development_provisioning_required'] = production_provider is None and not sd_identity
         if production_provider is not None:
             manifest['production_provider'] = dict(
                 path=production_provider.relative_to(workspace).as_posix(),
@@ -412,9 +434,14 @@ def main():
                         help='Add bounded USB/DMA cleanup to the development JTAG/host-seed profile; remains experimental')
     parser.add_argument('--g6-dev-usb-bootstrap', action='store_true',
                         help='Explicit development-only USB identity/fresh PC seed bootstrap, no JTAG mailbox or SD secrets')
+    parser.add_argument('--g6-sd-identity', action='store_true',
+                        help='Experimental SD private identity and persistent random state; no PC secret bootstrap')
     args = parser.parse_args()
     xsa, workspace, tools = args.xsa.resolve(), args.output.resolve(), args.tool_root.resolve()
     provider_source = args.g6_production_provider.resolve() if args.g6_production_provider else None
+    if args.g6_sd_identity and ('g6_usb' not in args.apps or args.g6_dev_usb_bootstrap or
+                                args.g6_dev_secure_cleanup or provider_source is not None):
+        parser.error('--g6-sd-identity requires g6_usb and excludes USB/JTAG/production profiles')
     if args.g6_dev_secure_cleanup and 'g6_usb' not in args.apps:
         parser.error('--g6-dev-secure-cleanup requires --apps to include g6_usb')
     if args.g6_dev_secure_cleanup and provider_source is not None:
@@ -434,7 +461,7 @@ def main():
             parser.error('Expected xc7z020clg400-2 XSA')
         if not {'m01.bit', 'ps7_init.tcl'} <= set(archive.namelist()):
             parser.error('XSA must contain bitstream and PS initialization')
-        if args.g6_dev_usb_bootstrap and args.boot_images:
+        if (args.g6_dev_usb_bootstrap and args.boot_images) or args.g6_sd_identity:
             hwh = ET.fromstring(archive.read('system.hwh'))
             parameters = {p.attrib['NAME']: p.attrib.get('VALUE') for p in
                           hwh.findall('.//MODULE[@MODTYPE="processing_system7"]/PARAMETERS/PARAMETER')}
@@ -451,13 +478,14 @@ def main():
         if digest(provider_for_build) != digest(provider_source):
             raise RuntimeError('Copied G6 production provider does not match the requested source')
     xsa_hash = digest(xsa)
-    cpu, gcc = build_bsp(workspace, xsa, tools, args.boot_images)
+    cpu, gcc = build_bsp(workspace, xsa, tools, args.boot_images, args.g6_sd_identity)
     manifests = {}
     for name in args.apps:
         manifests[name] = build_app(name, workspace, cpu, gcc, xsa,
                                     provider_for_build if name == 'g6_usb' else None,
                                     args.g6_dev_secure_cleanup and name == 'g6_usb',
-                                    args.g6_dev_usb_bootstrap and name == 'g6_usb')
+                                    args.g6_dev_usb_bootstrap and name == 'g6_usb',
+                                    args.g6_sd_identity and name == 'g6_usb')
         (workspace / (name + '_manifest.json')).write_text(json.dumps(manifests[name], indent=2) + '\n', encoding='utf-8')
         print('ARM_ELF_OK', name, flush=True)
     if args.boot_images:
@@ -497,6 +525,7 @@ def main():
         xsa_sha256=xsa_hash, tool_root=str(tools), applications=list(manifests),
         g6_dev_secure_cleanup=args.g6_dev_secure_cleanup,
         g6_dev_usb_bootstrap=args.g6_dev_usb_bootstrap,
+        g6_sd_identity=args.g6_sd_identity,
         generated_inputs=build_inputs, external_inputs=external_inputs,
         build_scripts={p.relative_to(ROOT).as_posix(): digest(p) for p in
                        (ROOT / 'board/prj/build_software.py', ROOT / 'board/prj/generate_bsp.tcl',

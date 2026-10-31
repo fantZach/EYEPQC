@@ -29,6 +29,12 @@
 #endif
 #include <stdint.h>
 #include <string.h>
+#ifdef G6_SD_IDENTITY
+#if defined(G6_PRODUCTION) || defined(G6_DEV_USB_BOOTSTRAP) || !defined(G6_SECURE_CLEANUP)
+#error "SD identity is an independent experimental profile requiring cleanup"
+#endif
+#include "g6_sd_identity.h"
+#endif
 #ifdef G6_DEV_USB_BOOTSTRAP
 #if defined(G6_PRODUCTION) || !defined(G6_SECURE_CLEANUP)
 #error "Development USB bootstrap requires cleanup and excludes production"
@@ -93,7 +99,7 @@ int usb_cdc_secure_cleanup_tx(uint8_t *buffer, unsigned capacity);
 #endif
 int usb_cdc_take_control(uint8_t *out, uint32_t capacity);
 
-#if !defined(G6_PRODUCTION) && !defined(G6_DEV_USB_BOOTSTRAP)
+#if !defined(G6_PRODUCTION) && !defined(G6_DEV_USB_BOOTSTRAP) && !defined(G6_SD_IDENTITY)
 volatile uint8_t g6_sk_load[1632] __attribute__((aligned(64)));
 volatile uint8_t g6_seed_load[32] __attribute__((aligned(64)));
 volatile uint32_t g6_ready __attribute__((aligned(64)));
@@ -115,7 +121,10 @@ volatile struct g6_transport_failure_diag g6_transport_failure_diag
 #endif
 
 #ifndef G6_PRODUCTION
-static uint8_t private_key[1632], random_seed[32];
+static uint8_t private_key[1632];
+#ifndef G6_SD_IDENTITY
+static uint8_t random_seed[32];
+#endif
 #else
 static struct eye_hmac_drbg production_drbg;
 #endif
@@ -127,7 +136,7 @@ static struct eye_session session;
 static struct eye_ephemeral ephemeral;
 static uint8_t negotiated_suite, business_ready;
 static XTime profile_started;
-#ifndef G6_PRODUCTION
+#if !defined(G6_PRODUCTION) && !defined(G6_SD_IDENTITY)
 static uint64_t random_counter;
 #endif
 static uint32_t frame_id;
@@ -247,7 +256,7 @@ static int secure_cleanup(void) {
 }
 #endif
 static void be16(uint8_t *p, unsigned n) { p[0] = n >> 8; p[1] = n; }
-#ifndef G6_PRODUCTION
+#if !defined(G6_PRODUCTION) && !defined(G6_SD_IDENTITY)
 static void be64(uint8_t *p, uint64_t n) {
     for (unsigned i = 0; i < 8; ++i) p[i] = n >> (56 - 8*i);
 }
@@ -259,7 +268,9 @@ static int send_control(const uint8_t *message, unsigned length) {
     return usb_cdc_send(tx, length + 3);
 }
 static int board_random(uint8_t out[32], const uint8_t host_random[32]) {
-#ifdef G6_PRODUCTION
+#ifdef G6_SD_IDENTITY
+    return g6_sd_identity_random(out, 32U, host_random);
+#elif defined(G6_PRODUCTION)
     int status;
     wipe(out, 32U);
     if (eye_hmac_drbg_needs_reseed(&production_drbg)) {
@@ -289,7 +300,9 @@ static int board_random(uint8_t out[32], const uint8_t host_random[32]) {
 #endif
 }
 static int ephemeral_coins(uint8_t out[64]) {
-#ifdef G6_PRODUCTION
+#ifdef G6_SD_IDENTITY
+    int status = g6_sd_identity_random(out, 64U, session.transcript_hash);
+#elif defined(G6_PRODUCTION)
     int status = g6_production_entropy_bytes(out, 64U);
 #else
     /* Development seed is PC-known: this profile makes no forward-secrecy claim. */
@@ -365,6 +378,9 @@ static void mark_fault(void) {
 #ifndef G6_PRODUCTION
     /* A terminal development fault cannot resume with the loaded test key. */
     wipe(private_key, sizeof private_key);
+#ifdef G6_SD_IDENTITY
+    g6_sd_identity_shutdown();
+#else
     wipe(random_seed, sizeof random_seed);
     random_counter = 0U;
 #ifndef G6_DEV_USB_BOOTSTRAP
@@ -374,6 +390,7 @@ static void mark_fault(void) {
 #else
     eye_boot_fault(&usb_bootstrap);
     usb_cdc_bootstrap_rx_clear();
+#endif
 #endif
 #endif
 #ifdef G6_PRODUCTION
@@ -547,7 +564,7 @@ static int handle_control(const uint8_t *message, unsigned length) {
 #endif
     if (phase == WAIT_HELLO && type == EYE_HELLO && length == 48) {
         negotiated_suite = body[3];
-#ifdef G6_PRODUCTION
+#if defined(G6_PRODUCTION) || defined(G6_SD_IDENTITY)
         if (negotiated_suite != EYE_SUITE_EPHEMERAL) return 1;
 #endif
         business_ready = 0;
@@ -568,7 +585,7 @@ static int handle_control(const uint8_t *message, unsigned length) {
 #endif
         wipe(body_ack, sizeof body_ack);
         if (status) {
-#ifdef G6_PRODUCTION
+#if defined(G6_PRODUCTION) || defined(G6_SD_IDENTITY)
             fail_closed();
 #endif
 #ifdef G6_AUTO_RECOVERY
@@ -751,12 +768,26 @@ int main(void) {
         xil_printf("G6_PRODUCTION_STARTUP_FAIL %d\r\n", status);
         for (;;) {}
     }
+#elif defined(G6_SD_IDENTITY)
+    int status = g6_sd_identity_init(private_key);
+    if (!status) status = eye_mlkem_check_sk(private_key);
+    if (!status) status = eye_session_init(&session, private_key + 768);
+    if (!status) status = g3_usb_init(CAMERA_CFG);
+    if (!status) status = usb_cdc_init();
+    if (status) {
+        wipe(private_key, sizeof private_key);
+        g6_sd_identity_shutdown();
+        g6_status = 0xffffffffU;
+        xil_printf("G6_SD_IDENTITY_FAIL %d\r\n", status);
+        for (;;) {}
+    }
+    xil_printf("G6_SD_IDENTITY_READY experimental=1\r\n");
 #else
     int status = g3_usb_init(CAMERA_CFG);
     if (!status) status = usb_cdc_init();
 #endif
     if (status) { xil_printf("G6_INIT_FAIL %d\r\n", status); for (;;) {} }
-#if !defined(G6_PRODUCTION) && !defined(G6_DEV_USB_BOOTSTRAP)
+#if !defined(G6_PRODUCTION) && !defined(G6_DEV_USB_BOOTSTRAP) && !defined(G6_SD_IDENTITY)
     while (g6_ready != PROVISION_MAGIC) {}
     for (unsigned i = 0; i < sizeof private_key; ++i) private_key[i] = g6_sk_load[i];
     for (unsigned i = 0; i < sizeof random_seed; ++i) random_seed[i] = g6_seed_load[i];

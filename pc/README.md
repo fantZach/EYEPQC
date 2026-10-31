@@ -28,7 +28,25 @@ PC 的 SSH 目标可由命令修改；更换目标仍需匹配手机地址、TLS
 尚未写卡和实板验收，不能宣称本发布已解决该问题。QUERY 不自动重试，超时应保留 PC/板端日志。
 可信 PC 在开发初始化中知道板端私钥与 seed，见 [SD 安全边界](../doc/g6_sd_usb_bootstrap.md)。
 
-## 1.3 开发态 SD / 本地 USB 初始化（候选，未实板验收）
+## SD 本地身份与随机状态（新增实验固件，待实板验收）
+
+板端 `G6_SD_IDENTITY`（构建参数 `--g6-sd-identity`）从 SD 读取固定身份私钥和可更新随机状态，
+启动成功后直接接受既有 suite2 握手。PC 不加载板端私钥、不生成板端 seed，不使用 EYBS 初始化：
+
+```powershell
+eyepqc run
+```
+
+须先按 [板端部署教程](../board/DEPLOYMENT.md) 准备匹配的新固件和 SD 材料，再核对 PC 公开 pairing 的公钥/指纹；
+不要仅删除旧命令的开关就假定旧 USB bootstrap 固件可以工作。SD 模式不要加 `--dev-usb-bootstrap` 或
+`--dev-identity-file`；普通 `run` 不需要 PC 上存在 `board-test-identity.bin`。TLS/账号/SSH 私钥仍由 PC 使用。
+协议/schema2、Android 和服务器透明转发均保持原样。首次配对仍信任 PC 的 HTTPS 服务及已核对的板端指纹。
+
+该实验接受 SD 可读的边界，不声明生产安全或硬件熵源。若复用 PC 曾持有的身份/初始状态，
+不能宣称 PC 已遗忘历史秘密；SD 随机状态回滚、复制或断电持久性需按板端限制和实板验收处理。
+以下 USB 初始化段落只适用于原来的 `G6_DEV_USB_BOOTSTRAP` 固件。
+
+## 1.3 开发态 SD / 本地 USB 初始化（历史兼容，候选未实板验收）
 
 普通 `eyepqc run` 保持原样，不读取板端身份私钥，也不尝试初始化协议。
 启用专门的开发态 SD 固件后，可用可信本机 PC 替代 JTAG 提供每次启动的测试身份与新随机种子：

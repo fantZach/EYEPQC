@@ -37,7 +37,18 @@ eyepqc status
 账号另有 `add` / `delete --username <名称> --yes`，不能删除最后一个账号；
 运行服务使用启动时快照，账号变更后正常 Ctrl+C 再启动生效。
 
-只有材料和匹配板端已准备好才启动：
+只有材料和匹配板端已准备好才启动。新增 **SD 本地身份**固件（`G6_SD_IDENTITY` / `--g6-sd-identity`）
+在 SD 保存固定私钥和可更新随机状态，PC 不需要板端私钥文件，也不注入 seed：
+
+```powershell
+eyepqc run
+```
+
+必须先按板端教程准备该固件与 SD 材料，并核对公开 pairing；旧 USB 初始化固件不能仅通过删参数切换。
+该模式保持 suite2，不代表板端/断电验收完成，也不声明生产安全；初始材料准备者仍须可信，不能回滚旧随机状态。
+普通 `run` 已支持直接转发，不需要因这一模式升级 PC 运行时代码。
+
+原 `G6_DEV_USB_BOOTSTRAP` 固件继续使用以下显式开发初始化命令：
 
 ```powershell
 eyepqc config set serial_port COM7
@@ -49,7 +60,7 @@ eyepqc run --dev-usb-bootstrap
 READY状态只查询核pin；只有WAIT真正装载时才读取身份，并保留原权限/长度/pin检查及失败拒绝。
 
 `COM7` 只是示例，须确认视频 USB CDC，不是调试串口。
-开发身份必须是操作者受保护且与 pairing 匹配的 1632 字节 ML-KEM-512 测试私钥；包内不带，不写入 SD。
+上述 USB 开发身份必须是操作者受保护且与 pairing 匹配的 1632 字节 ML-KEM-512 测试私钥；包内不带，此旧模式不写入 SD。
 已通过其他方式准备好的普通 G6 使用 `eyepqc run`；不能混用开发初始化 profile。
 看到 RELAY_READY 不是视频验收，先手机停止再 PC Ctrl+C；不要抢占串口、盲杀进程或自动重试初始化。
 

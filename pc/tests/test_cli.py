@@ -168,6 +168,31 @@ class SupervisorTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(asyncio.CancelledError):
                     await task
 
+    async def test_sd_local_identity_uses_plain_cdc_factory_without_preparation(self):
+        args = SimpleNamespace(tls_cert=None, tls_key=None, token_file=None, accounts_file='fixture-accounts',
+                               pairing_file='fixture-public-pairing', serial_port='COM99', host='127.0.0.1', port=0)
+        device = object()
+
+        class Server:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def serve_forever(self):
+                return None
+
+        with patch.object(relay, 'Accounts'), patch.object(relay, 'open_cdc', return_value=device) as opener, patch.object(
+                relay, 'Relay') as relay_class, contextlib.redirect_stdout(io.StringIO()):
+            relay_class.return_value.start = AsyncMock(return_value=Server())
+            await relay.run(args)
+            opener.assert_not_called()  # No USB access before an authenticated viewer connects.
+            serial_factory = relay_class.call_args.args[1]
+            self.assertFalse(relay_class.call_args.kwargs['prepare_serial'])
+            self.assertIs(serial_factory(), device)
+            opener.assert_called_once_with('COM99')
+
 
 class ConfigurationTests(unittest.TestCase):
     def setUp(self):

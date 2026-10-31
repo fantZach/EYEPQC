@@ -235,11 +235,16 @@ class CliBootstrapTests(unittest.TestCase):
         return result, out.getvalue() + err.getvalue(), factory, services, port
 
     def test_normal_run_never_probes_usb_or_reads_dev_key(self):
-        with patch.object(eyepqc.cli_settings, 'settings_path', side_effect=AssertionError('must not resolve development identity')):
-            code, _, factory, services, _ = self.run_command([])
+        settings = SimpleNamespace(serial_port='COM99', pairing_file=Path('fixture-pairing'))
+        with patch.object(eyepqc.cli_settings, 'settings_path', side_effect=AssertionError('must not resolve development identity')), patch.object(
+                boot, 'private_material', side_effect=AssertionError('must not read board private key')), patch.object(
+                boot.secrets, 'token_bytes', side_effect=AssertionError('must not generate board seed')):
+            code, output, factory, services, _ = self.run_command([], settings=settings)
         self.assertEqual(code, 0)
         factory.assert_not_called()
         services.assert_awaited_once()
+        self.assertFalse(hasattr(settings, 'dev_bootstrap_factory'))
+        self.assertNotIn('DEV_USB_READY', output)
 
     def test_identity_override_requires_development_flag_and_explicit_port(self):
         code, _, factory, services, _ = self.run_command(['--dev-identity-file', 'secret.bin'])
