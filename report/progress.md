@@ -1,5 +1,12 @@
 # Implementation progress
 
+## 2026-10-31：用户授权安装PC1.4.0-rc1
+
+确认旧1.3.2无运行实例/8765监听后，排他备份旧EXE，以默认program-only模式升级，安装退出0。
+实际安装版本1.4.0-rc1与新CLI hash一致，8项设置/运行材料存在性及hash、用户PATH均保持不变。
+安装后本地check退出0且未启动服务；未操作USB/硬件/手机或云端，不将安装成功算视频/正式验收。
+详见 [本机升级记录](pc_upgrade_20261031.md)。
+
 ## 2026-10-31：用户授权更新SD BOOT
 
 用户将SD接电脑并要求写入新BOOT。重新识别F:/Disk1/DD-TEK READER/31,266,439,168字节/MBR/FAT32/EYEPQC，
