@@ -8,7 +8,8 @@ PL 负责 JPEG 数据通路和 AES-GCM，PS 负责会话、ML-KEM 和 USB。
 从 [新手部署](DEPLOYMENT.md) 开始，构建与历史兼容方式见 [进阶教程](DEPLOYMENT_ADVANCED.md)。
 SD 保存 `BOOT.BIN`、固定身份文件及两个可更新随机状态文件，日常 PC 运行 `eyepqc run`。
 运行卡升级只更新匹配的程序，不覆盖随机状态，不复制或恢复旧状态继续使用。
-公开包不含私有材料，首次材料由可信配置者另行准备。
+公开包不含私有材料，首次材料由可信配置者另行准备；三份 SD 私有文件的生成与核对见
+[SD 私有文件](SD_PRIVATE_FILES.md)。
 
 用户已确认当前版本连接可用，并反馈此前首次连接问题修复。本次文档整理未新增板测；其他故障与长稳项目继续按实际证据验收。
 当前来源及离线检查见 [SD 实现记录](../report/sd_local_identity_20261031.md) 和 [版本记录](../doc/releases/first-stable.md)。
