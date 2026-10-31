@@ -18,7 +18,7 @@ eyepqc config show
 
 `init` 只创建空受保护目录与本地设置，隧道默认关闭；首个密码隐藏输入两次。
 已有 settings/data 时拒绝覆盖。缺材料的 `check/run` 仍失败，不是可直接登录的公共服务包。
-真实材料的来源、当前公网 IP `124.70.38.245`、独立部署 CA、APK 信任、SSH host key 核对，
+真实材料的来源、当前公网 IP `203.0.113.10`、独立部署 CA、APK 信任、SSH host key 核对，
 均按 [DEPLOYMENT.md](DEPLOYMENT.md) 准备。证书工具需要完整源码与开发机依赖，不是 EXE 内嵌签发服务。
 
 ## 已有环境、账号与启停

@@ -1,6 +1,7 @@
 """Isolated synthetic TLS listener; no deployed relay, cloud, SSH, credentials or hardware."""
 import datetime
 import os
+import shutil
 from pathlib import Path
 import socket
 import ssl
@@ -14,7 +15,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 ROOT = Path(__file__).resolve().parents[2]
-JAVA = Path(os.environ.get('JAVA_HOME', 'C:/Users/23976/AppData/Local/Programs/STM32CubeMX/jre')) / 'bin/java.exe'
+JAVA = Path(os.environ['JAVA_HOME']) / 'bin/java.exe' if os.environ.get('JAVA_HOME') else Path(shutil.which('java') or 'java')
 TOOLS = ROOT / 'build/mobile_toolchain'
 CLASSPATH = os.pathsep.join(str(TOOLS / name) for name in ('classes', 'bcprov.jar', 'okhttp.jar', 'okio.jar', 'kotlin.jar'))
 

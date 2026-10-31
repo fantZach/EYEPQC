@@ -16,7 +16,7 @@ public final class PairingConfigTest {
     public static void main(String[] args)throws Exception {
         byte[] key=new byte[800];Arrays.fill(key,(byte)3);
         JsonObject object=new JsonObject();object.addProperty("version",1);
-        object.addProperty("endpoint","ws://10.179.236.247:8765/stream");
+        object.addProperty("endpoint","ws://10.0.0.10:8765/stream");
         object.addProperty("token","public-test-token-0123456789abcdef");
         object.addProperty("public_key_hex",Protocol.hex(key));object.addProperty("public_key_sha256",Protocol.hex(Protocol.sha(key)));
         String good=object.toString();PairingConfig config=PairingConfig.parse(bytes(good));

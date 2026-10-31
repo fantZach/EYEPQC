@@ -195,6 +195,18 @@ class SupervisorTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_status_uses_configured_tunnel_port_without_opening_private_materials(self):
+        with patch.object(eyepqc.cli_settings, 'effective', return_value={'tunnel': {'ssh_port': 49152}}), patch.object(
+                eyepqc.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='')) as process, patch.object(
+                eyepqc, 'load_config', side_effect=AssertionError('must not load runtime material')), patch.object(
+                eyepqc, 'check_materials', side_effect=AssertionError('must not read private material')), patch(
+                'builtins.open', side_effect=AssertionError('must not open private files')), contextlib.redirect_stdout(io.StringIO()):
+            eyepqc.status()
+        command = process.call_args.args[0][-1]
+        self.assertIn('$_.RemotePort -eq 49152', command)
+        self.assertIn('$_.LocalPort -eq 8765', command)
+        self.assertNotIn('22022', command)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -234,13 +246,13 @@ class ConfigurationTests(unittest.TestCase):
             eyepqc.load_config(self.config)
 
     def test_tunnel_passes_literal_paths_without_reading_private_contents(self):
-        self.record['tunnel'] = dict(host='example.org', ssh_port=2222,
+        self.record['tunnel'] = dict(host='example.org', ssh_port=22022,
                                      identity_file='identity', known_hosts='known_hosts')
         self.save()
         with patch.object(eyepqc.cloud_tunnel, 'command', return_value=['fixture-ssh']) as command:
             _, ssh = eyepqc.load_config(self.config)
         self.assertEqual(ssh, ['fixture-ssh'])
-        self.assertEqual(command.call_args.args, ('example.org', self.root / 'identity', self.root / 'known_hosts', 2222))
+        self.assertEqual(command.call_args.args, ('example.org', self.root / 'identity', self.root / 'known_hosts', 22022))
 
     def test_listener_refusal_before_any_secret_or_process_read(self):
         output = io.StringIO()

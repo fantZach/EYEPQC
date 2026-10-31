@@ -10,6 +10,15 @@ pairing.json
 id_ed25519
 accounts.json
 login.txt
+token.txt
+serverkey.pem
+server_key.pem
+id_rsa
+id_ecdsa
+.env
+.env.local
+/eyepqc.json
+/settings.json
 # Private SD deployment materials (case-sensitive filesystems included).
 EYEKEY.BIN
 EYERNG0.BIN
@@ -41,5 +50,11 @@ board/output/*
 board/vendor/
 
 # Local crash dumps and raw G7 observations; publish sanitized summaries only.
-hs_err_pid*.dmp
-report/g7_runs/
+*.dmp
+*.etl
+*.evtx
+/logs/
+/diagnostics/
+/screenshots/
+/report/*.json
+report/*_runs/

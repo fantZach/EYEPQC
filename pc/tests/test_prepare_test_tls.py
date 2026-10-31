@@ -66,7 +66,7 @@ class TestPreparation(unittest.TestCase):
                          [ExtendedKeyUsageOID.SERVER_AUTH])
         san = leaf.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
         self.assertEqual(set(san.get_values_for_type(x509.IPAddress)),
-                         {ipaddress.ip_address('10.179.236.247'), ipaddress.ip_address('127.0.0.1')})
+                         {ipaddress.ip_address('10.0.0.10'), ipaddress.ip_address('127.0.0.1')})
         self.assertEqual(san.get_values_for_type(x509.DNSName), ['localhost'])
         now = dt.datetime.now(dt.timezone.utc)
         self.assertLess(abs((ca.not_valid_after_utc-now).total_seconds() - 30*86400), 30)

@@ -10,7 +10,7 @@ import shutil
 import subprocess
 
 
-def command(host, identity_file, known_hosts, ssh_port=2222):
+def command(host, identity_file, known_hosts, ssh_port=22022):
     if not isinstance(ssh_port, int) or not 1 <= ssh_port <= 65535:
         raise ValueError('SSH port must be 1..65535')
     if (not isinstance(host, str) or len(host) > 253
@@ -53,7 +53,7 @@ def main(argv=None):
     parser.add_argument('--cloud-host', required=True)
     parser.add_argument('--identity-file', type=Path, required=True)
     parser.add_argument('--known-hosts', type=Path, required=True)
-    parser.add_argument('--ssh-port', type=int, default=2222)
+    parser.add_argument('--ssh-port', type=int, default=22022)
     args = parser.parse_args(argv)
     try:
         ssh_args = command(args.cloud_host, args.identity_file, args.known_hosts, args.ssh_port)

@@ -1,239 +1,33 @@
-# 移动端子项目
+# Android 子项目
 
-## 当前候选：0.9.0-rc1
+手机负责账号登录、自动获取公开配对信息、ML-KEM 握手、换钥、认证解密与 JPEG 视频显示。
+普通使用见 [新手部署](DEPLOYMENT.md)，构建、证书与签名见 [进阶教程](DEPLOYMENT_ADVANCED.md)。
 
-统一部署、正式签名/专用公开 CA 构建、升级/回滚和用户验收见 [DEPLOYMENT.md](DEPLOYMENT.md)。
-`mobile/build.ps1` 支持 `-Variant Debug/Release`、`-TrustCaFile` 和 `-RequireSigned`；
-没有外部签名材料时明确产出 unsigned release，不会以 Debug key 冒充正式签名。
-默认 release 仅信系统 CA、禁止明文、没有预设公网地址；部署自有 IP CA 必须显式输入其公开证书。
-调试版仍使用原 Debug 签名与即将到期的测试 CA，保留现有安装的联测路径。
-TLS/DNS/网络超时现在提供脱敏分类提示；空服务器地址会展开设置并阻止发送账号。
-软件/构建通过后仍标记 `user_acceptance=pending`，由用户统一完成手机和四端验收。
+## 当前流程
 
-## v1.0.0 项目发布入口
+输入管理员提供的可信 WSS 地址和账号密码，APP 从同地址 HTTPS 获取公开 schema2，然后建立 WSS 视频连接。
+固定身份握手后，板卡提供经过认证的临时 ML-KEM 公钥，双方派生业务密钥并再次 Finished，再 START。
+每次连接/接管重新握手，约 1785 秒主动换钥，板端 1800 秒硬截止。
+停止、失败、换钥和切后台清除旧画面；显式接管，不自动抢回账号，不后台播放。
+画面显示 FPS、认证帧和缺片帧；显示 FPS 不是板卡发送率，需与认证帧和网络统计一起判断。
 
-项目 `v1.0.0` 是开发态 MVP，Android 组件仍为 `0.8`，不是生产签名版本。
-发布核验、安装说明和限制见 [移动端发布说明](RELEASE.md)，第三方许可见
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。发布时使用明确标注 `debug` 的 APK，
-不分发未签名的 release 隔离检查产物；APK 附带的公开测试 CA 仅适用于开发联调，不能代替生产证书配置。
+用户确认当前 SD 版本连接可用，并反馈此前首次连接问题修复；本次整理未新增 Android 真机测试。
 
-以下按功能迭代保留历史说明与证据；旧版 APK 哈希、令牌/v1 导入流程不代表当前推荐流程。
-当前推荐：可信 WSS 地址 → 账号密码登录 → HTTPS 自动获取公开 schema2 → suite2 握手 → 前台观看。
+## 构建与信任
 
-## 0.8 界面与观看交互（当前版本）
+源码组件版本独立于项目正式版名称。最低 Android 8.0/API 26，JDK 17+、Gradle 8.9、编译 SDK 35。
+当前源码的 Debug 和 Release 默认均只信系统 CA，不内置实际服务器地址或专用部署 CA。
+自有 IP/测试 CA 必须由安装负责人通过 `mobile/build.ps1 -TrustCaFile <公开CA路径>` 显式提供。
+这只导入公开 CA，不得把 CA 私钥或服务器私钥放入 APK；保留证书地址、期限和链校验。
+Release 必须使用外部正式签名材料；unsigned APK 不能安装，Debug 签名不能冒充正式签名。
+这次源码默认值清理不自动改变已安装手机或已发布 APK，部署前须重新构建、核对并安装。
 
-原生卡片界面：独立深色视频区、连接状态、显示 FPS / 认证帧 / 缺片帧；播放后收起登录表单。
-底部固定“连接并观看 / 取消连接 / 停止播放 / 重新连接”主按钮，仅播放时允许换钥，避免重复请求。
-常用流程只有输入账号密码和连接；服务器地址、已记住的身份摘要与备用 JSON 导入收在“连接设置”。
-支持密码临时显示、键盘提交、输入错误定位、常见登录拒绝提示和显式接管确认。
+## 代码与验证
 
-播放器右上角可全屏；返回键先退出全屏，再次返回需确认断开。横竖屏切换不重新登录，
-但切到后台仍断开连接并清除画面，不增加后台播放、自动重连或自动接管。
-停止、换钥、失败立即清除旧图；播放/换钥期间保持屏幕常亮。
-显示 FPS 按实际显示帧计数，从本次首帧起计算平均值，不是固定数值或板卡发送速率。
+原生 Java Activity、OkHttp 与 Bouncy Castle ML-KEM，协议和密码内核测试与 UI 生命周期分别验证。
+公开配对设置可保存，密码只在当前进程使用；已保存指纹变化拒绝静默接受。
+HTTPS 配对拒绝明文、重定向、跨地址、超长配置、错误摘要和证书；账号只在 TLS 内发送。
+每条 WebSocket 二进制消息承载完整 USB 记录，组帧后验证 GCM 标签才解密显示。
+协议见 [suite2](../doc/account_ephemeral_protocol.md)，安全范围见 [SECURITY](../SECURITY.md)。
 
-覆盖安装保留原应用公开配对设置；不需要新的 JSON、密码或测试 CA。账号密码仍只在进程内，
-关闭自动填充和输入框状态保存，保留防截屏及禁备份。TLS、suite2、1785 秒换钥与视频协议不变。
-0.8 构建、软件回归和 APK 校验通过；本机无真机/模拟器，布局、全屏、旋转和新版实际帧率待手机确认。
-用户本轮已确认改界面前的连接正常、约45fps，不能将该反馈算作0.8或完整G8/G9验收。
-安装、证据与待验清单见 [0.8界面记录](../report/mobile_ui_20261015.md)。
-
-## 0.7 登录后自动配对（0.8 沿用）
-
-覆盖安装0.7 debug APK后，无需传JSON。界面预填当前公网 `wss://124.70.38.245:8765/stream`，
-可改为可信的实际WSS地址；输入账号密码，0.8点击“连接并观看”。
-APP先向同一地址的 `https://主机:端口/pairing.json` 发起UTF-8 Basic认证，成功后自动校验/保存公开schema2，
-再走原WSS账号登录和suite2业务握手。服务地址/有效TLS证书是首次配对的信任入口，不是只凭JSON内摘要信任公钥。
-PC必须启用 `-PairingFile`，见 [PC配置](../pc/README.md#登录后自动分发配对配置)。云端仍只做TCP中转。
-
-拒绝HTTP/WS下载、重定向、跨地址配置、v1降级、错误证书、超过8KiB、错误公钥摘要。
-各服务地址的公开配置/指纹保存在应用私有设置，密码/token不保存；离开前台或点停止/关闭取消下载，迟到响应不恢复会话。
-已记住的同地址板卡指纹变化会拒绝自动替换；确实更换身份时，经独立可信途径核对后使用备用手动导入。
-下载配置不占USB、不踢出原观看者；真正连接仍保留HTTP409显式接管。
-仅手动导入的v1开发模式保留，不参与自动下载。以下0.3～0.6说明是历史流程，0.7账号模式以上述流程为准。
-
-0.7 APK、HTTPS软件/公网验证及未验收项见 [自动配对记录](../report/auto_pairing_20261015.md)。
-本功能不修复既有QueueFull/板端断连故障，自动配对成功不等于视频握手或手机显示通过。
-
-## 云端 TCP 转发兼容（0.6）
-
-现有 schema2 直接支持 `wss://<云端公网IPv4或域名>:8765/stream`，公开端口可改，例如10443；
-省略端口使用443。手机访问云端的公开视频 TCP 端口，账号密码仍在 APP 输入。
-采用 [云端方案](../doc/cloud_relay_plan.md) 的反向 TCP 隧道后，WSS/TLS 实际终止在 Windows PC，
-账号校验、显式接管和业务二进制记录保持原样，手机继续执行 suite2/ML-KEM/GCM。
-Android 沿用现有 WebSocket 路径，不增加 SSH/WebRTC 或新协议。
-
-PC 的 TLS 叶证书 SAN 必须匹配手机 JSON 中的云端 IP/域名；只含校园网 IP 的旧证书不能用于新地址。
-同一个0.6 debug测试CA为新云端地址重签叶证书后，只需可信重新导出/导入 schema2 endpoint，
-只因 IP/域名或叶证书改变不必重打 APK。CA本身轮换/过期则另行更新信任；证书仍须链可信、有效期正确、SAN匹配。
-板卡公钥/pin 沿用实际可信身份，改变 endpoint 不自动改变或接受新的 ML-KEM 身份。
-云端配置 JSON 只含四项 version=2/endpoint/public_key_hex/public_key_sha256，不放账号密码、token或私钥。
-
-JSON endpoint 固定为 `/stream`，不预置 takeover 查询。HTTP409仍弹出确认，只有用户确认后才请求
-`/stream?takeover=1`；取消不接管，旧端4409不自动抢回。HTTP/明文WS、错误路径、URI凭据、预置查询和片段均拒绝。
-debug CA只用于开发联调，release仍无测试CA；未据此标记生产、公网或Android真机通过。
-本轮仅补软件测试和说明，运行时、信任资源、APK0.6未改变。见 [mobile 云端兼容记录](../report/mobile_cloud_20261014.md)。
-
-## 0.6 debug 专用测试 CA
-
-0.6 / versionCode6 的 debug APK 在 `src/debug` 中内置专用公开测试 CA，供本轮准备的 WSS 证书使用。
-debug Manifest 只引用 debug XML，`debug-overrides` 信任该 CA，显式 `overridePins=false`，
-避免 Android 的 debug CA 默认跳过未来 TLS pinning。系统 CA、证书链/有效期、SAN 主机名检查仍使用平台实现；
-没有 trust-all、主机名恒真或重定向降级。schema2 WSS 与 ML-KEM 身份 pin 不变，不安装手机系统 CA，不加证书导入 UI。
-debug base 显式保持原有 v1 局域网明文 WS 开发兼容；账号/schema2 不允许明文。
-
-main/release 不引用网络配置，release 构建不包含测试 CA/调试 XML且不启用debuggable。
-公开 CA 是证书，不包含 CA/server 私钥或密码；APK不自动复制到公开目录或安装。
-0.5 的“仅系统信任 CA”限制在 0.6 release 仍适用，0.6 debug 额外信任这一个测试 CA。
-构建/验签与资源隔离结果见 [mobile 联调前准备](../report/mobile_preboard_20261014.md)。
-debug APK 4,750,025字节，SHA-256 `59e0d9a31496326ab0a3e9f4158d2a47e165eae573b8d19886b19d84f5593461`，
-已验证API26 v2签名及原Debug证书。debug+release完整构建（含release vital lint）和资源隔离测试通过；
-release是未签名的隔离检查产物，未安装/发布；0.6手机TLS尚未实测。
-实现依据：[Android 网络安全配置](https://developer.android.com/privacy-and-security/security-config)。
-
-## 0.5 账号与临时 KEM
-
-新配置使用 schema2，仅四项：`version`（整数 2）、`endpoint`（`wss://.../stream`）、
-`public_key_hex`、`public_key_sha256`；不包含 token、用户名、密码或私钥。8 KiB 严格解析与可信来源要求不变。
-导入后输入账号密码，点击连接；每次 WSS upgrade 用 UTF-8 Basic 登录，密码只保留当前进程输入框，
-禁止 view state 保存和自动填充，不写 JSON/设置/日志。TLS 用系统信任与主机名校验，不跟随重定向。
-普通用户安装的自签 CA 不自动受本 APK 信任；当前请使用系统信任的 CA 签发 WSS，未提供选定 CA 导入功能。
-
-同账号已在线的 HTTP409 弹出接管确认，只有点击“确认接管”才重连 `/stream?takeover=1`。
-取消不会抢占。被接管的旧设备（4409）停流、清图并等待手动操作，不自动重连。
-401/503/429 显示服务拒绝与状态码；不同账号仍只有一个观看端，不支持广播。
-
-schema2 强制 suite2，固定身份 bootstrap 后认证临时 ML-KEM 公钥，业务密钥只来自临时 KEM。
-bootstrap 不发送 START/视频；临时阶段重做双向 Finished 后才 START。拒绝 suite1 ACK、错误 TH/MAC、
-重复/方向/阶段错误以及旧密钥视频。每次新连接或接管执行整套握手；每次业务会话开始设定一次 30 分钟计时，
-客户端在1785秒（提前15秒）发认证 REKEY 结束旧会话并重新完成整套 suite2，为板端1800秒硬截止预留时间，
-不将旧 AES REKEY 当作临时 KEM 完成。
-停止、失败、关闭与离开前台取消计时并清理会话/旧图；握手各阶段 15 秒超时，失败停流。
-冻结字节契约见 [suite2](../doc/account_ephemeral_protocol.md)。
-
-version=1 的五字段 JSON 仍为显式开发兼容，界面显示“v1 开发兼容”，使用 Bearer/suite1；
-账号 schema2 不会回退到此模式。系统默认 TLS 不受 v1 明文局域网开发模式影响。
-已有约 40 fps 手机用户反馈属于旧开发版本，不证明 0.5 账号/suite2 的手机运行情况。
-本轮证据与手机待验步骤见 [mobile 账号记录](../report/mobile_account_ephemeral_20261014.md)。
-当前0.5 APK 4,772,490字节，SHA-256 `66a6c687325bbba583143f682f0f9e51057e868946fbc678d9a1990cc929c228`，
-API26 v2验签及原Debug证书通过，可覆盖安装。默认测试为核心160/JSON39/临时KEM37项；
-公开C fixture重放47项与真实C/WSS/JVM五窗互操作通过，未运行手机0.5。
-
-目标：Android 手机连接 Windows PC 的局域网服务，在手机本机完成握手、认证解密与 JPEG 视频显示。
-跨网可选择组网 VPN 连接 PC 与手机，或连接可选公网中转服务；VPN 供应商尚未选定，校园网可达性与吞吐须实测。
-已有最小 Android 应用源码：原生 Java Activity、OkHttp 4.12.0 二进制 WebSocket、Bouncy Castle 1.81 lightweight ML-KEM-512。
-最低 Android 8.0（API 26），编译/目标 API 35；不依赖系统提供 ML-KEM，不需 NDK/JNI。0.3 使用 Gson 2.11.0 严格解析单文件配对配置。
-当前已通过纯 Java 离线测试并生成签名调试 APK。2026-10-13 用户报告手机正常显示视频、约 40 fps 已足够；
-这是用户基础显示反馈，尚无 10 分钟窗口或手机故障恢复证据，不能标记 G8/G7 全部通过。
-
-## 必须实现的功能
-
-- 通过可信配置取得板卡 ML-KEM-512 公钥并固定校验其指纹，不能无条件信任转发服务临时下发的公钥。
-- 使用移动端可靠随机源执行 Encaps，与板卡完成 HKDF、双向 Finished，再发送认证 START。
-- 按 [共享协议](../doc/protocol.md) 解析视频记录，校验 session、序号、AAD 与 AES-GCM Tag。
-- 完整帧的所有分片通过认证后才交给 JPEG 解码器，限制帧长、分片数和缓存，丢弃缺片或认证失败的帧。
-- 展示连接状态、认证帧率和丢帧；提供停止和换钥，断线时销毁会话并重新握手。
-- Android 应用声明网络访问权限；网络收发、密码运算与 JPEG 解码在后台线程执行，界面线程负责显示。
-- 提供显式关闭连接；应用退出或连接失败时清理会话、缓存及网络资源，重连必须重新握手。
-
-第一版为前台运行的 Android 应用，面向一块板、一个观看端、实时 JPEG 显示；录像、后台服务和多观看端不列入 MVP。
-不向 PC 或中转服务器发送业务 AES 密钥、ML-KEM 封装随机数或共享秘密。
-
-网络适配沿用 [三端架构](../doc/architecture.md)：二进制 WebSocket 每个消息承载一条完整 USB 记录，
-控制双向、视频仅板端到手机。限制消息长度与缓存；队列超限时关闭连接并重新握手，具体板端会话复位由 PC 执行。
-公网使用 WSS；局域网或组网 VPN 的连通性不替代观看接入授权及内层密码认证。
-
-## 复用与验证依据
-
-以 `../pc/src/host/protocol.py`、`handshake.py`、`receiver.py` 和 `g6_board.py` 为互操作参考，
-以 `../data/kat/`、`../sim/vectors/` 为公开测试向量。Python 参考代码不等于移动端运行实现；
-ML-KEM 使用 Bouncy Castle lightweight API；HKDF-SHA-256、Finished/控制 HMAC 和 AES-GCM 使用标准 Java 密码接口，
-实际握手使用 `SecureRandom`；固定种子仅用于公开测试向量。避免替换 Android 全局密码 provider。
-
-先完成协议/KDF/KEM/GCM 向量与篡改/重放测试，再接局域网真实板卡。
-验收记录必须分别给出板端采集帧率、网络收包率、手机认证解码显示帧率和延迟；不得照搬 PC 的约 47 fps。
-任务顺序与门禁见 [steps 第 22 节](../doc/steps.md#22-三端扩展pc-转发与移动端解密)。
-
-当前 JTAG 测试私钥由 PC 装载，尚不能验证对该 provisioning PC 保密的生产级安全模型。
-安全边界见 [三端架构](../doc/architecture.md)。
-
-## 构建与使用
-
-1. 准备 JDK 17+、Gradle 8.9、Android SDK `platforms;android-35` 和 `build-tools;35.0.0`。
-2. 在仓库根目录构建：
-
-   ```powershell
-   ./mobile/build.ps1 -Jdk 'C:/path/to/jdk' -Sdk 'C:/path/to/android-sdk' -Gradle 'C:/path/to/gradle-8.9/bin/gradle.bat'
-   ```
-
-   输出为 `mobile/app/build/outputs/apk/debug/app-debug.apk`。调试 APK 供开发验证，不代表发布版本。
-3. 安装当前 0.8 debug APK；在“连接设置”核对可信 WSS 地址，输入账号密码，点击“连接并观看”。
-   同一服务通过 HTTPS 自动提供公开 schema2，再进行 WSS/suite2 握手，无需手动传 JSON。
-   同地址身份变化必须独立核对，再使用“可信手动导入 JSON（备用）”，不能静默替换。
-   仅历史 v1 开发模式使用含令牌的五字段 JSON；账号模式 schema2 不包含令牌、账号密码或私钥。
-4. 双向 Finished/START 完成并收到真实认证 JPEG 后显示画面；可停止、换钥和全屏。
-   公开配对设置保存在应用私有设置，账号密码不持久化。公钥与摘要匹配仅证明文件一致，来源仍须可信。
-   离开前台会关闭连接；返回后需再次连接。接收队列上限 512 条、单条 1459 字节，
-   组帧缓冲上限 2 MiB，界面只保留最近待显示图像；队列超限、协议/Tag/重放错误会断开并要求重新握手。
-   停止、换钥及连接失败会清除待显示和已显示图像；重新认证后从首张实际显示帧开始统计平均显示 fps。
-
-## 单文件配置格式
-
-JSON 版本为 1，固定五个字段：`version`（整数 1）、`endpoint`、`token`、`public_key_hex`、`public_key_sha256`。
-公钥使用 1600 位 ASCII hex，指纹 64 位 hex；令牌为 32～256 个非空格可打印 ASCII 字符。
-最大文件 8 KiB，严格 UTF-8/JSON，拒绝重复/缺失/未知字段、尾随内容、格式错误和摘要不一致。
-公网地址使用 WSS；明文 WS 只允许显式局域网/回环/VPN 数字地址。
-PC 导出命令见 [配对工具](../pc/README.md)，首次导入后点击连接，导入本身不自动发起网络请求。
-   显式换钥时，在新 HELLO_ACK 到来前排空旧会话的完整视频记录，不显示、不计入认证帧；普通握手前视频仍拒绝。
-   等待 HELLO_ACK 时每隔 3 秒原样重发 HELLO，最多 2 次；不生成新随机数或延长 15 秒握手期限。
-   仅在等待 Finished 阶段忽略逐字节相同的缓存 HELLO_ACK；不同 ACK、其他状态和认证失败仍拒绝。
-
-应用禁止截图/备份，不写密钥、令牌或 JPEG 明文日志。Java/密码库内部副本不保证物理清零，
-资源释放采用可控数组尽力覆盖；该开发 MVP 不包含生产熵源、板端安全存储或启动保护验收。
-OkHttp 会先接收完整网络消息再调用应用，1459 字节检查属于应用边界；不能声称已限制库内任意恶意大消息的瞬时分配。
-
-## 离线校验
-
-```powershell
-# 首次从 Maven Central 获取固定依赖并核对 SHA-256；缓存位于 ignored build/mobile_toolchain。
-./mobile/test.ps1 -Jdk 'C:/path/to/jdk' -FetchDependencies
-# 缓存齐全后，无需联网。
-./mobile/test.ps1 -Jdk 'C:/path/to/jdk'
-```
-
-`CoreTest` 覆盖 25 个公开 NIST ML-KEM Encaps KAT、20 个 NIST AES-GCM KAT，
-以及固定 KDF/Finished/控制 MAC、篡改/重放、组帧/缺片/字段不一致、STOP/REKEY 和传输地址边界。
-`ClientCli` 供共享测试驱动，参数为公钥文件和可信 pin，stdin 支持 `START`、`RECEIVE <完整USB记录hex>`、
-`STOP`、`REKEY`、`CLOSE`；stdout 的 `SEND`/`FRAME` 使用公开 fixture，`READY` 表示本条命令处理完成。
-`NetworkCli` 用实际 OkHttp 验证公开 JPEG fixture 的认证接收与 SHA-256，不输出图像内容；这些 CLI 不打包到 APK。
-`LiveProbe` 用同一客户端接实际 PC 桥，参数为公钥路径、pin、端点、令牌文件、输出目录、秒数；
-ImageIO 独立解码并保存首/末 JPEG 与结果 JSON，不把令牌放入进程参数。首认证帧后起计时，
-要求认证解码跨度达到目标窗口的 90% 且没有超过 5 秒帧间停顿；JVM 的测得帧率不代表 Android 手机显示帧率。
-
-2026-10-13 本机 JDK 21、Gradle 8.9、AGP 8.7.3、Platform 35 rev 2、Build Tools 35.0.0 完整构建成功，
-初版 31 项 Gradle 任务执行，构建耗时 2 分 28 秒；修正版 0.2 缓存构建耗时 25 秒（10 执行、21 已是最新）。官方主下载地址曾 TLS 失败，后通过已有本地代理和官方
-`dl-ssl.google.com`/Google CDN 取得工具与依赖；工具缓存与临时仓库 init 脚本位于 ignored 目录，未修改系统代理。
-
-0.3 APK 完整构建通过（55 秒、31 tasks），单 JSON 导入 UI 已进入 APK。
-调试 APK：`app/build/outputs/apk/debug/app-debug.apk`，4,742,774 字节，SHA-256：
-`8d335e7d673bb57c4d5dd9bf88c7eaa8baaa06dcdc5682e39f1a012e60ce88f8`。
-`apksigner verify --min-sdk-version 26` 通过 APK v2 签名验证；`aapt dump badging` 确认包名 `org.eyepqc.mobile`、
-版本 0.3 / versionCode 3、最低 API 26、目标 API 35、启动 Activity 与 INTERNET 权限。
-沿用初版 Android Debug 证书，可覆盖 0.1/0.2；APK 保留为本地构建产物。
-
-0.4 APK 离线缓存构建通过（14 秒、31 tasks、10 executed），API26 v2 验签与版本检查通过。
-APK 为 4,743,182 字节，SHA-256：`a217b3bb6ee9937dde6f10461347dd935919a0349b771cea6f1aaf977f81556a`；
-版本 0.4 / versionCode 4，证书沿用 0.3，可覆盖安装。会话清理、SD 启动配对兼容与手机步骤见
-[mobile 验证记录](../report/mobile_session_lifecycle_20261013.md)。
-
-离线内核共 160 项断言通过（包含上述 25/20 个 KAT），另覆盖换钥后旧帧排空、新 ACK/Finished 与新视频、
-HELLO 重发不耗新随机数及重复/不同 ACK 的状态约束。
-JSON 导入另有 30 项解析检查。手机已显示视频为用户报告，未独立采集系统文件选择器/导入的运行证据。
-真实 OkHttp/回环 WebSocket/板端 C 会话及 ML-KEM mock 的握手、视频和重连/换钥互操作见共享 `sim/tb/test_three_end.py`；
-这些检查运行在 PC，未执行 Android Activity 的手机运行测试。
-本轮五会话回环验证握手、重连、换钥、STOP、丢首个 ACK 重试及画面清理回调；这些均为 PC/JVM 证据。
-维持用户接受的约 40 fps MVP；0.4 手机图像清除、10 分钟稳定性、断网/前后台/冷启动恢复仍需真机验证。
-
-依赖与工具依据：[OkHttp](https://square.github.io/okhttp/)、
-[ML-KEM API 源码](https://github.com/bcgit/bc-java/blob/r1rv81/core/src/main/java/org/bouncycastle/pqc/crypto/mlkem/MLKEMGenerator.java)、
-[Android 命令行工具](https://developer.android.com/tools)、[AGP 版本兼容](https://developer.android.com/build/releases/about-agp)。
+[第三方许可](THIRD_PARTY_NOTICES.md) · [历史 v1.0.0 交付说明](RELEASE.md)

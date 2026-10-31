@@ -24,7 +24,7 @@ class TunnelTests(unittest.TestCase):
         self.key_file.write_text(self.key + " dedicated PC\n", encoding="ascii")
         self.output = self.root / "bundle"
 
-    def generate(self, port=2222):
+    def generate(self, port=22022):
         return tunnel.generate(self.key_file, self.output, tunnel.fingerprint(self.key), port)
 
     def test_generate_exact_public_only_bundle(self):
@@ -45,7 +45,7 @@ class TunnelTests(unittest.TestCase):
 
     def test_contract_closes_other_auth_and_forwarding(self):
         lines = set(tunnel.config().splitlines())
-        expected = {"Port 2222", "AllowUsers eyepqc-tunnel", "AuthenticationMethods publickey",
+        expected = {"Port 22022", "AllowUsers eyepqc-tunnel", "AuthenticationMethods publickey",
                     "AuthorizedKeysCommand none", "TrustedUserCAKeys none", "UsePAM no",
                     "PasswordAuthentication no", "KbdInteractiveAuthentication no",
                     "GatewayPorts clientspecified", "AllowTcpForwarding remote",
@@ -59,7 +59,7 @@ class TunnelTests(unittest.TestCase):
     def test_ssh_port_change_is_bounded_and_never_22_or_public_port(self):
         self.generate(4433)
         self.assertIn("Port 4433\n", tunnel.validate_bundle(self.output)[0])
-        for port in (0, 22, 443, 1023, 8765, 65536, -1, True, "2222", 2222.0):
+        for port in (0, 22, 443, 1023, 8765, 65536, -1, True, "22022", 22022.0):
             with self.subTest(port=port), self.assertRaises(ValueError):
                 tunnel.config(port)
 
@@ -102,7 +102,7 @@ class TunnelTests(unittest.TestCase):
         # Synthetic -T text tests only; this does not execute or emulate a Linux daemon.
         cfg = tunnel.config()
         effective = "\n".join(line for line in cfg.splitlines() if not line.startswith("#"))
-        effective = effective.replace("ListenAddress 0.0.0.0", "ListenAddress 0.0.0.0:2222")
+        effective = effective.replace("ListenAddress 0.0.0.0", "ListenAddress 0.0.0.0:22022")
         tunnel.validate_effective(cfg, effective)
         for value in (effective.replace("AllowTcpForwarding remote", "AllowTcpForwarding yes"),
                       effective.replace("UsePAM no", ""), effective + "\nPort 22"):
@@ -142,7 +142,7 @@ class TunnelTests(unittest.TestCase):
                          ("MaxSessions 0", "MaxSessions 10"),
                          ("AllowUsers eyepqc-tunnel", "AllowUsers root"),
                          ("AuthorizedKeysFile /etc/eyepqc-tunnel/authorized_keys", "AuthorizedKeysFile .ssh/authorized_keys"),
-                         ("Port 2222", "Port 22")):
+                         ("Port 22022", "Port 22")):
             with self.subTest(new=new):
                 path.write_text(baseline.replace(old, new))
                 with self.assertRaises(ValueError):

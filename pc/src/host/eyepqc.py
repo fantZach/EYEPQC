@@ -122,8 +122,9 @@ async def run_services(args, ssh):
 def status():
     if os.name != 'nt':
         raise RuntimeError('status requires Windows PowerShell')
+    ssh_port = cli_settings.effective()['tunnel']['ssh_port']
     command = ("$ErrorActionPreference='Stop'; Get-NetTCPConnection | "
-               "Where-Object { $_.LocalPort -eq 8765 -or ($_.RemotePort -eq 2222 -and $_.State -eq 'Established') } | "
+               f"Where-Object {{ $_.LocalPort -eq 8765 -or ($_.RemotePort -eq {ssh_port} -and $_.State -eq 'Established') }} | "
                "Select-Object State,LocalAddress,LocalPort,RemoteAddress,RemotePort,OwningProcess | ConvertTo-Json -Compress")
     result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', command],
                             capture_output=True, text=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)

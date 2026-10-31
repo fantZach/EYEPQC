@@ -6,8 +6,8 @@
   "tls_cert": "public/server-chain.pem",
   "tls_key": "private/server-key.pem",
   "tunnel": {
-    "host": "124.70.38.245",
-    "ssh_port": 2222,
+    "host": "203.0.113.10",
+    "ssh_port": 22022,
     "identity_file": "private/id_ed25519",
     "known_hosts": "public/tunnel_known_hosts"
   }

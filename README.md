@@ -1,117 +1,61 @@
 # EYEPQC
 
-基于领航者 CF7020B / Zynq-7020、OV5640、Windows PC 和 Android 的加密视频 MVP。
-板端采集 JPEG 并进行 AES-128-GCM 加密，Android 与板端完成 ML-KEM-512 握手、验 Tag、解密和显示。
-PC 提供 USB 接入、WSS 账号登录及密文转发；远程访问使用可选的 OpenSSH 反向隧道。
+领航者 CF7020B / Zynq-7020、OV5640、Windows PC 和 Android 组成的加密视频系统。
+开发板采集 JPEG 并用 AES-128-GCM 加密；手机与板卡完成 ML-KEM-512 握手，在手机上验证认证标签、解密和显示。
+PC 负责账号登录与密文转发，公网服务器通过受限 SSH 隧道透明中转。
 
 ```text
-OV5640 → Zynq-7020 ⇄ USB Slave ⇄ Windows PC ⇄ Android
-                                     ⇅          ⇅
-                                SSH 反向隧道 → 公网 TCP 中转
+摄像头 → 开发板 ⇄ USB Slave ⇄ Windows PC ⇄ 公网 TCP 中转 ⇄ Android
 ```
 
-## 正式版第一版
+## 当前可用版本
 
-用户已确认当前 SD 本地身份版本可用，并定为正式版第一版。
-新手从 [四端部署教程](doc/deployment/README.md) 开始；详情见 [版本记录](doc/releases/first-stable.md)。
-日常操作：板卡上电 → 电脑 `eyepqc run` → 手机登录观看。
-已有 GitHub v1.0.0 保留不变，本次确认不等于上传新的 Release 附件。
+2026-10-31，用户确认 SD 本地身份版本可用，并指定为正式版第一版。
+板卡上电 → 电脑 `eyepqc run` → 手机登录观看。
+此前“第一次连接失败、第二次才成功”的问题，用户已确认修复；这是用户反馈，本次整理未新增实机测试。
+其他故障、长时间运行与完整冷启动项目仍按各自实际证据验收，不据此全部通过。
 
-2026-10-31 新增 [SD 固定身份与持久随机状态配置](doc/g6_sd_identity.md)，取消日常 PC 的私钥/seed 注入。
-需使用匹配的新 BOOT 与卡上材料；本机已写卡且用户反馈连接成功，其他验收项仍按各自记录保留。
-
-## 已发布 1.0
-
-[下载 v1.0.0](https://github.com/fantZach/EYEPQC/releases/tag/v1.0.0) ·
-[发布说明与安装前提](doc/releases/v1.0.0.md) · [更新记录](CHANGELOG.md)
-
-项目版本为 **v1.0.0 开发态 MVP**，组件版本独立：PC **1.3.2**、Android **0.8**。
-手机播放及手动换钥已有用户反馈约 **45 fps**，不是持续帧率或全门禁验收。
-最新板端 SD 候选仅通过离线检查，尚未上板；首次 USB 查询超时/第二次连接成功的问题仍待实板复测。
-本次不分发未验收的 `BOOT.BIN`，板端由源码和构建说明交付。
-
-此仓库当前为私有仓库，Release 下载需要仓库访问权限。发布不改变仓库可见性。
+新手从 [四端部署教程](doc/deployment/README.md) 开始；范围见 [版本记录](doc/releases/first-stable.md)。
+已有 GitHub [v1.0.0](https://github.com/fantZach/EYEPQC/releases/tag/v1.0.0) 是历史开发版；本轮不覆盖标签或自动上传新附件。
 
 ## 四个子项目
 
-| 子项目 | 入口 | 职责 |
-|---|---|---|
-| 开发板 | [board/](board/README.md) | PL RTL、PS 裸机固件、约束、Vivado/Vitis 构建与板测工具 |
-| Windows PC | [pc/](pc/README.md) | USB↔WSS 密文桥、账号管理、CLI/安装包、SSH 上行隧道 |
-| Android | [mobile/](mobile/README.md) | 账号登录、自动取得公开配对信息、握手、换钥、解密播放 |
-| 服务器 | [server/](server/README.md) | 受限 OpenSSH 透明 TCP 中转及 Linux 部署工具 |
+| 子项目 | 内容 |
+|---|---|
+| [开发板](board/README.md) | 摄像头、RTL、裸机固件、加密、SD 启动 |
+| [Windows PC](pc/README.md) | USB/WSS 转发、账号、命令行、安装包与隧道 |
+| [Android](mobile/README.md) | 登录、自动配对、ML-KEM、换钥与视频播放 |
+| [服务器](server/README.md) | 受限 SSH 透明 TCP 中转 |
 
-四端共用一个 Git 仓库，不是 submodule。服务器无需接触业务视频密钥；局域网直连无需服务器。
-板卡继续使用 Vitis Standalone 与 USB Slave，不需要 USB 网卡或 PetaLinux。
+板卡继续使用 Vitis Standalone，不需要 Linux、USB 网卡或 PS 网口。局域网观看可省略公网服务器。
 
-## 开始使用
+## 密钥与账号
 
-已配置的 Windows PC 可安装 Release 中的 PC 安装包，并在新终端检查：
+固定板端身份私钥及可更新随机状态保存在 SD，日常 PC 不再注入私钥或 seed。
+临时 ML-KEM 和视频密钥仍在新连接与换钥时更新；手机提前于 30 分钟上限重新握手。
+账号使用 WSS 登录，PC 密码数据库使用加盐 scrypt，同账号新设备需要显式确认接管。
+公开配对 JSON 只含连接地址、公钥和指纹，不含密码或私钥。
 
-```powershell
-eyepqc --version
-eyepqc config show
-eyepqc check
-eyepqc account list
-```
+首次配置材料的电脑仍须可信；本版不提供硬件熵、受保护存储或 SD 克隆/旧快照回滚保护。
+不要提交密码、私钥、真实运行材料或视频，详见 [安全说明](SECURITY.md)。
 
-安装器不包含账号数据库、TLS/SSH 私钥、板端身份或真实 `pairing.json`。
-首次部署须先按 [PC 说明](pc/README.md) 准备运行材料；仅下载安装包不能直接启动视频。
-Android 附件是含专用公开测试 CA 的 **debug APK**，仅用于受控联测，不是生产签名版本。
-板端构建、SD 初始化与联测顺序见 [板端说明](board/README.md) 和 [SD 开发态协议](doc/g6_sd_usb_bootstrap.md)。
-
-开发环境从仓库根目录执行：
+## 开发与验证
 
 ```powershell
 python -m venv .venv
 & ./.venv/Scripts/python.exe -m pip install -r requirements.txt -r pc/requirements.txt
 & ./sim/scripts/run_m00.ps1
-# 无板卡软件演示，不代表真机验收
-& ./run_demo.ps1 -Mode Demo -Offline
-```
-
-需要 Python 3.12+；C/RTL 检查另需 GCC、Icarus 或 AMD 工具。
-硬件构建使用 Vivado/Vitis 2026.1 与 Zynq-7000 器件包，接线及工具前提见 [bringup](doc/bringup.md)。
-硬件模式会操作板卡，必须先核对接线、镜像和当前服务，不要与运行中的视频服务抢占串口。
-
-## 协议与安全边界
-
-账号模式使用 WSS 和 schema2，配对信息只含公开连接/身份信息，不含登录密码或 token。
-板端与 Android 完成身份认证临时 ML-KEM、HKDF 和双向 Finished，长连接每 30 分钟重新握手。
-同账号新设备须显式接管；PC 本地密码数据库使用加盐 scrypt。
-
-**当前不是生产安全系统。** 原开发态测试身份/seed 由可信 PC 经 JTAG 或显式 USB 初始化提供；
-PC 因而仍属于可信调试边界。USB 初始化材料是本地明文，不能宣称对该 PC 的前向保密。
-新增 SD 本地模式不在日常运行时注入秘密，但首次配置端仍知道初始材料；确定性推进不能撤销它的推算能力。
-真实板端熵源、生产密钥存储、安全启动/JTAG 防护和完整故障验收尚未闭环。
-不要提交或分发私钥、密码、真实运行材料和原始视频。详见 [安全说明](SECURITY.md)。
-
-协议入口：[三端架构](doc/architecture.md)、[字节协议](doc/protocol.md)、
-[账号与临时 KEM](doc/account_ephemeral_plan.md)、[公网中转](doc/cloud_relay_plan.md)。
-
-## 验证状态与文档导航
-
-- 实施顺序和剩余门禁：[doc/steps.md](doc/steps.md)。
-- 最新进度及原始证据引用：[report/progress.md](report/progress.md)。
-- 1.0 的确切验证范围、已知问题和附件：[发布说明](doc/releases/v1.0.0.md)。
-- 历史 G7 约 50 分钟实测由用户例外接受，**不是实际满两小时**；故障子项及完整 G8/G9 不据此通过。
-- G0 自检 SD 冷启动证据不等于 G6 视频固件完整冷启动验收；历史报告只对各自记录的构建有效。
-
-目录约定：`board/`、`pc/`、`mobile/`、`server/` 为四端，`doc/` 为共享设计，
-`sim/` 为共享测试，`data/kat/` 为公开标准向量，`report/` 为历史验证记录。
-`build/`、`tmp/`、`.venv/`、`data/captures/`、`board/output/`、`board/vendor/` 是本机忽略目录，不随源码发布。
-历史 `src/rtl`、`src/ps`、`src/third_party`、`prj/` 已迁入 `board/`，`src/host` 已迁入 `pc/src/host/`；
-旧报告路径/哈希保持原样，不能手改清单把旧产物标成新构建。
-
-## 贡献、许可与提交校验
-
-[贡献说明](CONTRIBUTING.md) · [第三方许可](THIRD_PARTY_NOTICES.md)。
-项目自研部分尚未指定统一开源许可证；不能把第三方许可当作整个项目的授权。
-
-```powershell
 git config --local core.hooksPath .githooks
 git hook run pre-commit
 ```
 
-提交检查保留暂存空白、M00、M10、M12、G5 四项快速测试；模块深度测试单独执行。
-hook 检查当前工作区，部分暂存时应核对提交内容一致；Linux/macOS 首次需给 hook 执行权限。
+需要 Python 3.12+；C/RTL 检查另需 GCC、Icarus 或 AMD 工具。板端构建使用 Vivado/Vitis 2026.1 和 Zynq-7000 器件包。
+提交 hook 保留空白检查及 M00/M10/M12/G5 四项；深度测试按实际改动单独运行。
+不要与正在运行的视频服务争抢串口，软件测试不代替板卡或手机验收。
+
+设计入口：[架构](doc/architecture.md)、[字节协议](doc/protocol.md)、[账号/临时 KEM](doc/account_ephemeral_protocol.md)、[实施顺序](doc/steps.md)、[当前进度](report/progress.md)。
+四端进阶教程和模块说明继续保留；过时协调、候选和一次性调试记录已移出源码，在维护者本机归档。
+文档中的 `203.0.113.10` 和 SSH `22022` 都是示例，必须替换为实际部署值。
+
+[贡献说明](CONTRIBUTING.md) · [第三方许可](THIRD_PARTY_NOTICES.md) · [更新记录](CHANGELOG.md)
+自研部分尚未指定统一开源许可证，第三方许可不等于整个项目的授权。

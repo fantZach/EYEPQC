@@ -1,17 +1,17 @@
 # Server 1.0.0-rc1 部署、维护与回滚
 
 本候选只交付源码、固定 systemd 模板、教程及校验清单；**部署执行及验收由用户统一进行**。
-本轮没有连接服务器，不代表 Linux/systemd/公网通过。现有公网 IP 为 `124.70.38.245`，暂时没有域名。
+本轮没有连接服务器，不代表 Linux/systemd/公网通过。本文 `203.0.113.10` 与 SSH `22022` 为示例，实际值由管理员提供。
 
 ## 1. 职责与边界
 
-链路是 Android WSS → 云端 TCP8765 → PC 主动建立的 SSH2222 反向隧道 → PC `127.0.0.1:8765` → USB 板卡。
+链路是 Android WSS → 云端 TCP8765 → PC 主动建立的 SSH22022 反向隧道 → PC `127.0.0.1:8765` → USB 板卡。
 云端不终止业务 TLS，不存手机密码、账号数据库、TLS 叶私钥、CA 签发私钥、板端身份或视频。
 业务证书仍由 PC 提供，SAN 必须匹配公网 IP，Android 信任与它对应的公开 CA；不能关闭证书验证。
 本服务只接收 PC 专用 SSH 公钥。服务器独立持有 SSH host key；PC 必须独立核验其指纹。
 
 固定隔离服务是 `eyepqc-tunnel.service`、专用非登录用户 `eyepqc-tunnel` 和 `/etc/eyepqc-tunnel`。
-SSH2222 与业务 TCP8765 不替代或修改管理 SSH22。不要覆盖 `/etc/ssh/sshd_config`，不要停止管理服务。
+SSH22022 与业务 TCP8765 不替代或修改管理 SSH22。不要覆盖 `/etc/ssh/sshd_config`，不要停止管理服务。
 不要将聊天中出现过的密码用作长期凭据；此流程不接受 root 密码文件，不自动 SSH 到任何主机。
 
 ## 2. 解包、核对和前置环境
@@ -42,7 +42,7 @@ sudo ss -ltnp
 ```
 
 首次部署预期专用账号/组、目录和单元不存在；若已存在，转到“升级”，不能重复创建或覆盖来源不明的服务。
-确认 2222 未被其他服务占用。8765 将由 PC 的专用隧道占用，服务本身不直接提供业务监听。
+确认 22022 未被其他服务占用。8765 将由 PC 的专用隧道占用，服务本身不直接提供业务监听。
 静态单测可在 Windows 或 Linux 解压目录执行，不需要 root、key、联网：
 
 ```sh
@@ -67,7 +67,7 @@ python3 prepare_tunnel.py generate --public-key-file /home/operator/eyepqc-tunne
 python3 prepare_tunnel.py validate --bundle-dir /home/operator/eyepqc-bundle
 ```
 
-默认 SSH2222；若确需改端口，用 `--ssh-port`，仅接受 1024..65535 且不能为 8765，不支持管理端口22。
+默认 SSH22022；若确需改端口，用 `--ssh-port`，仅接受 1024..65535 且不能为 8765，不支持管理端口22。
 固定配置拒绝多公钥、附加 authorized_keys 选项、修改转发目标/用户/Include/Match；不要手改后跳过校验。
 生成出的目录严格只有三个文件，不能把教程/备份塞进去再运行 validate。
 
@@ -117,10 +117,10 @@ sudo ss -ltnp
 sudo ssh-keygen -lf /etc/eyepqc-tunnel/ssh_host_ed25519_key.pub -E sha256
 ```
 
-服务 `Restart=no`，故障时不后台无限重启。云安全组/系统防火墙由用户在既有规则中明确允许所需 TCP2222 和 TCP8765，
+服务 `Restart=no`，故障时不后台无限重启。云安全组/系统防火墙由用户在既有规则中明确允许所需 TCP22022 和 TCP8765，
 保留现有管理端口与规则；本包不提供 flush/disable 防火墙命令。能访问端口不代表有权使用隧道。
 通过独立可信控制台核对上面的 host 公钥指纹。PC 可从网络采集公钥，但必须与该指纹比对后才写入专用 known_hosts；
-单独一次 `ssh-keyscan` 不建立可信身份。IPv4非默认端口条目为 `[124.70.38.245]:2222`。
+单独一次 `ssh-keyscan` 不建立可信身份。IPv4非默认端口条目为 `[203.0.113.10]:22022`。
 
 PC 只允许固定反向目标 `0.0.0.0:8765:127.0.0.1:8765`；不要绕过 CLI 改成其他本地目标或 `GatewayPorts yes`。
 固定 SSH 用户是 `eyepqc-tunnel`；专用 key 应拒绝 shell、命令、PTY、本地转发、其他远端端口、agent/X11/StreamLocal。
@@ -162,7 +162,7 @@ PC 只允许固定反向目标 `0.0.0.0:8765:127.0.0.1:8765`；不要绕过 CLI 
 
 | 现象 | 先查什么 |
 |---|---|
-| 2222 不监听 | 专用单元 status/journal、真实 sshd -t/-T、路径/权限和端口占用；不改管理 SSH |
+| 22022 不监听 | 专用单元 status/journal、真实 sshd -t/-T、路径/权限和端口占用；不改管理 SSH |
 | 公钥 Permission denied | PC实际身份/用户是否匹配；服务key指纹、options、账户`*`与文件可读权限；不开放密码认证 |
 | SSH通但8765没有 | PC是否正常建立唯一`-R`，转发是否因旧owner/端口占用失败；不再启动第二个隧道 |
 | APP TLS错误 | PC叶链、IP SAN、时间与APP CA是否匹配；云端不提供业务TLS，不能在云端随便装证书解决 |

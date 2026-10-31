@@ -56,7 +56,7 @@ class ReleaseBuildTests(unittest.TestCase):
         return subprocess.run(command+[task], env={**self.env, **(extra_env or {})}, capture_output=True, text=True, timeout=180)
 
     def test_01_reject_invalid_ca_and_partial_signing(self):
-        for path in (self.folder/'private.pem', self.folder/'multiple.pem', self.folder/'leaf.pem', self.folder/'expired.pem', ROOT/'mobile/app/src/debug/res/raw/eyepqc_test_ca.pem'):
+        for path in (self.folder/'private.pem', self.folder/'multiple.pem', self.folder/'leaf.pem', self.folder/'expired.pem'):
             with self.subTest(ca=path.name):
                 result = self.gradle(ca=path)
                 self.assertNotEqual(result.returncode, 0)
@@ -69,13 +69,16 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_02_explicit_ca_then_system_only_has_no_stale_ca(self):
         from check_debug_ca import check
         aapt = TOOLS / 'sdk/build-tools/35.0.0/aapt.exe'
-        debug_pin = '263c8c06420a2b72726d93c746766d3efd8040fe6d711af49f240ebbc1b4dc8b'
         result = self.gradle(':app:assembleRelease', self.ca)
         self.assertEqual(result.returncode, 0, (result.stdout+result.stderr)[-4000:])
-        check(ROOT, aapt, debug_pin, self.ca)
+        result = self.gradle(':app:assembleDebug', self.ca)
+        self.assertEqual(result.returncode, 0, (result.stdout+result.stderr)[-4000:])
+        check(ROOT, aapt, self.ca)
         result = self.gradle(':app:assembleRelease')
         self.assertEqual(result.returncode, 0, (result.stdout+result.stderr)[-4000:])
-        check(ROOT, aapt, debug_pin)
+        result = self.gradle(':app:assembleDebug')
+        self.assertEqual(result.returncode, 0, (result.stdout+result.stderr)[-4000:])
+        check(ROOT, aapt)
 
     def test_03_external_signing_and_required_signing_guard(self):
         shell = shutil.which('pwsh') or 'powershell.exe'

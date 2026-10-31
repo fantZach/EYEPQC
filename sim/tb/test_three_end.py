@@ -8,6 +8,7 @@ import ctypes as ct
 import hashlib
 from io import BytesIO
 import os
+import shutil
 from pathlib import Path
 import sys
 import tempfile
@@ -70,8 +71,7 @@ class ThreeEnd(unittest.IsolatedAsyncioTestCase):
         reference.G6.tearDownClass()
 
     async def test_android_okhttp_handshake_video_and_reconnect(self):
-        java = Path(os.environ.get('JAVA_HOME',
-            'C:/Users/23976/AppData/Local/Programs/STM32CubeMX/jre')) / 'bin/java.exe'
+        java = Path(os.environ['JAVA_HOME']) / 'bin/java.exe' if os.environ.get('JAVA_HOME') else Path(shutil.which('java') or 'java')
         tools = ROOT / 'build/mobile_toolchain'
         classpath = os.pathsep.join(str(tools / name) for name in
             ('classes', 'bcprov.jar', 'okhttp.jar', 'okio.jar', 'kotlin.jar'))

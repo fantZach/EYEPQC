@@ -41,7 +41,7 @@ class InstallDataTests(unittest.TestCase):
             if result.returncode:
                 raise RuntimeError('offline fixture key generation failed')
             cls.ssh_key = (root / 'identity').read_bytes()
-            cls.known_hosts = b'[localhost]:2222 ' + (root / 'identity.pub').read_bytes()
+            cls.known_hosts = b'[localhost]:22022 ' + (root / 'identity.pub').read_bytes()
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

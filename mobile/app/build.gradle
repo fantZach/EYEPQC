@@ -25,10 +25,8 @@ if (deploymentCa != null) {
         def cert = factory.generateCertificate(new ByteArrayInputStream(bytes))
         cert.checkValidity()
         if (cert.basicConstraints < 0 || (cert.keyUsage != null && !cert.keyUsage[5])) throw new Exception('not a CA')
-        def debugCert = file('src/debug/res/raw/eyepqc_test_ca.pem').withInputStream { factory.generateCertificate(it) }
-        if (java.util.Arrays.equals(cert.encoded, debugCert.encoded)) throw new Exception('debug CA')
     } catch (Exception ignored) {
-        throw new GradleException('Deployment CA is expired, not a signing CA, invalid, or the old debug CA; supply an independently managed deployment CA.')
+        throw new GradleException('Deployment CA is expired, not a signing CA, or invalid; supply an independently managed deployment CA.')
     }
     deploymentCaBytes = bytes
 }
@@ -42,14 +40,14 @@ def prepareTrust = tasks.register('prepareDeploymentTrust') {
             new File(root, 'res/raw').mkdirs()
             new File(root, 'res/xml').mkdirs()
             new File(root, 'res/raw/eyepqc_deployment_ca.pem').bytes = deploymentCaBytes
-            new File(root, 'res/xml/eyepqc_release_network_security.xml').text = '''<network-security-config>
+            new File(root, 'res/xml/eyepqc_deployment_network_security.xml').text = '''<network-security-config>
     <base-config cleartextTrafficPermitted="false"><trust-anchors>
         <certificates src="system" /><certificates src="@raw/eyepqc_deployment_ca" overridePins="false" />
     </trust-anchors></base-config>
 </network-security-config>
 '''
             new File(root, 'AndroidManifest.xml').text = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-    <application android:usesCleartextTraffic="false" tools:replace="android:usesCleartextTraffic" android:networkSecurityConfig="@xml/eyepqc_release_network_security" />
+    <application android:usesCleartextTraffic="false" tools:replace="android:usesCleartextTraffic" android:networkSecurityConfig="@xml/eyepqc_deployment_network_security" />
 </manifest>
 '''
         }
@@ -77,13 +75,15 @@ android {
         }
     }
     if (deploymentCa != null) {
+        sourceSets.debug.manifest.srcFile generatedTrust.map { new File(it.asFile, 'AndroidManifest.xml') }
+        sourceSets.debug.res.srcDir generatedTrust.map { new File(it.asFile, 'res') }
         sourceSets.release.manifest.srcFile generatedTrust.map { new File(it.asFile, 'AndroidManifest.xml') }
         sourceSets.release.res.srcDir generatedTrust.map { new File(it.asFile, 'res') }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
     packaging { resources.excludes += ['META-INF/versions/**', 'META-INF/LICENSE*', 'META-INF/NOTICE*'] }
 }
-tasks.matching { it.name == 'preReleaseBuild' }.configureEach { dependsOn prepareTrust }
+tasks.matching { it.name == 'preReleaseBuild' || it.name == 'preDebugBuild' }.configureEach { dependsOn prepareTrust }
 dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.81'

@@ -53,7 +53,7 @@ def public_key(text):
     return " ".join(fields[:2])
 
 
-def config(ssh_port=2222, user=USER):
+def config(ssh_port=22022, user=USER):
     if user != USER:
         raise ValueError("only the dedicated eyepqc-tunnel user is allowed")
     if type(ssh_port) is not int or not 1024 <= ssh_port <= 65535 or ssh_port == 8765:
@@ -106,7 +106,7 @@ def fingerprint(key):
     return "SHA256:" + base64.b64encode(digest).decode("ascii").rstrip("=")
 
 
-def generate(key_file, output_dir, expected_fingerprint, ssh_port=2222):
+def generate(key_file, output_dir, expected_fingerprint, ssh_port=22022):
     rendered = config(ssh_port)
     key_path = safe_path(key_file)
     output = safe_path(output_dir)
@@ -240,7 +240,7 @@ def main(argv=None):
     create.add_argument("--public-key-file", required=True)
     create.add_argument("--output-dir", required=True)
     create.add_argument("--expected-key-sha256", required=True)
-    create.add_argument("--ssh-port", type=int, default=2222)
+    create.add_argument("--ssh-port", type=int, default=22022)
     verify = commands.add_parser("validate")
     verify.add_argument("--bundle-dir", required=True)
     verify.add_argument("--linux-sshd-check", action="store_true")

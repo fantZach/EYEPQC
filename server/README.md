@@ -19,15 +19,15 @@ Server 随项目以源码、配置生成器及 systemd 模板发布，不附服�
 本目录提供独立 Linux sshd 配置生成/校验及 systemd 模板；冻结接口见
 [公网中转契约](../doc/cloud_relay_plan.md)。初始代码准备阶段未部署，当前状态以下列更新为准。
 
-2026-10-15部署更新：用户授权后，独立服务已安装在124.70.38.245并处于active，真实Linux安装与sshd校验通过；
+2026-10-15部署更新：用户授权后，独立服务已安装在203.0.113.10并处于active，真实Linux安装与sshd校验通过；
 安全组放行后，实际专用key授权/固定反向隧道、合成TCP往返及五项SSH越权拒绝通过；
 公网TLS/账号拒绝与正确登录（模拟CDC）通过。临时PC探针/隧道已停止，云端服务仍启用。
 真实手机/板卡视频、持续吞吐和G9未通过。
-下文保留代码准备/部署流程，实际证据及TOFU信任边界见 [部署记录](../report/server_deployment_20261015.md)。
+下文保留代码准备/部署流程，实际证据及TOFU信任边界见 部署记录（历史资料，已本机归档）。
 
 ```text
 Android WSS → 云端 TCP8765 → SSH -R → Windows PC 127.0.0.1:8765 → USB Board
-                          PC 主动连接云端 SSH2222
+                          PC 主动连接云端 SSH22022
 ```
 
 云端不处理手机账号或密码，不终止业务 TLS，不运行 ML-KEM/AES 或解码/保存 JPEG。
@@ -53,7 +53,7 @@ POSIX 生成目录为 0700，三份文件为 0600；Windows 不声称 POSIX mode
 操作者须选可信 ACL 的暂存目录。不要在不可信用户可并发改写的共享目录中以 root 运行工具。
 
 输出为 `sshd_config`、`authorized_keys`、`eyepqc-tunnel.service`。
-默认 SSH2222，`--ssh-port` 可改为 1024..65535 中除 8765 外的端口。
+默认 SSH22022，`--ssh-port` 可改为 1024..65535 中除 8765 外的端口。
 SSH22/低端口、其他用户名/转发端口/安装路径都不提供配置入口。
 固定用户 `eyepqc-tunnel`、安装路径 `/etc/eyepqc-tunnel`、sshd `/usr/sbin/sshd`。
 其他发行版路径须另行复核模板与校验，不能放宽当前检查。
@@ -99,7 +99,7 @@ Linux 校验核对账户、shadow 标记、安装文件/权限，然后执行真
 
 校验后再由操作者授权执行 `systemctl daemon-reload` 与
 `systemctl enable --now eyepqc-tunnel.service`。单元先执行 sshd `-t`，独立 foreground
-daemon，`Restart=no`，不后台反复重连/重启。按已确认需求放通 TCP2222/TCP8765，保持
+daemon，`Restart=no`，不后台反复重连/重启。按已确认需求放通 TCP22022/TCP8765，保持
 原管理入口，不添加全局规则。通过可信控制台核对 SSH host key 指纹，PC 才建立专用
 known_hosts；未经核对的 ssh-keyscan 结果不是信任依据。
 

@@ -12,7 +12,6 @@ param(
 $ErrorActionPreference='Stop'
 if(-not $Jdk -or -not (Test-Path (Join-Path $Jdk 'bin/java.exe'))){throw 'Set -Jdk to JDK 17+.'}
 if(-not $Sdk -or -not (Test-Path (Join-Path $Sdk 'platforms/android-35/android.jar'))){throw 'Set -Sdk to an Android SDK with platforms;android-35 and build-tools;35.0.0 installed.'}
-if($TrustCaFile -and $Variant -ne 'Release'){throw 'Deployment CA is release-only; debug has its separate test CA.'}
 if($RequireSigned -and $Variant -ne 'Release'){throw 'RequireSigned is release-only.'}
 $signingNames=@('EYEPQC_ANDROID_KEYSTORE','EYEPQC_ANDROID_KEY_ALIAS','EYEPQC_ANDROID_STORE_PASSWORD','EYEPQC_ANDROID_KEY_PASSWORD')
 $signingValues=@($signingNames | ForEach-Object { [Environment]::GetEnvironmentVariable($_) })
@@ -54,7 +53,7 @@ try{
         if($Variant -eq 'Release' -and ($verification -join "`n") -match 'certificate DN:.*CN=Android Debug'){throw 'Debug signer is not an acceptable release signer.'}
         $certificate=($verification | Where-Object {$_ -match '^Signer #1 certificate SHA-256 digest:'}) -replace '^Signer #1 certificate SHA-256 digest:\s*',''
     }
-    $trust=if($TrustCaFile){'explicit-deployment-ca-plus-system'}elseif($Variant -eq 'Debug'){'debug-test-ca-plus-system'}else{'system-only'}
+    $trust=if($TrustCaFile){'explicit-deployment-ca-plus-system'}else{'system-only'}
     $metadata=[ordered]@{component='android';version=$version;variant=$Variant.ToLowerInvariant();signing=if($Variant -eq 'Debug'){'debug'}elseif($signed){'external-release-key'}else{'unsigned'};sha256=(Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash.ToLowerInvariant();signer_sha256=$certificate;tls_trust=$trust;user_acceptance='pending';production_security_accepted=$false}
     if($OutputDirectory){
         New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop | Out-Null

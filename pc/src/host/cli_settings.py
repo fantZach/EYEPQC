@@ -97,7 +97,7 @@ def normalize(record, base, *, legacy=False, retained_tunnel=None):
 def default_record():
     return dict(version=1, serial_port=None, accounts_file='private/accounts.json',
         pairing_file='public/pairing.json', tls_cert='public/server-chain.pem', tls_key='private/server-key.pem',
-        tunnel=dict(enabled=True, host='124.70.38.245', ssh_port=2222,
+        tunnel=dict(enabled=True, host='203.0.113.10', ssh_port=22022,
                     identity_file='private/id_ed25519', known_hosts='public/tunnel_known_hosts'))
 
 

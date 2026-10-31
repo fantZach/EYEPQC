@@ -16,7 +16,7 @@
 - 新增四端 [部署总入口](doc/deployment/README.md) 和 [用户统一验收模板](doc/deployment/ACCEPTANCE.md)。
 
 实机/公网/安装操作由用户统一验收。Android release 包当前 unsigned，不冒充正式签名 APK；
-不覆盖 1.0，不上传限本机用途的 Board 二进制。详见 [本轮记录](report/candidate_20261031.md)。
+不覆盖 1.0，不上传限本机用途的 Board 二进制。详见 本轮记录（历史资料，已本机归档）。
 
 ## v1.0.0 — 2026-10-21
 

@@ -56,7 +56,7 @@ class TunnelTests(unittest.TestCase):
         self.assertEqual(args[args.index('-i')+1], self.key.resolve().as_posix())
         self.assertIn('-N', args)
         self.assertIn('-T', args)
-        self.assertEqual(args[args.index('-p')+1], '2222')
+        self.assertEqual(args[args.index('-p')+1], '22022')
         for option in ('StrictHostKeyChecking=yes','BatchMode=yes','IdentitiesOnly=yes',
                        'ExitOnForwardFailure=yes','ConnectTimeout=10',
                        'ServerAliveInterval=15','ServerAliveCountMax=3','IdentityAgent=none'):
@@ -82,10 +82,10 @@ class TunnelTests(unittest.TestCase):
     def test_validation_does_not_launch(self):
         with patch('cloud_tunnel.subprocess.run') as run:
             for host in ('-oProxyCommand=bad', 'https://cloud.example', 'user@cloud.example',
-                         'cloud:2222', 'cloud\nexample', '999.2.3.4', '', 'a'*64+'.example'):
+                         'cloud:22022', 'cloud\nexample', '999.2.3.4', '', 'a'*64+'.example'):
                 with self.assertRaises(ValueError):
                     command(host, self.key, self.known)
-            for port in (0, 65536, '2222'):
+            for port in (0, 65536, '22022'):
                 with self.assertRaises(ValueError):
                     command('cloud.example', self.key, self.known, port)
             with self.assertRaises(ValueError):
@@ -103,7 +103,7 @@ class TunnelTests(unittest.TestCase):
         status, output = self.invoke([*self.argv, '--mode', 'Check'])
         self.assertEqual(status, 0, output)
         parsed = output.lower().replace('[', '').replace(']', '')
-        for setting in ('user eyepqc-tunnel', 'port 2222', 'batchmode yes',
+        for setting in ('user eyepqc-tunnel', 'port 22022', 'batchmode yes',
                         'stricthostkeychecking true', 'exitonforwardfailure yes',
                         'serveraliveinterval 15', 'serveralivecountmax 3',
                         'remoteforward 0.0.0.0:8765 127.0.0.1:8765'):

@@ -26,7 +26,7 @@ class PairingTests(unittest.TestCase):
         (self.identity / "public.bin").write_bytes(self.public)
         (self.identity / "public.sha256").write_text(self.pin, encoding="ascii")
         self.output = self.root / "pairing"
-        self.endpoint = "ws://10.179.236.247:8765/stream"
+        self.endpoint = "ws://10.0.0.10:8765/stream"
 
     def test_only_public_material_served_without_private_key(self):
         output = prepare_pairing(self.identity, self.endpoint, self.output)

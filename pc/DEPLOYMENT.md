@@ -58,8 +58,8 @@ eyepqc account list
 
 ```powershell
 eyepqc config set serial_port COM7
-eyepqc config set tunnel.host 124.70.38.245
-eyepqc config set tunnel.ssh_port 2222
+eyepqc config set tunnel.host 203.0.113.10
+eyepqc config set tunnel.ssh_port 22022
 eyepqc config set tunnel.enabled true
 ssh -V
 eyepqc config show

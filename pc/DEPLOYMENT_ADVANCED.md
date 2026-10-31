@@ -108,11 +108,11 @@ $Public = "$Data/public"
 两者都不能把私钥放到 public/、配对 JSON 或候选压缩包。SD 路线接受物理读卡风险，不等于生产密钥存储；
 复用 PC 曾持有的旧身份不能消除历史副本，初始材料准备者也必须可信。
 
-本项目当前公网 IP 为 `124.70.38.245`，没有域名；以下命令只生成本地材料，不连接该服务器。
+以下使用示例公网 IP `203.0.113.10`；部署时替换为管理员提供的实际地址，以下命令只生成本地材料，不连接该服务器。
 只有更换实例时才将地址同步替换为新 IP 和证书 SAN：
 
 ```powershell
-& ./.venv/Scripts/python.exe pc/src/host/prepare_pairing.py --identity-dir C:/secure-public/board-public --endpoint wss://124.70.38.245:8765/stream --config-file "$Public/pairing.json"
+& ./.venv/Scripts/python.exe pc/src/host/prepare_pairing.py --identity-dir C:/secure-public/board-public --endpoint wss://203.0.113.10:8765/stream --config-file "$Public/pairing.json"
 ```
 
 不加 `--token-file`，不使用旧 schema1。输出文件须不存在，不直接覆盖旧身份。
@@ -132,7 +132,7 @@ CA 私钥不能打入 APK；云服务器透明中转，TLS 证书终止点仍在
 python -m venv .venv
 & ./.venv/Scripts/python.exe -m pip install -r pc/requirements-deployment.txt
 $Issuer = "$env:LOCALAPPDATA/EYEPQC/pc/issuer-20261031"
-& ./.venv/Scripts/python.exe pc/src/host/prepare_deployment_tls.py --ip 124.70.38.245 --output-dir "$Issuer"
+& ./.venv/Scripts/python.exe pc/src/host/prepare_deployment_tls.py --ip 203.0.113.10 --output-dir "$Issuer"
 [System.IO.File]::Copy("$Issuer/private/server-key.pem", "$Private/server-key.pem", $false)
 [System.IO.File]::Copy("$Issuer/public/server-chain.pem", "$Public/server-chain.pem", $false)
 ```
@@ -148,26 +148,13 @@ $Issuer = "$env:LOCALAPPDATA/EYEPQC/pc/issuer-20261031"
 
 ```powershell
 $Renewed = "$env:LOCALAPPDATA/EYEPQC/pc/leaf-renewal-20271001"
-& ./.venv/Scripts/python.exe pc/src/host/prepare_deployment_tls.py --ip 124.70.38.245 --ca-dir "$Issuer" --output-dir "$Renewed" --leaf-days 365
+& ./.venv/Scripts/python.exe pc/src/host/prepare_deployment_tls.py --ip 203.0.113.10 --ca-dir "$Issuer" --output-dir "$Renewed" --leaf-days 365
 ```
 
 续签目录不复制 CA 私钥；新 IP 必须重新签发匹配 SAN 的叶证。过期/不匹配/不适用的 CA 会拒绝。
 CA 轮换需重新构建/更新 Android 信任配置并由操作者验收，不能关闭 TLS 地址/期限校验。
 旧 `prepare_test_tls.py` 只用于历史短期调试（还会生成随机账号和 login.txt），不是本教程默认部署工具。
 旧 APK 测试 CA 于 2026-11-12 16:59:03 UTC 到期，不能以旧包永久使用或关闭验证。
-
-### 4.2.1 已核验续签材料迁入应用自己的目录
-
-2026-10-31 本次原 CA 续签可使用 `pc/src/host/install_renewed_tls.py --source-dir <续签目录绝对路径>`。
-这是固定核验本次叶证/原 CA 指纹的受限迁移，不是任意证书导入器。须在**用户原 PowerShell**中运行，不能在 Codex 的 AppData 重定向环境中执行。
-先正常 Ctrl+C 停止 PC relay，脚本若检测8765被占用会拒绝，不杀进程、不启动服务。
-
-脚本只读取源目录的 `public/server-chain.pem` 和 `private/server-key.pem`，验证证书链、IP、期限、指纹、
-私钥匹配及源私有 ACL，然后在应用数据目录下新建 `tls-renewal-20261031-app`。
-目标 private ACL 先建立，再排他复制证书/私钥，保留原配置备份；仅原子更新 `tls_cert` 和 `tls_key`。
-不复制 CA 签发私钥、账号或板端身份。已有目标、路径重定向、并发配置变更或校验失败均拒绝，不覆盖重试。
-成功须看到 `APP_TLS_RENEWAL_INSTALLED`，再运行 `eyepqc check` 并按原命令启动，最终以公网实际证书为准。
-失败可能留下本次新建的受保护目录和备份，先保留现场检查；不得以工具视图的配置成功代替用户终端或公网生效。
 
 ### 4.3 专用 SSH 公钥及服务器 host key
 
@@ -182,7 +169,7 @@ ssh-keygen -lf "$Private/id_ed25519.pub" -E sha256
 这只适用于受保护的专用私钥，不适用于管理 SSH 密钥。已有目标文件时停止，不能确认覆盖。
 将 `.pub` 与其独立核对的 SHA256 指纹交给服务器部署者，私钥留在 PC。
 从服务器控制台核对专用 `/etc/eyepqc-tunnel/ssh_host_ed25519_key.pub` 指纹，
-按 `[实际主机]:2222 ssh-ed25519 公钥base64` 格式保存 `tunnel_known_hosts`；若端口不是 2222，应一致修改。
+按 `[实际主机]:22022 ssh-ed25519 公钥base64` 格式保存 `tunnel_known_hosts`；若端口不是 22022，应一致修改。
 服务器生成、安装、授权与端口限制见 [服务器教程](https://github.com/fantZach/EYEPQC/blob/main/server/DEPLOYMENT.md)。
 
 ## 5. 配置并离线检查
@@ -195,8 +182,8 @@ eyepqc config set accounts_file C:/secure-deploy/private/accounts.json
 eyepqc config set pairing_file C:/secure-deploy/public/pairing.json
 eyepqc config set tls_cert C:/secure-deploy/public/server-chain.pem
 eyepqc config set tls_key C:/secure-deploy/private/server-key.pem
-eyepqc config set tunnel.host 124.70.38.245
-eyepqc config set tunnel.ssh_port 2222
+eyepqc config set tunnel.host 203.0.113.10
+eyepqc config set tunnel.ssh_port 22022
 eyepqc config set tunnel.identity_file C:/secure-deploy/private/id_ed25519
 eyepqc config set tunnel.known_hosts C:/secure-deploy/public/tunnel_known_hosts
 eyepqc config set tunnel.enabled true
@@ -273,7 +260,7 @@ eyepqc account delete --username second --yes
 | relay 8765 已占用 | 查所有者，正常停止所属旧实例；不重复启动、不盲杀进程 |
 | SSH255/host key拒绝 | 控制台核对host key、专用公钥、端口/服务器限制；不使用StrictHostKeyChecking=no |
 | 手机 TLS/握手超时 | 检查实际地址/SAN/有效期/可信CA、账号、隧道及板端状态，分层保留脱敏日志 |
-| USB首次查询超时 | 最新板端候选仍待操作者验证；不靠无条件QUERY重试、过滤ACK或反复注入掩盖 |
+| 连接异常 | 先保留脱敏错误和时间再排查；此前首次连接问题已由用户确认修复，本次未新增实测 |
 | FAULT | 保存元数据并停止；按板端教程恢复，不绕过安全状态或偷偷JTAG恢复 |
 
 本轮只交付候选软件与教程，未替操作者验收板端、手机、公网或生产安全；EXE/安装器依然未商业签名。

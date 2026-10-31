@@ -38,4 +38,4 @@ Keccak 实验后，root 使用冻结快照 `build/restoration_source_b83ee4e` �
 
 ## 证据文件
 
-三轮 capture、UART 原文和 JTAG stdout/stderr 的仓库相对路径及 SHA-256，完整原始 tick、dispatch、KAT marker 与恢复来源均记录在 [`keccak_identity_cached_20261010.json`](keccak_identity_cached_20261010.json)。历史 safe 基线继续保留在 [`keccak_board_benchmark_20261010.json`](keccak_board_benchmark_20261010.json)，未覆盖。
+三轮 capture、UART 原文和 JTAG stdout/stderr 的仓库相对路径及 SHA-256，完整原始 tick、dispatch、KAT marker 与恢复来源均记录在 `keccak_identity_cached_20261010.json`（历史数据，本机归档）。历史 safe 基线继续保留在 `keccak_board_benchmark_20261010.json`（历史数据，本机归档），未覆盖。

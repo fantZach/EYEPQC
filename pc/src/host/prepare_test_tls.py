@@ -41,7 +41,7 @@ def certificate(key, name, issuer, signer, now, expires, *, ca, ips=()):
     return builder.sign(signer, hashes.SHA256())
 
 
-def prepare(output, identity_dir, ip='10.179.236.247', *, ca_dir=None):
+def prepare(output, identity_dir, ip='10.0.0.10', *, ca_dir=None):
     output = Path(output)
     ip = ipaddress.IPv4Address(ip)
     config = configuration(identity_dir, f'wss://{ip}:8765/stream')
@@ -107,7 +107,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output-dir', type=Path, required=True)
     parser.add_argument('--identity-dir', type=Path, required=True)
-    parser.add_argument('--ip', default='10.179.236.247')
+    parser.add_argument('--ip', default='10.0.0.10')
     parser.add_argument('--ca-dir', type=Path, help='Reuse this existing preparation CA; write a NEW output directory')
     args = parser.parse_args()
     summary = prepare(args.output_dir, args.identity_dir, args.ip, ca_dir=args.ca_dir)

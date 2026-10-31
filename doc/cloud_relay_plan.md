@@ -30,7 +30,7 @@ PC显式 `--pairing-file` 启用，不开放目录或凭据文件；手机拒绝
 1. 手机 URL 路径仍为 `/stream` / `/stream?takeover=1`；消息仍是一条完整 USB 二进制记录，没有新包头。
 2. 默认云端公开 TCP8765 通过 `-R 0.0.0.0:8765:127.0.0.1:8765` 转到 PC WSS。PC relay 默认只监听回环。
 3. 隧道 PC 使用专用 SSH 用户 `eyepqc-tunnel` 和本机私钥，不用 root/密码，不上传板端身份、种子或 TLS 私钥。
-4. 为避免修改已有云端管理 SSH 配置，server 第一版提供独立 sshd 配置和 service，默认 SSH TCP2222。
+4. 为避免修改已有云端管理 SSH 配置，server 第一版提供独立 sshd 配置和 service，默认 SSH TCP22022。
    可在实际确认校园网端口可达后改 SSH 监听端口；不绕过网络管理规则，不自动更改现有 SSH22。
 5. 云端 sshd 使用 pubkey-only，AllowUsers 限定隧道用户，`GatewayPorts clientspecified`、`AllowTcpForwarding remote`、
    `PermitListen 0.0.0.0:8765`，禁止 shell/PTY、agent/X11 和 StreamLocal forwarding。
@@ -49,5 +49,5 @@ PC显式 `--pairing-file` 启用，不开放目录或凭据文件；手机拒绝
 
 本轮先完成各端代码、参数拒绝/失败/清理测试及软件回环；SSH参数/配置生成检查不冒充Linux sshd执行或公网实测。
 必须保留局域网路径和已有APP兼容。公网部署另需用户提供已购实例的公网地址、系统和本机SSH配置位置，不在聊天发送密码/私钥。
-后续按 TCP2222可达→核验host key→实际受限隧道→WSS证书/账号拒绝→suite2握手→认证视频→STOP/换钥/断线重连/吞吐推进。
+后续按 TCP22022可达→核验host key→实际受限隧道→WSS证书/账号拒绝→suite2握手→认证视频→STOP/换钥/断线重连/吞吐推进。
 M18/G9 未完成前不标记公网可用；本次服务器方案不抹除既有QueueFull或P2P失败证据。

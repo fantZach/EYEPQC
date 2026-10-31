@@ -31,7 +31,7 @@
 
 目标构建结果：`build_g6_auto_recovery.py` 输出 `G6_AUTO_RECOVERY_BUILD_OK`；独立 verify-only 哈希核验输出 `VERIFY_ONLY_OK checked_entries=183 board_accessed=false`。候选 `g6_usb.elf` SHA-256 为 `4eac755e256796fd0b2ed69ba73ced43bcbc4068f4d3554772916297b5d2f9d6`。对本候选目标对象的 ARM 反汇编抽查确认 `main` 在 `usb_cdc_take_control` 后对 1036 字节栈缓冲存在写零指令循环；空输入分支在该循环前返回。`eye_mlkem_dec` 位于 `8_m09_mlkem.o`（符号范围 `0x73c8–0x7693`），能看到被内联的 `memset` 清理代码。此项只覆盖所检查的目标对象和有限代码路径，不是全调用图、全内存或上板证据。
 
-之后根代理将同一 ELF 临时加载到板上完成两次约 3 秒会话回归：各解出 143 帧（47.611 fps）与 141 帧（47.267 fps）；错误 Finished 被拒绝，drain-stop 与 bounded-control-write 检查通过，第二个 session 的 `key_changed` 布尔为 true。此次未测 DTR 重连，board counters 不可用。原始运行 JSON 同时含 session id 与 transcript 指纹，未复制这些值；脱敏摘要及原始结果路径/SHA 见 [板测摘要](security_cleanup_board_summary_20261010.json)。该板测只说明 candidate007 功能回归；没有逐地址清零读回，不能证明 PS/PL/DDR/USB/DMA 清零；也没有完成 G7 新构建的 20 轮验收。
+之后根代理将同一 ELF 临时加载到板上完成两次约 3 秒会话回归：各解出 143 帧（47.611 fps）与 141 帧（47.267 fps）；错误 Finished 被拒绝，drain-stop 与 bounded-control-write 检查通过，第二个 session 的 `key_changed` 布尔为 true。此次未测 DTR 重连，board counters 不可用。原始运行 JSON 同时含 session id 与 transcript 指纹，未复制这些值；脱敏摘要及原始结果路径/SHA 见 板测摘要（历史数据，本机归档）。该板测只说明 candidate007 功能回归；没有逐地址清零读回，不能证明 PS/PL/DDR/USB/DMA 清零；也没有完成 G7 新构建的 20 轮验收。
 
 ## ML-KEM 中间值源码审阅
 

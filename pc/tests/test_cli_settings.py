@@ -37,7 +37,7 @@ class SettingsTests(unittest.TestCase):
         shown = json.loads(output)
         self.assertEqual(code, 0)
         self.assertEqual(shown['source'], 'built-in-defaults')
-        self.assertEqual(shown['config']['tunnel']['host'], '124.70.38.245')
+        self.assertEqual(shown['config']['tunnel']['host'], '203.0.113.10')
         self.assertIsNone(shown['config']['serial_port'])
         self.assertFalse(settings.settings_path().exists())
 

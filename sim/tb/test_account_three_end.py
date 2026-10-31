@@ -10,6 +10,7 @@ import hashlib
 import os
 from pathlib import Path
 import secrets
+import shutil
 import ssl
 import subprocess
 import sys
@@ -98,8 +99,7 @@ class AccountThreeEnd(unittest.IsolatedAsyncioTestCase):
     async def test_wss_ephemeral_video_rekey_stop_and_reconnect(self):
         reference.G6.setUpClass()
         self.addCleanup(reference.G6.tearDownClass)
-        java = Path(os.environ.get('JAVA_HOME',
-            'C:/Users/23976/AppData/Local/Programs/STM32CubeMX/jre')) / 'bin/java.exe'
+        java = Path(os.environ['JAVA_HOME']) / 'bin/java.exe' if os.environ.get('JAVA_HOME') else Path(shutil.which('java') or 'java')
         tools = ROOT / 'build/mobile_toolchain'
         classpath = os.pathsep.join(str(tools / name) for name in
             ('classes', 'bcprov.jar', 'okhttp.jar', 'okio.jar', 'kotlin.jar', 'gson.jar'))
