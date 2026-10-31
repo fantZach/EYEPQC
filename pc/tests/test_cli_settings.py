@@ -145,25 +145,10 @@ class SettingsTests(unittest.TestCase):
 class FrozenConfigurationTests(unittest.TestCase):
     def test_new_exe_manages_isolated_user_settings_without_adjacent_json(self):
         directory = Path(__file__).resolve().parents[2] / 'build/pc_cli/dist'
-        exe = directory / 'eyepqc-1.3.2.exe'
-        version = '1.3.2'
+        version = eyepqc.VERSION
+        exe = directory / ('eyepqc-' + version + '.exe')
         if not exe.exists():
-            exe = directory / 'eyepqc-1.3.1.exe'
-            version = '1.3.1'
-        if not exe.exists():
-            exe = directory / 'eyepqc-1.3.exe'
-            version = '1.3.0'
-        if not exe.exists():
-            exe = directory / 'eyepqc-1.2.1.exe'
-            version = '1.2.1'
-        if not exe.exists():
-            exe = directory / 'eyepqc-1.2.exe'
-            version = '1.2.0'
-        if not exe.exists():
-            exe = directory / 'eyepqc-1.1.exe'
-            version = '1.1.0'
-        if not exe.exists():
-            self.skipTest('build version 1.1 first')
+            self.skipTest('build the current PC version first')
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             env = dict(os.environ, LOCALAPPDATA=str(root / 'user'))

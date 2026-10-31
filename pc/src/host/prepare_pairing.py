@@ -14,8 +14,14 @@ from relay import read_token
 
 def _new_file(path, data, mode):
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
-    with os.fdopen(descriptor, "wb") as target:
-        target.write(data)
+    try:
+        with os.fdopen(descriptor, "wb") as target:
+            target.write(data)
+            target.flush()
+            os.fsync(target.fileno())
+    except Exception:
+        Path(path).unlink()
+        raise
 
 
 def configuration(identity_dir, endpoint, token=None):

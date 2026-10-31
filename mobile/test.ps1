@@ -40,3 +40,5 @@ if ($LASTEXITCODE -ne 0) { throw 'Pairing JSON tests failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Ephemeral session tests failed.' }
 & (Join-Path $Jdk 'bin/java.exe') -cp "$classes;$classpath" org.eyepqc.mobile.ViewerStateTest
 if ($LASTEXITCODE -ne 0) { throw 'Viewer interaction state tests failed.' }
+& (Join-Path $Jdk 'bin/java.exe') -cp "$classes;$classpath" org.eyepqc.mobile.ConnectionMessagesTest
+if ($LASTEXITCODE -ne 0) { throw 'Connection diagnostics tests failed.' }

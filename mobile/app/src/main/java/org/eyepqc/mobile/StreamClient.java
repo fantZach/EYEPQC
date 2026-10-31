@@ -87,7 +87,7 @@ public final class StreamClient implements AutoCloseable {
                     });
                 }
                 @Override public void onMessage(WebSocket ws,String text){fail("拒绝文本消息");}
-                @Override public void onFailure(WebSocket ws,Throwable error,Response response){boolean conflict=response!=null&&response.code()==409;fail(response==null?"连接失败":("服务拒绝连接 HTTP "+response.code()));if(conflict)listener.takeoverRequired();}
+                @Override public void onFailure(WebSocket ws,Throwable error,Response response){boolean conflict=response!=null&&response.code()==409;fail(response==null?ConnectionMessages.transport(error):("服务拒绝连接 HTTP "+response.code()));if(conflict)listener.takeoverRequired();}
                 @Override public void onClosing(WebSocket ws,int code,String reason){ws.close(code,null);fail(code==4409?"账号已由另一设备接管，请手动连接":"连接已关闭");}
                 @Override public void onClosed(WebSocket ws,int code,String reason){fail("连接已关闭");}
             });

@@ -84,6 +84,7 @@ public final class MainActivity extends Activity {
         importConfig.setOnClickListener(v->{if(!state.canConnect())return;Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"application/json","text/plain","application/octet-stream"}).addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(intent,1);});
         String savedConfig=getPreferences(MODE_PRIVATE).getString("account_pairing",null);
         if(savedConfig!=null){try{PairingConfig restored=PairingConfig.parse(savedConfig.getBytes(java.nio.charset.StandardCharsets.UTF_8));if(restored.version!=2)throw new IllegalArgumentException("saved profile");config=restored;serverAddress.setText(config.endpoint);updateSummary();}catch(Exception error){getPreferences(MODE_PRIVATE).edit().remove("account_pairing").apply();}}
+        if(serverAddress.length()==0)advanced.setVisibility(View.VISIBLE);
         updateControls();
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         if(Build.VERSION.SDK_INT>=33)getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,this::handleBack);
@@ -139,6 +140,8 @@ public final class MainActivity extends Activity {
         if(!state.canConnect())return;
         serverAddress.setError(null);username.setError(null);password.setError(null);
         boolean legacy=config!=null&&config.version==1&&config.endpoint.equals(serverAddress.getText().toString().trim());
+        try{String endpoint=serverAddress.getText().toString().trim();StreamClient.validateEndpoint(endpoint);if(!legacy&&!endpoint.startsWith("wss://"))throw new IllegalArgumentException("WSS required");}
+        catch(Exception error){advanced.setVisibility(View.VISIBLE);serverAddress.setError("请输入可信 wss://地址:端口/stream");serverAddress.requestFocus();return;}
         if(!legacy&&username.getText().toString().isEmpty()){username.setError("请输入账号");username.requestFocus();return;}
         if(!legacy&&password.length()==0){password.setError("请输入密码");password.requestFocus();return;}
         disconnect();state.connect();updateControls();hideKeyboard();final long active=generation;

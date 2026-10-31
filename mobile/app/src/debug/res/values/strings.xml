@@ -1,0 +1,3 @@
+<resources>
+    <string name="default_endpoint" translatable="false">wss://124.70.38.245:8765/stream</string>
+</resources>

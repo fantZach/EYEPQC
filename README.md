@@ -10,7 +10,15 @@ OV5640 → Zynq-7020 ⇄ USB Slave ⇄ Windows PC ⇄ Android
                                 SSH 反向隧道 → 公网 TCP 中转
 ```
 
-## 1.0 发布
+## 调试完善与四端正式交付
+
+当前正按 [四端交付计划](doc/release_plan.md) 完善下一版候选，**部署执行和最终验收由用户统一进行**。
+逐端构建、安装、材料配置、启停和回滚见 [详细部署总入口](doc/deployment/README.md)，
+验收结果使用 [统一记录表](doc/deployment/ACCEPTANCE.md)。
+保留下面已发布的 1.0；候选包、unsigned APK 和离线检查不会自动成为正式稳定版。
+公网继续使用现有 IP，Android 后续 release 构建提供显式部署 CA 入口，但仍严格校验地址、有效期和证书链。
+
+## 已发布 1.0
 
 [下载 v1.0.0](https://github.com/fantZach/EYEPQC/releases/tag/v1.0.0) ·
 [发布说明与安装前提](doc/releases/v1.0.0.md) · [更新记录](CHANGELOG.md)

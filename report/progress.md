@@ -1,5 +1,17 @@
 # Implementation progress
 
+## 2026-10-31：四端调试完善与用户统一验收候选
+
+用户指定最终验收统一自行进行；本轮不安排自动硬件/手机/现网部署。候选集合v1.1.0-rc1已形成：
+Board本机BOOT/脱敏清单/首次身份工具，PC1.4.0-rc1程序与材料分离安装及安全init/部署CA工具，
+Android0.9.0-rc1外部签名/显式部署CA/non-debuggable构建，Server1.0.0-rc1源码交付。
+四端详细部署、备份、升级、回滚和排错教程从 [统一入口](../doc/deployment/README.md) 进入。
+PC133项含3项安装显式跳过后另独立fixture3项通过；Android310断言及3组Gradle集成通过，Server23项、
+Board新增身份8+打包8项通过；主协调另做本机WSS/透明TCP跨端互操作和四包校验。
+确切命令、时长、hash及边界见 [候选交付记录](candidate_20261031.md)。
+全部用户验收pending；Android包中的release为未签名不可安装，Board只限本机用途、首次QUERY未实板确认修复。
+旧v1.0.0不覆盖，不把候选/离线通过改记为正式稳定版或生产安全通过。
+
 ## 2026-10-21：项目 v1.0.0 发布整理
 
 按用户要求整理 GitHub 当前入口与四端状态，新增 CHANGELOG、安全/贡献/第三方许可及发布说明；

@@ -4,6 +4,15 @@
 采集 OV5640 JPEG、完成 ML-KEM Decaps 和 AES-GCM 加密，将密文交给 PC 转发。
 目标架构见 [三端架构](../doc/architecture.md)，共享协议见 [protocol](../doc/protocol.md)。
 
+## 当前候选与用户验收
+
+新的完整操作入口见 [板端部署教程](DEPLOYMENT.md)：从源码构建、本地候选打包、SD 备份/读回/拔插、
+无 JTAG 冷启动、USB 开发初始化、故障与回滚，到统一验收记录。
+`board/prj/package_candidate.py` 每次重跑真实离线校验，只导出固定白名单，不复制私钥/seed 或原始绝对路径清单。
+本地包固定标记 `development_only=true`、`user_acceptance=pending`，不操作硬件/SD；
+AMD/生成物分发审查未闭环，暂只供本机开发验收，不将 BOOT 包当成可公开 Release 正式固件。
+详见 [板端许可通知](THIRD_PARTY_NOTICES.md)。用户统一验收，不自动更新历史 G 门禁。
+
 ## v1.0.0 交付状态
 
 本次发布交付板端源码、构建脚本和文档，**不附带 BOOT.BIN**：最新 SD 候选尚未完成实板验收，

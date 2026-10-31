@@ -1,5 +1,6 @@
 """Explicit, offline import of six runtime files into current-user storage."""
 import copy
+import json
 import os
 from pathlib import Path
 import ssl
@@ -57,6 +58,43 @@ def validate(config):
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
         if result.returncode:
             raise ValueError('dedicated SSH identity or known_hosts format invalid')
+
+
+def initialize():
+    """Create empty protected storage, not credentials or a ready-to-run configuration."""
+    reject_links(Path(os.environ.get('LOCALAPPDATA', '')))
+    settings = cli_settings.settings_path()
+    root = settings.parent / 'data'
+    reject_links(settings)
+    reject_links(root)
+    if settings.exists() or root.exists():
+        raise FileExistsError('local settings/data already exist; configure or import explicitly')
+    config = cli_settings.defaults()
+    config['tunnel']['enabled'] = False
+    encoded = (json.dumps(config, indent=2) + '\n').encode('utf-8')
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    created = []
+    created_settings = False
+    try:
+        root.mkdir()
+        created.append(root)
+        for name in ('private', 'public'):
+            directory = root / name
+            directory.mkdir(mode=0o700 if name == 'private' else 0o755)
+            created.append(directory)
+        private_acl(root / 'private', protect=True)
+        descriptor = os.open(settings, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        created_settings = True
+        with os.fdopen(descriptor, 'wb') as target:
+            target.write(encoded)
+            target.flush()
+            os.fsync(target.fileno())
+    except Exception:
+        if created_settings:
+            settings.unlink()
+        for directory in reversed(created):
+            directory.rmdir()  # Never remove pre-existing or nonempty user directories.
+        raise
 
 
 def install(config=None):

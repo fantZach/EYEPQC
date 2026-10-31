@@ -1,5 +1,15 @@
 # 移动端子项目
 
+## 当前候选：0.9.0-rc1
+
+统一部署、正式签名/专用公开 CA 构建、升级/回滚和用户验收见 [DEPLOYMENT.md](DEPLOYMENT.md)。
+`mobile/build.ps1` 支持 `-Variant Debug/Release`、`-TrustCaFile` 和 `-RequireSigned`；
+没有外部签名材料时明确产出 unsigned release，不会以 Debug key 冒充正式签名。
+默认 release 仅信系统 CA、禁止明文、没有预设公网地址；部署自有 IP CA 必须显式输入其公开证书。
+调试版仍使用原 Debug 签名与即将到期的测试 CA，保留现有安装的联测路径。
+TLS/DNS/网络超时现在提供脱敏分类提示；空服务器地址会展开设置并阻止发送账号。
+软件/构建通过后仍标记 `user_acceptance=pending`，由用户统一完成手机和四端验收。
+
 ## v1.0.0 项目发布入口
 
 项目 `v1.0.0` 是开发态 MVP，Android 组件仍为 `0.8`，不是生产签名版本。

@@ -18,13 +18,17 @@ if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notm
     $compilerHash -ne '0A8757031B33777E4C9CBFFEE40F11A5062B36D25CBE144C1DB73B6102B80AD7') {
     throw 'Existing compiler publisher, signature or pinned binary hash validation failed.'
 }
-if (-not $SkipExeBuild) { & (Join-Path $PSScriptRoot 'build_exe.ps1') -Name eyepqc-1.3.2 }
-$exe = Join-Path $repo 'build/pc_cli/dist/eyepqc-1.3.2.exe'
-if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Build eyepqc-1.3.2.exe first.' }
-& $exe --version
-if ($LASTEXITCODE -ne 0) { throw 'EXE smoke test failed.' }
+$versionMatch = [regex]::Match((Get-Content -Raw (Join-Path $PSScriptRoot 'src/host/eyepqc.py')), "(?m)^VERSION = '([0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9]+)?)'\r?$")
+if (-not $versionMatch.Success) { throw 'PC version is missing or invalid.' }
+$pcVersion = $versionMatch.Groups[1].Value
+if (-not $SkipExeBuild) { & (Join-Path $PSScriptRoot 'build_exe.ps1') -Name ('eyepqc-' + $pcVersion) }
+$exe = Join-Path $repo "build/pc_cli/dist/eyepqc-$pcVersion.exe"
+if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Build the matching PC executable first.' }
+$reportedVersion = & $exe --version
+if ($LASTEXITCODE -ne 0 -or $reportedVersion -ne "EYEPQC PC $pcVersion") { throw 'EXE version does not match the current source.' }
 $outputDirectory = Join-Path $buildRoot 'dist'
-$defines = @("/DAppExecutable=$exe", "/DOutputDirectory=$outputDirectory")
+$numericVersion = ($pcVersion -split '-')[0] + '.0'
+$defines = @("/DAppExecutable=$exe", "/DOutputDirectory=$outputDirectory", "/DAppVersion=$pcVersion", "/DAppNumericVersion=$numericVersion")
 if ($FixtureRoot) {
     if (-not [System.IO.Path]::IsPathRooted($FixtureRoot) -or $FixtureRoot.Contains("'")) {
         throw 'FixtureRoot must be an absolute isolated path without single quotes.'
@@ -33,6 +37,6 @@ if ($FixtureRoot) {
 }
 & $Compiler @defines (Join-Path $PSScriptRoot 'installer/eyepqc.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Setup compilation failed.' }
-$name = if ($FixtureRoot) { 'EYEPQC-Setup-1.3.2-fixture.exe' } else { 'EYEPQC-Setup-1.3.2.exe' }
+$name = if ($FixtureRoot) { "EYEPQC-Setup-$pcVersion-fixture.exe" } else { "EYEPQC-Setup-$pcVersion.exe" }
 Get-FileHash -LiteralPath (Join-Path $buildRoot "dist/$name") -Algorithm SHA256
 Write-Host 'Offline setup built. No materials bundled and no application installation performed.'

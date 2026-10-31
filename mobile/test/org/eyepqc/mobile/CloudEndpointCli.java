@@ -12,7 +12,7 @@ public final class CloudEndpointCli {
         AtomicInteger confirmations=new AtomicInteger();byte[] key=new byte[800];
         try(StreamClient client=new StreamClient(key,Protocol.sha(key),new StreamClient.Listener(){
             public void frame(byte[] jpeg){throw new AssertionError("unexpected video");}
-            public void status(String message){if(message.equals(args[1]))failed.countDown();}
+            public void status(String message){if(message.equals(args[1])||(args[1].equals("TLS")&&message.startsWith("TLS 证书校验失败")))failed.countDown();}
             public void reset(){reset.countDown();}
             public void takeoverRequired(){confirmations.incrementAndGet();confirmation.countDown();}
         },true)){

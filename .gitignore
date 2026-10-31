@@ -4,6 +4,10 @@ pairing.json
 *.key
 *.p12
 *.pfx
+*.jks
+*.keystore
+*-key.pem
+id_ed25519
 accounts.json
 login.txt
 

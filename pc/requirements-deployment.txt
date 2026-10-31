@@ -1,0 +1,3 @@
+# Developer-side offline certificate preparation; not dependencies bundled in the CLI.
+-r requirements.txt
+cryptography==48.0.0

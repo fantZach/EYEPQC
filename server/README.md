@@ -1,5 +1,12 @@
 # Server 子项目：受限 OpenSSH TCP 中转
 
+## 下一版候选与部署教程
+
+Server `1.0.0-rc1` 提供独立源码包，完整的新环境部署、维护、换 key、升级/回滚见
+[DEPLOYMENT.md](DEPLOYMENT.md)。用户统一执行部署及验收，打包不会连接云端或改动现有服务。
+`package_candidate.py` 只导出固定源码/模板/教程/测试及脱敏清单，默认 `user_acceptance=pending`；
+不含真实授权文件、运行 config 或 host 私钥。以下 v1.0.0/旧部署记录保持历史范围。
+
 ## v1.0.0 项目发布入口
 
 Server 随项目以源码、配置生成器及 systemd 模板发布，不附服务器密码、SSH 私钥、

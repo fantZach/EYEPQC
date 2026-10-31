@@ -1,7 +1,10 @@
 [CmdletBinding()]
-param([string]$Python = '', [switch]$InstallDependencies, [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')][string]$Name = 'eyepqc-1.3.2')
+param([string]$Python = '', [switch]$InstallDependencies, [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')][string]$Name = '')
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
+$versionMatch = [regex]::Match((Get-Content -Raw (Join-Path $PSScriptRoot 'src/host/eyepqc.py')), "(?m)^VERSION = '([0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9]+)?)'\r?$")
+if (-not $versionMatch.Success) { throw 'PC version is missing or invalid.' }
+if (-not $Name) { $Name = 'eyepqc-' + $versionMatch.Groups[1].Value }
 if (-not $Python) { $Python = Join-Path $repo '.venv/Scripts/python.exe' }
 $buildRoot = Join-Path $repo 'build/pc_cli'
 $packPython = Join-Path $buildRoot 'venv/Scripts/python.exe'

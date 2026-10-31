@@ -1,6 +1,15 @@
 # PC 子项目
 
-## 项目 v1.0.0 发布入口
+## 1.4.0-rc1 候选：先安装程序，验收由操作者执行
+
+完整新环境、证书、SSH、公钥配对、账号、启动/停止及回滚步骤见 [DEPLOYMENT.md](DEPLOYMENT.md)。
+候选不改变既有配置 version=1/schema2/suite2，不改已发布的 v1.0.0 资产。
+安装器默认仅安装程序，不要求先有六份材料；选择导入时仍执行原完整验证。
+`eyepqc init` 创建空受保护目录与本地配置（隧道默认关闭），之后 `account add` 可创建首账号；
+缺材料的 `run/check` 仍拒绝，不伪造板端身份、证书、密码或 SSH 信任。
+发布候选不等于操作者完成实板/手机/公网验收；首次 USB QUERY 问题仍由用户按统一表验证。
+
+## 历史项目 v1.0.0 发布入口
 
 项目发布号为 `v1.0.0`，本组件版本仍为 **PC 1.3.2**，不要把项目发布号当成 CLI 版本号。
 Windows x64 产物为 `eyepqc-1.3.2.exe` 和 `EYEPQC-Setup-1.3.2.exe`；两者均为未签名开发态构建，
@@ -53,7 +62,7 @@ QUERY 仍严格单次、有界失败，不自动重查或吞掉迟到状态包�
 远程手机不能转发 EYBS 初始化控制记录。契约与实际 SD 验收边界见
 [G6 SD bootstrap](../doc/g6_sd_usb_bootstrap.md)。
 
-## 1.3.2 当前用户安装包候选
+## 1.3.2 历史安装包行为（新部署以以上教程为准）
 
 `build/pc_installer/dist/EYEPQC-Setup-1.3.2.exe` 是 Windows x64 安装向导候选，不需要管理员权限；旧包保留。
 安装程序与材料分离，移动桌面上的 EXE 不再改变材料路径：
@@ -132,7 +141,7 @@ eyepqc run
 ```
 
 构建使用独立 `build/pc_cli/venv`、固定 PyInstaller 6.22.3、console/onefile 模式；`-Name` 可保留正在运行的旧产物。
-当前省略 `-Name` 构建 `eyepqc-1.3.2.exe`，不会覆盖旧实例文件，实际用哪个名称不改变命令语法。
+当前省略 `-Name` 按源码 VERSION 构建 `eyepqc-1.4.0-rc1.exe`，不会覆盖旧版文件，实际用哪个名称不改变命令语法。
 内置默认值为自动 CDC、固定 `127.0.0.1:8765`、SSH `124.70.38.245:2222`，隧道开启；1.2 材料相对用户 `data/` 目录为
 `private/accounts.json`、`public/pairing.json`、`public/server-chain.pem`、`private/server-key.pem`、
 `private/id_ed25519`、`public/tunnel_known_hosts`。默认值不包含开发机器的硬编码用户绝对路径或任何秘密材料。

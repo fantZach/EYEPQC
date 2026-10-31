@@ -1,6 +1,8 @@
 # PC binary third-party notices
 
 The project release `v1.0.0` contains the independently versioned Windows PC component **1.3.2**.
+The **1.4.0-rc1** candidate uses the same packaged runtime dependencies and retains these notices.
+Developer certificate preparation installs its own Python dependencies separately; those packages are not embedded in the CLI.
 The notices below cover its Python runtime, runtime dependencies, executable packager, and installer.
 Keep this document and the complete [`licenses/`](licenses/) directory with redistributed binaries.
 This is not a new license grant for EYEPQC's original code and does not change any upstream license.

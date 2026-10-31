@@ -9,13 +9,14 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 
-def check(root, aapt, fingerprint):
+def check(root, aapt, fingerprint, deployment_ca=None):
     app = root / 'mobile/app'
     source = app / 'src'
     pem = (source / 'debug/res/raw/eyepqc_test_ca.pem').read_bytes()
     assert pem.count(b'-----BEGIN CERTIFICATE-----') == 1
     assert pem.strip().startswith(b'-----BEGIN CERTIFICATE-----') and pem.strip().endswith(b'-----END CERTIFICATE-----')
     der = ssl.PEM_cert_to_DER_cert(pem.decode('ascii'))
+    deployment = Path(deployment_ca).read_bytes() if deployment_ca else None
     assert hashlib.sha256(der).hexdigest() == fingerprint.lower().replace(':', '')
     for path in source.rglob('*'):
         if path.is_file():
@@ -35,6 +36,11 @@ def check(root, aapt, fingerprint):
     for variant, filename in [('debug', 'app-debug.apk'), ('release', 'app-release-unsigned.apk')]:
         apk = app / 'build/outputs/apk' / variant / filename
         tree = subprocess.check_output([str(aapt), 'dump', 'xmltree', str(apk), 'AndroidManifest.xml'], text=True)
+        resources = subprocess.check_output([str(aapt), 'dump', '--values', 'resources', str(apk)], text=True)
+        def resource_path(name):
+            match = re.search(r'resource \S+ org\.eyepqc\.mobile:'+re.escape(name)+r':[^\n]*\n\s*\(string8\) "([^"]+)"', resources)
+            assert match, name
+            return match[1]
         with zipfile.ZipFile(apk) as archive:
             names = archive.namelist()
             if variant == 'debug':
@@ -46,7 +52,18 @@ def check(root, aapt, fingerprint):
                 assert re.search(r'overridePins[^\n]*(?:0x0|"false")', xml)
             else:
                 assert not any('eyepqc_test_ca' in n or 'eyepqc_debug_network_security' in n for n in names)
-                assert 'android:networkSecurityConfig' not in tree
+                assert 'eyepqc_test_ca' not in resources and 'eyepqc_debug_network_security' not in resources
+                if deployment:
+                    assert archive.read(resource_path('raw/eyepqc_deployment_ca')) == deployment
+                    assert 'android:networkSecurityConfig' in tree
+                    xml = subprocess.check_output([str(aapt), 'dump', 'xmltree', str(apk), resource_path('xml/eyepqc_release_network_security')], text=True)
+                    assert 'debug-overrides' not in xml and 'overridePins' in xml
+                    assert re.search(r'overridePins[^\n]*(?:0x0|"false")', xml)
+                    assert re.search(r'cleartextTrafficPermitted[^\n]*(?:0x0|"false")', xml)
+                else:
+                    assert 'android:networkSecurityConfig' not in tree
+                    assert 'eyepqc_deployment_ca' not in resources
+                assert re.search(r'android:usesCleartextTraffic[^\n]*0x0', tree)
                 assert not re.search(r'android:debuggable[^\n]*0xffffffff', tree)
                 for name in names:
                     content = archive.read(name)
@@ -58,6 +75,6 @@ def check(root, aapt, fingerprint):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 4:
-        raise SystemExit('Usage: check_debug_ca.py <repo> <aapt> <public CA SHA256 fingerprint>')
-    check(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3])
+    if len(sys.argv) not in (4, 5):
+        raise SystemExit('Usage: check_debug_ca.py <repo> <aapt> <debug CA SHA256> [explicit deployment public CA]')
+    check(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], sys.argv[4] if len(sys.argv) == 5 else None)

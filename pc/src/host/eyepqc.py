@@ -16,7 +16,7 @@ import cloud_tunnel
 import relay
 import cli_settings
 
-VERSION = '1.3.2'
+VERSION = '1.4.0-rc1'
 PORT = 8765
 
 
@@ -155,6 +155,7 @@ def main(argv=None):
     importer = edits.add_parser('import', help='Import legacy JSON; file paths resolve against its directory')
     importer.add_argument('file', type=Path)
     commands.add_parser('status', help='Read Windows TCP state without reading private files')
+    commands.add_parser('init', help='Create fresh empty protected local storage; no credentials, USB or network')
     install = commands.add_parser('install-data', help='Import local runtime materials into current-user data; no service action')
     install.add_argument('--config', type=Path, help='optional legacy source JSON; otherwise current user settings')
     account = commands.add_parser('account', help='List/add/passwd/delete accounts; old --file/--username creates a new file')
@@ -186,6 +187,11 @@ def main(argv=None):
             hint = 'local material import failed or existing data differs; files/settings preserved; verify source paths and private ACL'
             install_data.install(args.config)
             print('DATA_INSTALL_OK; local files/settings only; no service started or stopped')
+        elif args.command == 'init':
+            import install_data
+            hint = 'initialization refused: local settings/data exist or private storage is unsafe; existing files preserved'
+            install_data.initialize()
+            print('LOCAL_INIT_OK runtime_ready=false tunnel_enabled=false; add accounts and configure trusted pairing/TLS before check/run')
         elif args.command == 'account':
             hint = 'account operation refused: invalid/damaged file, user exists/missing, limit/last-user guard or concurrent writer; no changes applied'
             operation = args.operation
@@ -224,7 +230,7 @@ def main(argv=None):
             if args.command == 'run':
                 hint = 'relay port unavailable; run status and stop the old service normally'
                 ensure_port_free()
-            hint = 'configuration schema or configured file missing/invalid; run config show and check'
+            hint = 'configuration or runtime file missing/invalid; fresh PC: run init, then configure trusted materials; existing setup: run config show (do not reset data)'
             settings, ssh = load_config(args.config)
             hint = 'account/pairing format or TLS certificate/key invalid; verify configured local files'
             check_materials(settings)

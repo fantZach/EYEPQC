@@ -1,50 +1,58 @@
-# EYEPQC PC 1.3.2 — 项目 v1.0.0 开发态 MVP
+# EYEPQC PC 1.4.0-rc1 — 供用户统一验收的候选
 
-本包仅适用于 Windows x64，包含独立命令行 EXE、当前用户安装器及完整第三方说明/许可。
-两份 EXE 均未代码签名；未证明所有杀毒产品会放行。不要关闭安全软件或绕过告警。
+本包适用于 Windows x64，包含 CLI、当前用户安装器、[详细部署教程](DEPLOYMENT.md) 和完整第三方许可。
+这是正式版本路线上的候选，不表示板端/手机/公网或生产密钥安全已验收；既有 v1.0.0 资产不变。
 
-## 使用前
+## 新电脑
 
-1. 安装 Windows OpenSSH Client，确认 `ssh` 可用。
-2. 由项目操作者准备匹配的六份可信运行材料：账号库、公开 schema2 配对、TLS 证书链、
-   TLS 私钥、专用 SSH 私钥、已核验的 SSH known_hosts。本包不包含这些材料、默认密码或可直接登录的身份。
-3. 先在手机停止观看，再对旧 PC 服务 Ctrl+C；不要重复运行或盲目结束进程。
-4. 运行 `EYEPQC-Setup-1.3.2.exe`，从既有设置或可信旧配置导入材料。没有完整材料时安装器明确拒绝安装。
-   不要为了安装而复制他人的私钥或放宽 ACL。
-5. 关闭并重开 PowerShell/Windows Terminal，使用户 PATH 更新生效。安装不启动服务；卸载保留 data/settings。
+1. 核对发布清单 SHA256，运行 `EYEPQC-Setup-1.4.0-rc1.exe`，默认选择 **Install program only**。
+   无需先提供六份运行材料；不自动生成账号、证书、SSH/板端身份，不启动服务。
+2. 退出全部 Windows Terminal/PowerShell 窗口后重新打开；`eyepqc --version` 应为 `1.4.0-rc1`。
+3. 没有旧设置时执行：
 
 ```powershell
-eyepqc --version
+eyepqc init
+eyepqc account add --username viewer
 eyepqc config show
+```
+
+`init` 只创建空受保护目录与本地设置，隧道默认关闭；首个密码隐藏输入两次。
+已有 settings/data 时拒绝覆盖。缺材料的 `check/run` 仍失败，不是可直接登录的公共服务包。
+真实材料的来源、当前公网 IP `124.70.38.245`、独立部署 CA、APK 信任、SSH host key 核对，
+均按 [DEPLOYMENT.md](DEPLOYMENT.md) 准备。证书工具需要完整源码与开发机依赖，不是 EXE 内嵌签发服务。
+
+## 已有环境、账号与启停
+
+安装器的显式导入模式接受可信旧配置 JSON；留空读取当前用户设置，仍严格校验六份完整材料。
+默认程序-only升级保留全部现有设置/数据，不会因不完整材料阻挡程序升级。
+卸载保留 settings/data；安装只修改它拥有的当前用户 PATH，不修改系统 PATH。
+
+```powershell
 eyepqc check
 eyepqc account list
 eyepqc account passwd --username viewer
+eyepqc status
 ```
 
-账号命令交互输入新密码，不把密码放进命令行；修改仅在服务正常重启后生效。
-可以用 `account add --username <名称>` 或 `account delete --username <名称> --yes` 维护账号。
-卸载不会删除账号、证书或私钥，应自行妥善备份受保护的用户数据。
+账号另有 `add` / `delete --username <名称> --yes`，不能删除最后一个账号；
+运行服务使用启动时快照，账号变更后正常 Ctrl+C 再启动生效。
 
-## 启动
-
-正常已配置板卡使用 `eyepqc run`。开发态 SD 候选固件另需显式指定视频 USB COM 口及独立准备、
-符合当前用户/SYSTEM ACL 的 1632 字节 ML-KEM-512 测试私钥文件：
+只有材料和匹配板端已准备好才启动：
 
 ```powershell
 eyepqc config set serial_port COM7
 eyepqc run --dev-usb-bootstrap --dev-identity-file "$env:LOCALAPPDATA/EYEPQC/pc/data/private/board-test-identity.bin"
 ```
 
-`COM7` 仅为示例，实际应使用视频 USB CDC 端口，而非调试串口。
-开发身份不在本包或 SD 中，也不由安装器生成。PC 在开发初始化中知道板端私钥和随机 seed；
-这不是生产安全、不信任 PC 的端到端安全，亦非不依赖 PC 的独立视频冷启动。
-当前 SD 实板仍存在首次查询失败、第二次成功；最新板端 `_6` 改动尚未写卡/实板验收。
-本包不自动重试、重刷、复位或抢占 USB，不应宣称已修复首次连接问题。
+`COM7` 只是示例，须确认视频 USB CDC，不是调试串口。
+开发身份必须是操作者受保护且与 pairing 匹配的 1632 字节 ML-KEM-512 测试私钥；包内不带，不写入 SD。
+已通过其他方式准备好的普通 G6 使用 `eyepqc run`；不能混用开发初始化 profile。
+看到 RELAY_READY 不是视频验收，先手机停止再 PC Ctrl+C；不要抢占串口、盲杀进程或自动重试初始化。
 
-手机使用账号 WSS 登录并自动下载公开 schema2；不发布明文密码、token 或私钥。
-服务器仅透明中转，TLS/账号仍在 PC 校验。切换云地址时必须同时匹配 TLS SAN、手机 endpoint、SSH host key。
-先保存故障日志，不以关闭 TLS/地址校验、明文 WS 或反复注入密钥替代诊断。
+## 保留限制
 
-完整文档：[PC 子项目](https://github.com/fantZach/EYEPQC/blob/v1.0.0/pc/README.md)，
-[SD 安全边界](https://github.com/fantZach/EYEPQC/blob/v1.0.0/doc/g6_sd_usb_bootstrap.md)。
-项目代码授权未新增；第三方组件沿用各自许可，见 `THIRD_PARTY_NOTICES.md` 与 `licenses/`。
+- 板端最新候选仍待用户验证首连 QUERY 超时，不能声称本包修复了现场首次连接问题。
+- 本地 USB 开发初始化是明文，PC 知道板端身份/seed；不是对恶意 PC 的生产安全或前向保密。
+- PC 程序仍未商业代码签名，不承诺杀毒软件无告警；不关闭防护或弱化 TLS。
+- 密码、账号库、配对、TLS/SSH/板端私钥、CA 私钥及 seed 均不随包分发。
+- 保留 `THIRD_PARTY_NOTICES.md` 与 `licenses/`；项目自研部分未新增统一开源许可。

@@ -8,17 +8,89 @@ import time
 import unittest
 
 import test_install_data
+import eyepqc
 
 
 @unittest.skipUnless(os.environ.get('EYEPQC_INSTALLER_FIXTURE_ROOT'), 'explicit isolated fixture only')
 class InstallerLifecycleTests(unittest.TestCase):
+    def test_program_only_fresh_install_init_and_upgrade_preserve_incomplete_data(self):
+        import winreg
+        root = Path(os.environ['EYEPQC_INSTALLER_FIXTURE_ROOT']).resolve()
+        repo = Path(__file__).resolve().parents[2]
+        self.assertTrue(root.is_relative_to(repo / 'build/pc_installer') or
+                        root.is_relative_to(Path(tempfile.gettempdir()).resolve()))
+        self.assertGreater(len(root.parts), len(Path(tempfile.gettempdir()).parts))
+        setup = repo / ('build/pc_installer/dist/EYEPQC-Setup-' + eyepqc.VERSION + '-fixture.exe')
+        case = root / 'program-only'
+        self.assertFalse(case.exists(), 'use a fresh isolated fixture directory')
+        app, user = case / 'bin', case / 'user'
+        environment = r'Software\EYEPQC\InstallerFixture\Environment'
+        ownership = r'Software\EYEPQC\InstallerFixture\PathOwnership'
+        uninstall_key = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\{BC45B197-2603-498A-B857-C58A97E11DC0}_is1'
+
+        def query(key, name):
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key) as handle:
+                    return winreg.QueryValueEx(handle, name)
+            except FileNotFoundError:
+                return None
+
+        self.assertIsNone(query(environment, 'Path'), 'fixture registry already in use')
+        self.assertIsNone(query(ownership, 'Entry'), 'fixture registry already owned')
+        self.assertIsNone(query(uninstall_key, 'DisplayName'), 'fixture installation already in use')
+        original_path = query('Environment', 'Path')
+        env = dict(os.environ, LOCALAPPDATA=str(user))
+        case.mkdir(parents=True)
+        arguments = [str(setup), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS',
+                     '/NOCLOSEAPPLICATIONS', '/NORESTARTAPPLICATIONS', '/DIR=' + str(app)]
+
+        def execute(arguments, expected=0):
+            result = subprocess.run(arguments, env=env, capture_output=True, text=True, timeout=120)
+            self.assertEqual(result.returncode, expected, 'inspect only the isolated fixture log')
+            return result
+
+        execute([*arguments, '/LOG=' + str(case / 'install.log')])
+        self.assertTrue((app / 'eyepqc.exe').is_file())
+        self.assertFalse((user / 'EYEPQC/pc').exists(), 'program-only must not create/import runtime state')
+        self.assertIn(eyepqc.VERSION, execute([str(app / 'eyepqc.exe'), '--version']).stdout)
+        execute([str(app / 'eyepqc.exe'), 'check'], expected=1)
+        execute([str(app / 'eyepqc.exe'), 'init'])
+        settings = user / 'EYEPQC/pc/settings.json'
+        data = settings.parent / 'data'
+        self.assertFalse(json.loads(settings.read_text())['tunnel']['enabled'])
+        self.assertEqual(sum(path.is_file() for path in data.rglob('*')), 0)
+        execute([str(app / 'eyepqc.exe'), 'check'], expected=1)
+        # Program-only upgrade must not inspect, silently repair or replace damaged runtime state.
+        settings.write_text('{incomplete-user-state')
+        marker = data / 'public/keep.txt'
+        marker.write_bytes(b'operator-data-preserved')
+        execute([*arguments, '/LOG=' + str(case / 'upgrade.log')])
+        self.assertEqual(settings.read_text(), '{incomplete-user-state')
+        self.assertEqual(marker.read_bytes(), b'operator-data-preserved')
+        execute([str(app / 'unins000.exe'), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'])
+        for _ in range(100):
+            if not (app / 'eyepqc.exe').exists() and query(uninstall_key, 'DisplayName') is None:
+                break
+            time.sleep(.1)
+        self.assertFalse((app / 'eyepqc.exe').exists())
+        self.assertEqual(settings.read_text(), '{incomplete-user-state')
+        self.assertEqual(marker.read_bytes(), b'operator-data-preserved')
+        self.assertIsNone(query(environment, 'Path'))
+        self.assertIsNone(query(ownership, 'Entry'))
+        self.assertEqual(query('Environment', 'Path'), original_path)
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, environment)
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, r'Software\EYEPQC\InstallerFixture')
+        except FileNotFoundError:
+            pass
+
     def test_install_upgrade_uninstall_preserve_runtime_materials(self):
         root = Path(os.environ['EYEPQC_INSTALLER_FIXTURE_ROOT']).resolve()
         repo = Path(__file__).resolve().parents[2]
         self.assertTrue(root.is_relative_to(repo / 'build/pc_installer') or
                         root.is_relative_to(Path(tempfile.gettempdir()).resolve()))
         self.assertGreater(len(root.parts), len(Path(tempfile.gettempdir()).parts))
-        setup = repo / 'build/pc_installer/dist/EYEPQC-Setup-1.3.2-fixture.exe'
+        setup = repo / ('build/pc_installer/dist/EYEPQC-Setup-' + eyepqc.VERSION + '-fixture.exe')
         self.assertTrue(setup.is_file())
         app = root / 'bin'
         self.assertFalse((app / 'eyepqc.exe').exists(), 'use a fresh fixture root')
@@ -100,7 +172,7 @@ class InstallerLifecycleTests(unittest.TestCase):
         self.assertTrue(root.is_relative_to(repo / 'build/pc_installer') or
                         root.is_relative_to(Path(tempfile.gettempdir()).resolve()))
         self.assertGreater(len(root.parts), len(Path(tempfile.gettempdir()).parts))
-        setup = repo / 'build/pc_installer/dist/EYEPQC-Setup-1.3.2-fixture.exe'
+        setup = repo / ('build/pc_installer/dist/EYEPQC-Setup-' + eyepqc.VERSION + '-fixture.exe')
         environment = r'Software\EYEPQC\InstallerFixture\Environment'
         ownership = r'Software\EYEPQC\InstallerFixture\PathOwnership'
         uninstall_key = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\{BC45B197-2603-498A-B857-C58A97E11DC0}_is1'

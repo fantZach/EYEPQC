@@ -22,7 +22,7 @@ public final class PairingClient implements AutoCloseable {
         if(uri.getPort()==0||uri.getPort()>65535)throw new IllegalArgumentException("server port");
         String url="https://"+endpoint.substring(6,endpoint.length()-7)+"/pairing.json";
         http.newCall(new Request.Builder().url(url).header("Authorization",authorization).build()).enqueue(new Callback(){
-            public void onFailure(Call call,IOException error){listener.failed("配置获取失败：请检查网络和可信服务证书");}
+            public void onFailure(Call call,IOException error){listener.failed(ConnectionMessages.transport(error));}
             public void onResponse(Call call,Response response){
                 try(Response close=response){
                     if(response.code()!=200){listener.failed(response.code()==401?"账号或密码错误":"配置获取被拒绝 HTTP "+response.code());return;}

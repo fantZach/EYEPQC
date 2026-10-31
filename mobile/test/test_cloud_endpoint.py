@@ -63,7 +63,7 @@ def run():
                 thread = threading.Thread(target=serve)
                 thread.start()
                 options = ['-Djavax.net.ssl.trustStore='+str(store), '-Djavax.net.ssl.trustStorePassword=public-fixture-password'] if trusted else []
-                expected = '服务拒绝连接 HTTP '+str(status) if status else '连接失败'
+                expected = '服务拒绝连接 HTTP '+str(status) if status else 'TLS'
                 try:
                     result = subprocess.run([str(JAVA), *options, '-cp', CLASSPATH, 'org.eyepqc.mobile.CloudEndpointCli', f'wss://localhost:{port}/stream', expected, str(takeover).lower()], capture_output=True, timeout=15)
                     assert result.returncode == 0, result.stderr.decode(errors='replace')
