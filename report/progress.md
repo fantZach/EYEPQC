@@ -1,5 +1,14 @@
 # Implementation progress
 
+## 2026-10-31：用户授权更新SD BOOT
+
+用户将SD接电脑并要求写入新BOOT。重新识别F:/Disk1/DD-TEK READER/31,266,439,168字节/MBR/FAT32/EYEPQC，
+复跑 `_6` 软件/BSP/ARM/79哈希验证通过；旧 `_5` 排他备份至本机及卡上PRE_CLEARHALT备份。
+新BOOT 4,303,824字节，SHA256 `08702a82f60594800b811ff2017d1dfb165c7cf88834a77d91f19552aa5b7e1b`，
+CreateNew/WriteThrough/Flush(true)和最终读回通过，原四份备份hash未变；未格式化/改分区/操作板卡。
+独立读卡器拔插持久性及全部板端验收仍待用户，不将写卡成功算冷启动或首连修复通过。
+详见 [本次写卡记录](sd_deployment_20261031.md)。
+
 ## 2026-10-31：四端调试完善与用户统一验收候选
 
 用户指定最终验收统一自行进行；本轮不安排自动硬件/手机/现网部署。候选集合v1.1.0-rc1已形成：
