@@ -110,6 +110,70 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(release.ReleaseError):
             release.run(args, API())
 
+    def test_explicit_tag_title_creates_only_new_draft_and_checks_new_ref(self):
+        calls = []
+        state = {'id': 456, 'tag_name': 'v1.1.0', 'draft': True, 'assets': []}
+        class API:
+            def request(self, method, path, payload=None, **kwargs):
+                calls.append((method, path, payload))
+                if '/git/ref/' in path:
+                    self_test.assertTrue(path.endswith('/tags/v1.1.0'))
+                    return {'object': {'type': 'commit', 'sha': 'a' * 40}}
+                if path.endswith('releases?per_page=100'):
+                    return [{'tag_name': 'v1.0.0', 'draft': False}]
+                if kwargs.get('upload'):
+                    state['assets'].append({'name': path.split('?name=')[1], 'size': len(payload),
+                                            'state': 'uploaded',
+                                            'digest': 'sha256:' + hashlib.sha256(payload).hexdigest()})
+                return state
+        self_test = self
+        notes = self.root.parent / (self.root.name + '-new-notes.md')
+        notes.write_text('New release fixture', encoding='utf-8')
+        self.addCleanup(notes.unlink)
+        args = argparse.Namespace(mode='draft', assets=self.root, notes=notes, commit='a' * 40,
+                                  release_id=None, tag='v1.1.0', title='EYEPQC 1.1.0')
+        self.assertTrue(release.run(args, API())['draft'])
+        creates = [payload for method, path, payload in calls if method == 'POST' and path.endswith('/releases')]
+        self.assertEqual(len(creates), 1)
+        self.assertEqual(creates[0]['tag_name'], 'v1.1.0')
+        self.assertEqual(creates[0]['name'], 'EYEPQC 1.1.0')
+        self.assertFalse(any(method in ('PATCH', 'DELETE') for method, _, _ in calls))
+
+    def test_invalid_tag_or_title_rejected_before_api_access(self):
+        class API:
+            def request(self, *args, **kwargs):
+                raise AssertionError('must not contact API')
+        for tag, title in [('v1.1.0/../v1.0.0', 'Title'), ('main', 'Title'),
+                           ('v1.1.0', ''), ('v1.1.0', 'bad\nname')]:
+            with self.subTest(tag=tag, title=title), self.assertRaises(release.ReleaseError):
+                release.run(argparse.Namespace(mode='inspect', tag=tag, title=title), API())
+
+    def test_publish_wrong_id_tag_or_published_release_never_patches(self):
+        files = release.assets(self.root)
+        for tag, draft in [('v1.0.0', True), ('v1.1.0', False)]:
+            class API:
+                def request(self, method, path, *args, **kwargs):
+                    if method != 'GET':
+                        raise AssertionError('must not mutate')
+                    if '/git/ref/' in path:
+                        return {'object': {'type': 'commit', 'sha': 'a' * 40}}
+                    return {'id': 123, 'tag_name': tag, 'draft': draft, 'assets': [
+                        {'name': name, 'size': size, 'state': 'uploaded', 'digest': 'sha256:' + digest}
+                        for name, (size, digest) in files.items()]}
+            args = argparse.Namespace(mode='publish', assets=self.root, commit='a' * 40,
+                                      release_id=123, tag='v1.1.0', title=None)
+            with self.subTest(tag=tag, draft=draft), self.assertRaises(release.ReleaseError):
+                release.run(args, API())
+
+    def test_remote_incomplete_upload_or_wrong_size_rejected(self):
+        files = release.assets(self.root)
+        for field, value in [('state', 'starter'), ('size', -1), ('digest', None)]:
+            remote = {'assets': [{'name': name, 'size': size, 'digest': 'sha256:' + digest, 'state': 'uploaded'}
+                                 for name, (size, digest) in files.items()]}
+            remote['assets'][0][field] = value
+            with self.subTest(field=field), self.assertRaises(release.ReleaseError):
+                release.verify_assets(remote, files)
+
     def test_credentials_captured_not_logged_or_prompted(self):
         result = argparse.Namespace(stdout='username=fixture\npassword=fixture-not-real\n', returncode=0)
         with patch.object(release.subprocess, 'run', return_value=result) as run:

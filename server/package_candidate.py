@@ -10,8 +10,8 @@ import sys
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 ROOT = Path(__file__).resolve().parent
-VERSION = '1.0.0-rc1'
-FILES = ('prepare_tunnel.py', 'eyepqc-tunnel.service', 'DEPLOYMENT.md', 'DEPLOYMENT_ADVANCED.md',
+VERSION = '1.0.0'
+FILES = ('README.md', 'prepare_tunnel.py', 'eyepqc-tunnel.service', 'DEPLOYMENT.md', 'DEPLOYMENT_ADVANCED.md',
          'package_candidate.py', 'tests/test_prepare_tunnel.py', 'tests/test_package_candidate.py')
 
 

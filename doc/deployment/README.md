@@ -40,5 +40,5 @@
 ## 版本与参考
 
 “正式版第一版”是用户确认的功能基线；四端组件编号可不同，不代表商业签名或安全认证。
-见 [版本记录](../releases/first-stable.md)。已有 GitHub v1.0.0 历史发布不变，本轮未上传新的 Release。
+见 [v1.1.0 发布说明](../releases/v1.1.0.md) 和 [版本记录](../releases/first-stable.md)。已有 GitHub v1.0.0 历史发布不变。
 原完整资料见 [进阶索引](REFERENCE.md)，普通安装优先按上述四份教程操作。

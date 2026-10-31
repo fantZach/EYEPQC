@@ -2,7 +2,7 @@
 
 This file and the accompanying `licenses/` directory must accompany the Android APK distribution.
 These terms apply only to the named third-party components; they do not select a license for EYEPQC's own code.
-Versions below were verified with Gradle `debugRuntimeClasspath` for the 0.8 APK on 2026-10-21.
+The Android 0.9.0 distribution uses the dependency versions below, unchanged from the previously verified Gradle `debugRuntimeClasspath`.
 Dependencies are used unmodified; the separate JVM test harness uses Kotlin 1.8.21, while the APK resolves Kotlin 1.9.10.
 
 ## Apache License 2.0 components

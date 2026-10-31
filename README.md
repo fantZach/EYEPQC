@@ -16,7 +16,8 @@ PC 负责账号登录与密文转发，公网服务器通过受限 SSH 隧道透
 其他故障、长时间运行与完整冷启动项目仍按各自实际证据验收，不据此全部通过。
 
 新手从 [四端部署教程](doc/deployment/README.md) 开始；范围见 [版本记录](doc/releases/first-stable.md)。
-已有 GitHub [v1.0.0](https://github.com/fantZach/EYEPQC/releases/tag/v1.0.0) 是历史开发版；本轮不覆盖标签或自动上传新附件。
+下载 [v1.1.0](https://github.com/fantZach/EYEPQC/releases/tag/v1.1.0)，安装前请看 [本版说明](doc/releases/v1.1.0.md)。
+已有 GitHub [v1.0.0](https://github.com/fantZach/EYEPQC/releases/tag/v1.0.0) 是历史开发版，保留原标签与附件。
 
 ## 四个子项目
 

@@ -57,7 +57,7 @@ android {
     namespace 'org.eyepqc.mobile'
     compileSdk 35
     buildToolsVersion '35.0.0'
-    defaultConfig { applicationId 'org.eyepqc.mobile'; minSdk 26; targetSdk 35; versionCode 9; versionName '0.9.0-rc1' }
+    defaultConfig { applicationId 'org.eyepqc.mobile'; minSdk 26; targetSdk 35; versionCode 10; versionName '0.9.0' }
     signingConfigs {
         if (releaseSigned) {
             deployment {

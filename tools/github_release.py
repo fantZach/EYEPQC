@@ -14,6 +14,7 @@ import urllib.request
 
 REPO = '/repos/fantZach/EYEPQC'
 TAG = 'v1.0.0'
+TITLE = 'EYEPQC v1.0.0 - Development MVP'
 
 
 class ReleaseError(RuntimeError):
@@ -106,10 +107,17 @@ def verify_assets(release, files):
             raise ReleaseError('Remote asset size/digest mismatch; leave draft unpublished')
 
 
-def verify_tag(api, commit):
+def release_tag(value):
+    if not isinstance(value, str) or not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9][A-Za-z0-9.-]*)?', value):
+        raise ReleaseError('Use an explicit version tag such as v1.1.0')
+    return value
+
+
+def verify_tag(api, commit, tag=TAG):
+    tag = release_tag(tag)
     if not re.fullmatch('[0-9a-f]{40}', commit):
         raise ReleaseError('Target commit must be a full lowercase SHA-1')
-    ref = api.request('GET', REPO + '/git/ref/tags/' + TAG)
+    ref = api.request('GET', REPO + '/git/ref/tags/' + tag)
     obj = ref['object']
     if obj['type'] == 'tag':
         obj = api.request('GET', REPO + '/git/tags/' + obj['sha'])['object']
@@ -118,31 +126,43 @@ def verify_tag(api, commit):
 
 
 def run(args, api):
+    tag = release_tag(getattr(args, 'tag', TAG))
+    title = getattr(args, 'title', None)
+    if title is None:
+        title = TITLE if tag == TAG else 'EYEPQC ' + tag
+    if not isinstance(title, str) or not title.strip() or len(title) > 200 or any(ord(c) < 32 for c in title):
+        raise ReleaseError('Release title must be nonempty single-line text, at most 200 characters')
     if args.mode == 'inspect':
         repo = api.request('GET', REPO)
         releases = api.request('GET', REPO + '/releases?per_page=100')
-        return {'repository': repo['full_name'], 'private': repo['private'],
+        return {'repository': repo['full_name'], 'private': repo['private'], 'requested_tag': tag,
                 'permissions': repo.get('permissions', {}), 'releases': [
                     {key: release.get(key) for key in ('id', 'tag_name', 'draft', 'html_url')}
                     for release in releases]}
     if not args.assets or not args.commit:
         raise ReleaseError('Draft/publish require --assets and --commit')
     files = assets(args.assets)
-    verify_tag(api, args.commit)
+    verify_tag(api, args.commit, tag)
     if args.mode == 'draft':
         if not args.notes:
             raise ReleaseError('Draft requires --notes')
         # Listing includes drafts for authenticated push users; do not recreate an interrupted draft.
         releases = api.request('GET', REPO + '/releases?per_page=100')
-        if any(release.get('tag_name') == TAG for release in releases):
+        if any(release.get('tag_name') == tag for release in releases):
             raise ReleaseError('Release already exists; inspect it, never overwrite automatically')
+        if len(releases) >= 100:
+            raise ReleaseError('Release list may be truncated; inspect remote state before creating a draft')
         body = Path(args.notes).read_text(encoding='utf-8')
         release = api.request('POST', REPO + '/releases', {
-            'tag_name': TAG, 'target_commitish': args.commit,
-            'name': 'EYEPQC v1.0.0 - Development MVP', 'body': body,
+            'tag_name': tag, 'target_commitish': args.commit,
+            'name': title, 'body': body,
             'draft': True, 'prerelease': False,
         })
+        if release.get('tag_name') != tag or release.get('draft') is not True:
+            raise ReleaseError('Created draft identity unconfirmed; inspect remote state before uploading')
         release_id = release['id']
+        if type(release_id) is not int or release_id < 1:
+            raise ReleaseError('Created draft id invalid; inspect remote state before uploading')
         # An interrupted upload leaves its draft intact for manual inspection, not delete/retry.
         for name, (_, digest) in files.items():
             content = (Path(args.assets) / name).read_bytes()
@@ -156,11 +176,11 @@ def run(args, api):
             raise ReleaseError('Publish requires the inspected --release-id')
         release_id = args.release_id
         release = api.request('GET', REPO + f'/releases/{release_id}')
-        if release.get('tag_name') != TAG or release.get('draft') is not True:
+        if release.get('tag_name') != tag or release.get('draft') is not True:
             raise ReleaseError('Release is not the expected unpublished draft')
         verify_assets(release, files)
         release = api.request('PATCH', REPO + f'/releases/{release_id}', {'draft': False})
-        if release.get('draft') is not False or release.get('tag_name') != TAG:
+        if release.get('draft') is not False or release.get('tag_name') != tag:
             raise ReleaseError('Publish status unconfirmed; inspect remote state')
     return {key: release.get(key) for key in ('id', 'tag_name', 'draft', 'html_url')}
 
@@ -172,6 +192,8 @@ def main():
     parser.add_argument('--notes')
     parser.add_argument('--commit')
     parser.add_argument('--release-id', type=int)
+    parser.add_argument('--tag', default=TAG, help='Reviewed existing version tag; defaults to v1.0.0')
+    parser.add_argument('--title', help='Draft title; defaults to the version label (legacy title for v1.0.0)')
     args = parser.parse_args()
     try:
         print(json.dumps(run(args, GitHub(credential())), ensure_ascii=False, indent=2))

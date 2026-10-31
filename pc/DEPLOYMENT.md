@@ -19,7 +19,7 @@ eyepqc run
 ## 2. 全新电脑：安装并创建账号
 
 1. 准备 Windows x64，按交付清单核对安装包 SHA256。升级旧程序前先正常停止旧服务。
-2. 运行 `EYEPQC-Setup-1.4.0-rc2.exe`，选择 **Install program only**（只安装程序）。
+2. 运行 `EYEPQC-Setup-1.4.0.exe`，选择 **Install program only**（只安装程序）。
 3. 安装后关闭全部终端，重新打开 PowerShell：
 
 ```powershell
@@ -29,7 +29,7 @@ eyepqc account add --username viewer
 eyepqc account list
 ```
 
-版本应为 `EYEPQC PC 1.4.0-rc2`。按提示输入两次密码，输入时不显示字符是正常的；没有默认密码。
+版本应为 `EYEPQC PC 1.4.0`。按提示输入两次密码，输入时不显示字符是正常的；没有默认密码。
 已有配置不要再 `init`；若提示已有数据，用 `eyepqc config show` 查看，不删除目录重来。
 安装器不附送账号、证书、配对文件或 SSH 密钥。材料准备好之前，`check` 报缺文件是正常的。
 

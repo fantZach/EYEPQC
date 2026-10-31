@@ -15,7 +15,7 @@
 
 ## 构建与信任
 
-源码组件版本独立于项目正式版名称。最低 Android 8.0/API 26，JDK 17+、Gradle 8.9、编译 SDK 35。
+项目 `v1.1.0` 对应 Android `0.9.0`（versionCode 10）。最低 Android 8.0/API 26，JDK 17+、Gradle 8.9、编译 SDK 35。
 当前源码的 Debug 和 Release 默认均只信系统 CA，不内置实际服务器地址或专用部署 CA。
 自有 IP/测试 CA 必须由安装负责人通过 `mobile/build.ps1 -TrustCaFile <公开CA路径>` 显式提供。
 这只导入公开 CA，不得把 CA 私钥或服务器私钥放入 APK；保留证书地址、期限和链校验。
@@ -30,4 +30,4 @@ HTTPS 配对拒绝明文、重定向、跨地址、超长配置、错误摘要�
 每条 WebSocket 二进制消息承载完整 USB 记录，组帧后验证 GCM 标签才解密显示。
 协议见 [suite2](../doc/account_ephemeral_protocol.md)，安全范围见 [SECURITY](../SECURITY.md)。
 
-[第三方许可](THIRD_PARTY_NOTICES.md) · [历史 v1.0.0 交付说明](RELEASE.md)
+[第三方许可](THIRD_PARTY_NOTICES.md) · [本次交付说明](RELEASE.md)

@@ -1,6 +1,6 @@
 # Android 部署、升级与用户验收
 
-当前候选：`0.9.0-rc1` / versionCode 9，包名 `org.eyepqc.mobile`，Android 8.0/API 26 及以上。
+项目 `v1.1.0`：Android `0.9.0` / versionCode 10，包名 `org.eyepqc.mobile`，Android 8.0/API 26 及以上。
 本轮交付软件与构建路径；验收由用户统一执行。`release` 表示非调试构建，不表示生产密钥安全已经验收。
 
 ## 1. 选择正确的 APK
@@ -8,7 +8,7 @@
 | 文件/模式 | 用途与限制 |
 |---|---|
 | `debug` APK | 沿用已有 Debug 签名，可覆盖原调试版；默认仅信系统 CA；部署专用 CA 必须显式提供公开证书。 |
-| `release-unsigned` APK | 已禁用 debuggable、明文流量，默认只信系统 CA；**未签名，不能安装**。缺少正式签名材料时只交付此候选，不能改名冒充已签名版。 |
+| `release-unsigned` APK | 已禁用 debuggable、明文流量，默认只信系统 CA；**未签名，不能安装**，仅用于本地构建验证，不放入本次安装交付包。 |
 | 外部密钥签名的 `release` APK | 使用操作者管理的签名密钥，可在同签名下升级；部署到自有 CA 时必须显式输入其公开证书，不能默认继承旧测试 CA。 |
 
 当前源码两个变体默认仅信系统 CA，专用部署 CA 通过 `-TrustCaFile` 显式传入。正式 APK 不内置默认公网 IP。首次打开会展开“连接设置”，输入部署者提供的可信地址。
@@ -32,14 +32,14 @@ $gradle='C:/path/to/gradle-8.9/bin/gradle.bat'
 `-Offline` 只适用于依赖已完整缓存的机器；缺依赖时应补齐可信缓存，不能关闭 lint 或校验。
 `-InitScript` 仅接受操作者已检查的本地 Gradle init 脚本；该脚本可执行代码，不使用来源不明脚本。
 现有本机历史缓存使用官方 `dl-ssl.google.com` 的仓库映射，不等于通用部署前提。
-需要归档时使用 `-OutputDirectory 'D:/deliver/android-rc1-new'`，父目录须已存在、目标目录须不存在；
+需要归档时使用 `-OutputDirectory 'D:/deliver/android-0.9.0-new'`，父目录须已存在、目标目录须不存在；
 导出 APK 与非秘密 `manifest.json`，包含哈希、签名状态、信任类型与 `user_acceptance=pending`。
 
 ## 3. 无域名/IP WSS 的专用 CA
 
 以下使用示例服务器 IP `203.0.113.10`，必须替换为实际地址。公网链路仍是手机 → 云端透明 TCP → PC；**TLS 叶证书私钥在 PC**，云端不终止业务 TLS。
 不能把 IP 地址当作 DNS SAN：PC 叶证书必须含 `IP:203.0.113.10`，并具有有效服务端用途、有效期及完整证书链。
-叶证书可能早于 CA 到期；必须检查当前部署文件的 `notAfter`，不能仅看上述测试 CA 的到期日期推断服务仍有效或已经过期。
+叶证书可能早于 CA 到期；必须分别检查当前部署文件的 `notAfter`，不能仅凭 CA 的有效期判断服务证书仍然有效。
 新的 PC TLS 准备工具会分别记录 `ca_expires_utc` 与 `leaf_expires_utc`，更新前先核对两者。
 
 对于自有 CA，由操作者按 [PC 部署教程](https://github.com/fantZach/EYEPQC/blob/main/pc/DEPLOYMENT.md) 在受保护位置管理 CA 私钥和 PC 叶证书私钥，手机只需要 CA 的**公开 PEM**。
@@ -86,7 +86,7 @@ try {
     $env:EYEPQC_ANDROID_KEY_PASSWORD=[Net.NetworkCredential]::new('', $keySecret).Password
     & ./mobile/build.ps1 -Jdk $jdk -Sdk $sdk -Gradle $gradle -Variant Release -RequireSigned `
       -TrustCaFile 'D:/eyepqc-secure/tls-new/public/ca.pem' `
-      -OutputDirectory 'D:/deliver/android-signed-rc1-new'
+      -OutputDirectory 'D:/deliver/android-signed-0.9.0-new'
 } finally {
     'EYEPQC_ANDROID_KEYSTORE','EYEPQC_ANDROID_KEY_ALIAS','EYEPQC_ANDROID_STORE_PASSWORD','EYEPQC_ANDROID_KEY_PASSWORD' |
       ForEach-Object { Remove-Item "Env:$_" -ErrorAction SilentlyContinue }
