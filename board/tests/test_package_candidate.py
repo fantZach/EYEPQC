@@ -27,7 +27,8 @@ class PackageTests(unittest.TestCase):
         self.boot = self.workspace / package_candidate.BOOT
         self.boot.parent.mkdir(parents=True)
         self.boot.write_bytes(b'public-boot-fixture')
-        for name in ['board/DEPLOYMENT.md', 'board/THIRD_PARTY_NOTICES.md', 'doc/g6_sd_identity.md',
+        for name in ['board/DEPLOYMENT.md', 'board/DEPLOYMENT_ADVANCED.md',
+                     'board/THIRD_PARTY_NOTICES.md', 'doc/g6_sd_identity.md',
                      *package_candidate.LICENSES.values(), 'sdk/Vitis/data/embeddedsw/license.txt']:
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,6 +73,7 @@ class PackageTests(unittest.TestCase):
         with ZipFile(self.output) as archive:
             names = set(archive.namelist())
             self.assertEqual(names, {'BOOT.BIN', 'manifest.json', 'SHA256SUMS.txt', 'DEPLOYMENT.md',
+                                    'DEPLOYMENT_ADVANCED.md',
                                     'THIRD_PARTY_NOTICES.md', 'licenses/amd_embeddedsw.txt',
                                     *package_candidate.LICENSES})
             public = json.loads(archive.read('manifest.json'))
@@ -109,6 +111,7 @@ class PackageTests(unittest.TestCase):
         with ZipFile(self.output) as archive:
             self.assertEqual(set(archive.namelist()), {
                 'BOOT.BIN', 'manifest.json', 'SHA256SUMS.txt', 'DEPLOYMENT.md', 'SD_IDENTITY.md',
+                'DEPLOYMENT_ADVANCED.md',
                 'THIRD_PARTY_NOTICES.md', 'licenses/amd_embeddedsw.txt', *package_candidate.LICENSES})
             public = json.loads(archive.read('manifest.json'))
             self.assertEqual(public['security_profile'], package_candidate.SD_PROFILE)

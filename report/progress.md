@@ -1,5 +1,12 @@
 # Implementation progress
 
+## 2026-10-31：用户确认可用并指定正式版第一版
+
+用户将写好的 SD 放回板卡，按普通 `eyepqc run` 路径操作后反馈“可以了”，随后指定当前版本为正式版第一版。
+记录为本次实际连接可用，不据此推定精确FPS、独立读卡器重插、严格无JTAG冷启动或全部故障/长稳门禁通过。
+四端主部署教程改为新手流程，原全文分别保留为DEPLOYMENT_ADVANCED.md；统一入口及版本范围见
+[新手部署](../doc/deployment/README.md)、[正式版第一版](../doc/releases/first-stable.md)。本轮不覆盖已有GitHub v1.0.0或宣称新资产已上传。
+
 ## 2026-10-31：SD 本地身份模式已实际写卡
 
 用户要求写卡后，重新识别F:/Disk1 DD-TEK READER并校验来源，复用现有身份保留手机pin，准备独立新随机状态。

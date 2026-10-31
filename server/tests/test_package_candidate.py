@@ -26,6 +26,9 @@ class PackageTests(unittest.TestCase):
         with ZipFile(self.output) as archive:
             self.assertIsNone(archive.testzip())
             self.assertEqual(set(archive.namelist()), {*candidate.FILES, 'manifest.json', 'SHA256SUMS.txt'})
+            self.assertIn('DEPLOYMENT_ADVANCED.md', archive.namelist())
+            self.assertEqual(archive.read('DEPLOYMENT_ADVANCED.md'),
+                             (candidate.ROOT / 'DEPLOYMENT_ADVANCED.md').read_bytes())
             manifest = json.loads(archive.read('manifest.json'))
             self.assertEqual(manifest['user_acceptance'], 'pending')
             for flag in ('linux_sshd_validated', 'systemd_validated', 'public_network_validated',

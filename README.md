@@ -10,16 +10,15 @@ OV5640 → Zynq-7020 ⇄ USB Slave ⇄ Windows PC ⇄ Android
                                 SSH 反向隧道 → 公网 TCP 中转
 ```
 
-## 调试完善与四端正式交付
+## 正式版第一版
 
-当前正按 [四端交付计划](doc/release_plan.md) 完善下一版候选，**部署执行和最终验收由用户统一进行**。
-逐端构建、安装、材料配置、启停和回滚见 [详细部署总入口](doc/deployment/README.md)，
-验收结果使用 [统一记录表](doc/deployment/ACCEPTANCE.md)。
-保留下面已发布的 1.0；候选包、unsigned APK 和离线检查不会自动成为正式稳定版。
-公网继续使用现有 IP，Android 后续 release 构建提供显式部署 CA 入口，但仍严格校验地址、有效期和证书链。
+用户已确认当前 SD 本地身份版本可用，并定为正式版第一版。
+新手从 [四端部署教程](doc/deployment/README.md) 开始；详情见 [版本记录](doc/releases/first-stable.md)。
+日常操作：板卡上电 → 电脑 `eyepqc run` → 手机登录观看。
+已有 GitHub v1.0.0 保留不变，本次确认不等于上传新的 Release 附件。
 
 2026-10-31 新增 [SD 固定身份与持久随机状态配置](doc/g6_sd_identity.md)，取消日常 PC 的私钥/seed 注入。
-需部署匹配的新 BOOT 与卡上材料；旧 USB 模式继续兼容，未自动迁移当前运行环境，实板验收仍待用户执行。
+需使用匹配的新 BOOT 与卡上材料；本机已写卡且用户反馈连接成功，其他验收项仍按各自记录保留。
 
 ## 已发布 1.0
 

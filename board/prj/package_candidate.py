@@ -87,6 +87,7 @@ def package(workspace, output):
         if not isinstance(digest, str) or not re.fullmatch('[0-9a-f]{64}', digest):
             raise ValueError('Invalid input digest')
     files = {'BOOT.BIN': boot, 'DEPLOYMENT.md': (ROOT / 'board/DEPLOYMENT.md').read_bytes(),
+             'DEPLOYMENT_ADVANCED.md': (ROOT / 'board/DEPLOYMENT_ADVANCED.md').read_bytes(),
              'THIRD_PARTY_NOTICES.md': (ROOT / 'board/THIRD_PARTY_NOTICES.md').read_bytes()}
     if profile == SD_PROFILE:
         files['SD_IDENTITY.md'] = (ROOT / 'doc/g6_sd_identity.md').read_bytes()
