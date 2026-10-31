@@ -16,7 +16,7 @@ import cloud_tunnel
 import relay
 import cli_settings
 
-VERSION = '1.4.0-rc1'
+VERSION = '1.4.0-rc2'
 PORT = 8765
 
 
@@ -145,7 +145,7 @@ def main(argv=None):
             sub.add_argument('--dev-usb-bootstrap', action='store_true',
                              help='Explicit trusted local USB development initialization before listening; not production security')
             sub.add_argument('--dev-identity-file', type=Path,
-                             help='Explicit ACL-protected local test ML-KEM secret key; never stored in settings or the EXE')
+                             help='Override the default user data/private/board-test-identity.bin; requires --dev-usb-bootstrap')
     configure = commands.add_parser('config', help='Manage local parameters and paths without opening materials')
     edits = configure.add_subparsers(dest='config_command', required=True)
     edits.add_parser('show', help='Show effective configuration and settings location')
@@ -237,15 +237,16 @@ def main(argv=None):
             if args.command == 'check':
                 print('CONFIG_OK offline_only=true board_validated=false network_started=false')
             else:
-                if args.dev_usb_bootstrap != (args.dev_identity_file is not None):
-                    raise ServiceError('--dev-usb-bootstrap and --dev-identity-file must be supplied together')
+                if args.dev_identity_file is not None and not args.dev_usb_bootstrap:
+                    raise ServiceError('--dev-identity-file requires --dev-usb-bootstrap')
                 if args.dev_usb_bootstrap:
                     if not settings.serial_port or settings.serial_port.lower() == 'auto':
                         raise ServiceError('development bootstrap requires a configured explicit COM port; use config set serial_port COMx')
                     import dev_usb_bootstrap
+                    identity_file = args.dev_identity_file or cli_settings.settings_path().parent / 'data/private/board-test-identity.bin'
                     hint = 'development USB bootstrap failed; verify trusted local board/profile, explicit COM, private ACL and public pairing; no listener started'
                     settings.dev_bootstrap_factory = lambda: dev_usb_bootstrap.open_bootstrapped(
-                        settings.serial_port, args.dev_identity_file, settings.pairing_file)
+                        settings.serial_port, identity_file, settings.pairing_file)
                     device = settings.dev_bootstrap_factory()
                     dev_usb_bootstrap.close_device(device)
                     print('DEV_USB_READY development_only=true identity_in_sd=false', flush=True)

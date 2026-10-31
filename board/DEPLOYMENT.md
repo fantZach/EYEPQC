@@ -169,6 +169,9 @@ eyepqc check
 eyepqc run --dev-usb-bootstrap --dev-identity-file $BoardIdentityFile
 ```
 
+上例显式使用第1.1节的自定义身份位置。PC1.4.0-rc2及以上，如果已按PC教程将同一身份保存到
+`LOCALAPPDATA/EYEPQC/pc/data/private/board-test-identity.bin`，推荐简化为 `eyepqc run --dev-usb-bootstrap`。
+不需要为了使用默认路径重新生成身份；其他受保护位置仍可显式覆盖。旧版PC仍需提供路径参数。
 私钥为 1632 字节 ML-KEM-512 开发身份，文件与父目录只允许当前用户/SYSTEM；不得放在 SD 或发给手机。
 `$BoardIdentityFile` 为第 1.1 节创建的私钥路径；新终端应重新设置该变量到真实受保护文件，已有部署则使用原身份路径。
 普通 `eyepqc run` 不注入开发身份。USB 查询 WAIT 后才允许本次一次性装载，成功时 PC 报 `DEV_USB_READY`，

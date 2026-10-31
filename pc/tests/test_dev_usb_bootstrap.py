@@ -235,23 +235,43 @@ class CliBootstrapTests(unittest.TestCase):
         return result, out.getvalue() + err.getvalue(), factory, services, port
 
     def test_normal_run_never_probes_usb_or_reads_dev_key(self):
-        code, _, factory, services, _ = self.run_command([])
+        with patch.object(eyepqc.cli_settings, 'settings_path', side_effect=AssertionError('must not resolve development identity')):
+            code, _, factory, services, _ = self.run_command([])
         self.assertEqual(code, 0)
         factory.assert_not_called()
         services.assert_awaited_once()
 
-    def test_explicit_flags_pair_and_port_are_required(self):
-        for options in (['--dev-usb-bootstrap'], ['--dev-identity-file', 'secret.bin']):
-            code, _, factory, services, _ = self.run_command(options)
-            self.assertEqual(code, 1)
-            factory.assert_not_called()
-            services.assert_not_awaited()
+    def test_identity_override_requires_development_flag_and_explicit_port(self):
+        code, _, factory, services, _ = self.run_command(['--dev-identity-file', 'secret.bin'])
+        self.assertEqual(code, 1)
+        factory.assert_not_called()
+        services.assert_not_awaited()
         code, _, factory, services, _ = self.run_command(
             ['--dev-usb-bootstrap', '--dev-identity-file', 'secret.bin'],
             settings=SimpleNamespace(serial_port=None, pairing_file=Path('fixture')))
         self.assertEqual(code, 1)
         factory.assert_not_called()
         services.assert_not_awaited()
+
+    def test_development_flag_defaults_to_user_identity_and_override_remains_supported(self):
+        with patch.object(eyepqc.cli_settings, 'settings_path', return_value=Path('fixture-user/settings.json')):
+            code, _, factory, services, _ = self.run_command(['--dev-usb-bootstrap'])
+        self.assertEqual(code, 0)
+        self.assertEqual(factory.call_args.args[1], Path('fixture-user/data/private/board-test-identity.bin'))
+        services.assert_awaited_once()
+        code, _, factory, _, _ = self.run_command(['--dev-usb-bootstrap', '--dev-identity-file', 'override.bin'])
+        self.assertEqual(code, 0)
+        self.assertEqual(factory.call_args.args[1], Path('override.bin'))
+
+    def test_missing_default_identity_fails_closed_without_generating_or_starting(self):
+        with patch.object(eyepqc.cli_settings, 'settings_path', return_value=Path('missing-fixture/settings.json')):
+            code, output, factory, services, _ = self.run_command(
+                ['--dev-usb-bootstrap'], bootstrap_error=FileNotFoundError('fixture-private-detail'))
+        self.assertEqual(code, 1)
+        self.assertEqual(factory.call_args.args[1], Path('missing-fixture/data/private/board-test-identity.bin'))
+        services.assert_not_awaited()
+        self.assertNotIn('fixture-private-detail', output)
+        self.assertIn('no listener started', output)
 
     def test_bootstrap_completes_and_closes_before_services_and_sets_reconnect_factory(self):
         settings = SimpleNamespace(serial_port='COM99', pairing_file=Path('fixture'))

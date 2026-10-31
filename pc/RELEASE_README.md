@@ -1,13 +1,13 @@
-# EYEPQC PC 1.4.0-rc1 — 供用户统一验收的候选
+# EYEPQC PC 1.4.0-rc2 — 供用户统一验收的候选
 
 本包适用于 Windows x64，包含 CLI、当前用户安装器、[详细部署教程](DEPLOYMENT.md) 和完整第三方许可。
 这是正式版本路线上的候选，不表示板端/手机/公网或生产密钥安全已验收；既有 v1.0.0 资产不变。
 
 ## 新电脑
 
-1. 核对发布清单 SHA256，运行 `EYEPQC-Setup-1.4.0-rc1.exe`，默认选择 **Install program only**。
+1. 核对发布清单 SHA256，运行 `EYEPQC-Setup-1.4.0-rc2.exe`，默认选择 **Install program only**。
    无需先提供六份运行材料；不自动生成账号、证书、SSH/板端身份，不启动服务。
-2. 退出全部 Windows Terminal/PowerShell 窗口后重新打开；`eyepqc --version` 应为 `1.4.0-rc1`。
+2. 退出全部 Windows Terminal/PowerShell 窗口后重新打开；`eyepqc --version` 应为 `1.4.0-rc2`。
 3. 没有旧设置时执行：
 
 ```powershell
@@ -41,8 +41,12 @@ eyepqc status
 
 ```powershell
 eyepqc config set serial_port COM7
-eyepqc run --dev-usb-bootstrap --dev-identity-file "$env:LOCALAPPDATA/EYEPQC/pc/data/private/board-test-identity.bin"
+eyepqc run --dev-usb-bootstrap
 ```
+
+从1.4.0-rc2起，默认身份路径为当前用户 `LOCALAPPDATA/EYEPQC/pc/data/private/board-test-identity.bin`。
+可选 `--dev-identity-file <受保护文件>` 仍支持；普通 `run` 不读取身份，默认文件不会自动生成。
+READY状态只查询核pin；只有WAIT真正装载时才读取身份，并保留原权限/长度/pin检查及失败拒绝。
 
 `COM7` 只是示例，须确认视频 USB CDC，不是调试串口。
 开发身份必须是操作者受保护且与 pairing 匹配的 1632 字节 ML-KEM-512 测试私钥；包内不带，不写入 SD。

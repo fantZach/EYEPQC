@@ -63,8 +63,13 @@ Python、系统驱动或硬件临时副本的完整物理清除不由本实现�
 
 ## PC 接入
 
-使用显式 `run --dev-usb-bootstrap --dev-identity-file <本机私有文件>`；
+PC 1.4.0-rc2 起，常用启动为 `run --dev-usb-bootstrap`，默认读取当前用户应用数据目录
+`LOCALAPPDATA/EYEPQC/pc/data/private/board-test-identity.bin`。只省略路径参数，不省略显式开发态开关；
+旧 `--dev-identity-file <本机私有文件>` 保留为可选覆盖，不按工作目录/EXE目录猜测或搜索文件。
+旧版PC仍需显式 `run --dev-usb-bootstrap --dev-identity-file <本机私有文件>`。
 要求配置具体串口，拒绝自动枚举后静默注入。普通 run 不读取身份私钥、不探测此协议。
+WAIT状态实际需要装载时，缺少默认文件、不安全ACL或身份不匹配均失败；READY仍只查询核pin、不读取私钥。
+不自动生成或替换身份，不把私钥写入配置或EXE。
 先拒绝已有监听并完成原账号/TLS 配置检查，再独占打开 CDC、设置 DTR、QUERY/必要装载；
 成功后正常关闭该句柄，才启动转发服务。
 

@@ -1,6 +1,6 @@
 # PC 子项目
 
-## 1.4.0-rc1 候选：先安装程序，验收由操作者执行
+## 1.4.0-rc2 候选：先安装程序，验收由操作者执行
 
 完整新环境、证书、SSH、公钥配对、账号、启动/停止及回滚步骤见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 候选不改变既有配置 version=1/schema2/suite2，不改已发布的 v1.0.0 资产。
@@ -37,10 +37,11 @@ PC 的 SSH 目标可由命令修改；更换目标仍需匹配手机地址、TLS
 # 配置具体视频 USB CDC；开发初始化拒绝 auto/空串口。此命令不打开串口。
 eyepqc config set serial_port COM7
 # 私钥是操作者单独准备的本机文件，不打进 EXE/安装包、SD、JSON 或日志。
-eyepqc run --dev-usb-bootstrap --dev-identity-file "$env:LOCALAPPDATA/EYEPQC/pc/data/private/dev-identity.bin"
+eyepqc run --dev-usb-bootstrap
 ```
 
-这两个 `--dev-*` 参数必须成对显式使用，不保存到 settings；安装器仍只迁移原六份文件，
+必须显式给出 `--dev-usb-bootstrap`；1.4.0-rc2 起默认从当前用户的 `EYEPQC/pc/data/private/board-test-identity.bin` 读取开发身份，不保存私钥到 settings。
+可选 `--dev-identity-file <其他受保护文件>` 仍兼容；单独指定文件而不启用开发开关会拒绝。安装器仍只迁移原六份文件，
 不会扫描、复制或生成开发身份文件。文件必须是精确 1632 字节 ML-KEM-512 私钥，
 位于本机、非链接路径，文件与其受保护父目录均须符合当前用户和 SYSTEM 独占 ACL。
 其嵌入公钥及 hash 必须匹配当前 schema2 pairing；不要把真实私钥或 seed 发到聊天。
@@ -141,7 +142,7 @@ eyepqc run
 ```
 
 构建使用独立 `build/pc_cli/venv`、固定 PyInstaller 6.22.3、console/onefile 模式；`-Name` 可保留正在运行的旧产物。
-当前省略 `-Name` 按源码 VERSION 构建 `eyepqc-1.4.0-rc1.exe`，不会覆盖旧版文件，实际用哪个名称不改变命令语法。
+当前省略 `-Name` 按源码 VERSION 构建 `eyepqc-1.4.0-rc2.exe`，不会覆盖旧版文件，实际用哪个名称不改变命令语法。
 内置默认值为自动 CDC、固定 `127.0.0.1:8765`、SSH `124.70.38.245:2222`，隧道开启；1.2 材料相对用户 `data/` 目录为
 `private/accounts.json`、`public/pairing.json`、`public/server-chain.pem`、`private/server-key.pem`、
 `private/id_ed25519`、`public/tunnel_known_hosts`。默认值不包含开发机器的硬编码用户绝对路径或任何秘密材料。

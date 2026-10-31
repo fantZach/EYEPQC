@@ -1,4 +1,4 @@
-# Windows PC 部署教程（1.4.0-rc1 候选）
+# Windows PC 部署教程（1.4.0-rc2 候选）
 
 本文是从新电脑开始的操作顺序。软件检查由开发方执行，安装、板卡、手机、网络和最终验收由操作者统一记录。
 候选包不宣称正式验收通过，也不改变当前开发态安全模型。
@@ -14,8 +14,8 @@
 从候选交付 ZIP 解压，保留 `THIRD_PARTY_NOTICES.md` 和 `licenses/`，核对清单中的 SHA256：
 
 ```powershell
-Get-FileHash ./EYEPQC-Setup-1.4.0-rc1.exe -Algorithm SHA256
-Get-FileHash ./eyepqc-1.4.0-rc1.exe -Algorithm SHA256
+Get-FileHash ./EYEPQC-Setup-1.4.0-rc2.exe -Algorithm SHA256
+Get-FileHash ./eyepqc-1.4.0-rc2.exe -Algorithm SHA256
 ```
 
 程序未商业代码签名，不保证杀毒软件无告警。不要关闭安全软件、修改全局执行策略或运行来源不明的下载器。
@@ -23,7 +23,7 @@ Get-FileHash ./eyepqc-1.4.0-rc1.exe -Algorithm SHA256
 ## 2. 安装程序，不要求先有密钥
 
 先在手机停止观看，再在旧 PC 服务窗口 Ctrl+C，避免替换运行中的文件或占用串口。
-运行 `EYEPQC-Setup-1.4.0-rc1.exe`，默认选择 **Install program only**。
+运行 `EYEPQC-Setup-1.4.0-rc2.exe`，默认选择 **Install program only**。
 此模式不读/导入/重置运行材料，不启动服务，已有设置即使不完整也原样保留。
 
 若已有可信旧配置，可选择 **Import existing trusted runtime materials as well**，
@@ -38,7 +38,7 @@ eyepqc --version
 eyepqc config show
 ```
 
-版本应为 `EYEPQC PC 1.4.0-rc1`。若终端仍未刷新，可直接调用
+版本应为 `EYEPQC PC 1.4.0-rc2`。若终端仍未刷新，可直接调用
 `& "$env:LOCALAPPDATA/EYEPQC/pc/bin/eyepqc.exe" --version`，不要删除其他 PATH 项。
 
 自动化安装默认同样只装程序；显式迁移参数为 `/SOURCECONFIG=<可信旧配置绝对路径>`，
@@ -213,10 +213,12 @@ SD USB 开发初始化的程序需要匹配的 1632 字节测试身份文件，�
 其公钥必须匹配 pairing；不会由 PC 安装包创建或写入 SD：
 
 ```powershell
-eyepqc run --dev-usb-bootstrap --dev-identity-file "$Private/board-test-identity.bin"
+eyepqc run --dev-usb-bootstrap
 ```
 
-上述两个 `--dev-*` 参数必须一起给出，视频 COM 口必须显式设置。
+从 1.4.0-rc2 起，只需显式给出 `--dev-usb-bootstrap`，默认身份路径是当前用户 `LOCALAPPDATA/EYEPQC/pc/data/private/board-test-identity.bin`。
+若私钥在其他受保护位置，可额外指定 `--dev-identity-file <文件>`；旧完整命令继续兼容，单独给文件参数而没有开发开关仍拒绝。
+默认路径不受当前工作目录/EXE位置影响，不搜索其他目录或自动创建身份。视频 COM 口仍须显式设置。
 程序只在状态、pin、ACL 和材料通过后发送本地明文开发初始化，得到 READY 后才开启监听/隧道。
 PC 因而知道板端身份与 seed，不宣称针对恶意 PC 的生产端到端安全或前向保密。
 已有单独准备好的普通 G6 固件使用 `eyepqc run`；不要混用初始化 profile。
@@ -241,7 +243,7 @@ eyepqc account delete --username second --yes
 并保留当前 EXE/安装包及 SHA256。备份包含私钥和密码派生值，不上传云盘/Issue。
 新版本选程序-only即可保留原设置和账号。卸载只删除程序及安装器拥有的 PATH 项，保留 settings/data。
 回滚同样先正常停止，再安装已核验的旧安装包；如果新版本曾改变配置格式，先查对应迁移说明，
-不得把旧配置盲写覆盖后续维护的账号或身份。1.4.0-rc1 仍使用配置 version=1、schema2/suite2。
+不得把旧配置盲写覆盖后续维护的账号或身份。1.4.0-rc2 仍使用配置 version=1、schema2/suite2。
 
 ## 8. 常见故障与交付边界
 
