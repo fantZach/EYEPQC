@@ -58,3 +58,7 @@ board/vendor/
 /screenshots/
 /report/*.json
 report/*_runs/
+
+
+
+output/

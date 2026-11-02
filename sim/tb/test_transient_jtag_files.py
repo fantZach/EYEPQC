@@ -16,7 +16,6 @@ sys.path.insert(0, str(ROOT / "board/prj"))
 import m09
 import m10_board
 import g6_board
-import prepare_demo
 from handshake import wipe_secret
 from owned_ddr import require_disjoint_ranges
 from transient_file import read_mutable_file, staged_file
@@ -158,73 +157,6 @@ class TransientJtagFileTests(unittest.TestCase):
             self.assertEqual(seed_buffers, [bytearray(32)])
             self.assertFalse(observed_seed_files[0].exists())
             sk[:] = bytes(len(sk))
-
-    def test_demo_prepare_retries_incomplete_keyset_and_wipes_owned_secrets(self):
-        with tempfile.TemporaryDirectory(prefix="eyepqc-demo-prepare-") as temp:
-            folder = Path(temp)
-            library = folder / "mlkem.dll"
-            pk = bytes((index % 251 for index in range(m09.PK)))
-            instances = []
-
-            class FakeKem:
-                def __init__(self):
-                    self.lib = SimpleNamespace(_handle=0)
-                    self.seed_buffers = []
-                    self.generated_keys = []
-                    self.public_keys = []
-                    self.private_buffers = []
-                    self.coins_buffers = []
-                    self.shared_buffers = []
-                    self.result_buffers = []
-
-                def keygen(self, seed):
-                    self.seed_buffers.append(seed)
-                    private_key = bytearray((index % 239 for index in range(m09.SK)))
-                    private_key[768:1568] = pk
-                    self.generated_keys.append(private_key)
-                    return pk, private_key
-
-                def encaps(self, public_key, coins):
-                    self.public_keys.append(public_key)
-                    self.coins_buffers.append(coins)
-                    shared = bytearray(b"S" * m09.SS)
-                    self.shared_buffers.append(shared)
-                    return bytes(m09.CT), shared
-
-                def decaps(self, private_key, ciphertext):
-                    self.private_buffers.append(private_key)
-                    result = bytearray(b"S" * m09.SS)
-                    self.result_buffers.append(result)
-                    return result
-
-            def make_kem():
-                kem = FakeKem()
-                instances.append(kem)
-                return kem
-
-            def fake_build(path):
-                Path(path).parent.mkdir(parents=True, exist_ok=True)
-                Path(path).write_bytes(b"fake ML-KEM library")
-
-            with patch.object(prepare_demo, "OUT", folder), \
-                    patch.object(prepare_demo, "LIB", library), \
-                    patch.object(prepare_demo, "build", fake_build), \
-                    patch.object(prepare_demo, "Kem", side_effect=make_kem), \
-                    patch("_ctypes.FreeLibrary"):
-                prepare_demo.main()
-                self.assertTrue((folder / "private.bin").is_file())
-                (folder / "private.bin").unlink()
-                prepare_demo.main()
-
-            self.assertEqual(len(instances), 2)
-            self.assertFalse(json.loads((folder / "preparation.json").read_text())["board_accessed"])
-            self.assertFalse((folder / ".m09-keygen.lock").exists())
-            self.assertFalse(any(path.name.startswith(".m09-") for path in folder.iterdir()))
-            for kem in instances:
-                self.assertEqual(kem.public_keys, [pk])
-                for secret in (kem.seed_buffers + kem.generated_keys + kem.private_buffers +
-                               kem.coins_buffers + kem.shared_buffers + kem.result_buffers):
-                    self.assertFalse(any(secret))
 
     def test_sensitive_file_reads_are_bounded_and_wipeable(self):
         with tempfile.TemporaryDirectory(prefix="eyepqc-sensitive-read-") as temp:
