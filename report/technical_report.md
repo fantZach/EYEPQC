@@ -68,7 +68,7 @@ USB CDC 使用 `channel:u8 || record_length:u16_be || record` 外层记录，将
 | G7 `candidate006d` 短测与受控恢复 | 短时认证视频 471 帧、47.3579 fps；camera-reset 20/20、routing-stall 20/20 | 同一候选构建的限定证据；PC退出/DTR 20 次和物理USB拔插20次待测，不能据此判定 G7 整体通过，见 006d 报告（历史资料，已本机归档） |
 | G7 `candidate012` USB 基线/故障恢复 | 普通 CDC 重连认证 141 帧、1,130 包、47.672 fps；receiver-exit 单轮在 HELLO_ACK 等待处失败，主机 39 次读取为 0 字节 | 同一构建、无 JTAG 重载的普通重连与故障恢复分开计；dTD completion 不能证明 CDC 用户态收到 ACK，G7 未通过，见 candidate012 报告（历史资料，已本机归档） |
 | G7 `candidate014` 软件候选 | ARM 构建、197 项哈希预检、G6 离线 25/25、runner 9/9、项目补测和软件 Mock 20/20 通过 | 仅离线候选；`board_validated=false`、实板 0 轮。缓存 ACK/有界重试方案仍需先做同构建基线、ETW/AP0 单轮和 receiver-exit 20/20，见 candidate014 报告（历史资料，已本机归档） |
-| 电脑端完整回归 | 19/19 门禁通过，含 M04/M05 原生 XSim | `run_demo.ps1 -Mode Check` 本次结果标记 `board_accessed=false`；不覆盖实板验收，见回归报告（历史资料，已本机归档） |
+| 电脑端完整回归 | 19/19 门禁通过，含 M04/M05 原生 XSim | 历史 `run_demo.ps1 -Mode Check` 结果标记 `board_accessed=false`；该旧入口现已移除，原回归报告已本机归档 |
 | M02 冷启动及模组缺席 | 用户确认 20 次整板断电/上电后的 JTAG 配置 20/20；全断电拔除摄像头后 fail-closed 通过 | 限 JTAG 配置与 fail-closed；SD/Flash 独立启动和 DVP/JPEG 实拍未测，见 [M02 报告](m02_sensor_reset_board_20261011.md) |
 | 旧 Keccak 隔离工程 | tcId 76 ML-KEM-512 解封装路径 3 轮功能通过；HW 相对同启动 SW 平均慢 8.62% | 独立 PS+PL/XSA，不是正式视频工程；故障回退和 STATUS 读回通过，不证明全域清零；见 [Keccak 实板基准](keccak_board_benchmark_20261010.md) |
 | KX41 独立固件 | software、hardware、timeout fallback 三窗口各 60/60 个 ML-KEM-512 KAT；硬件窗口 ticks 为软件的 88.6% | 仅限独立候选和所测 60 个唯一向量，不外推到正式视频构建、内部状态清零或完整产品性能，见 [KX41 实板报告](keccak_sponge_x4_capture_fix_20261011.md) |
