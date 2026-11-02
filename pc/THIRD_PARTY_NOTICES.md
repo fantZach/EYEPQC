@@ -5,7 +5,7 @@ The **1.4.0** release uses the same packaged runtime dependencies and retains th
 Developer certificate preparation installs its own Python dependencies separately; those packages are not embedded in the CLI.
 The notices below cover its Python runtime, runtime dependencies, executable packager, and installer.
 Keep this document and the complete [`licenses/`](licenses/) directory with redistributed binaries.
-This is not a new license grant for EYEPQC's original code and does not change any upstream license.
+EYEPQC's original code is covered by the root [MIT License](../LICENSE). Upstream components retain their respective licenses.
 
 | Component | Version | License / full text | Upstream |
 | --- | --- | --- | --- |

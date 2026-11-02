@@ -37,6 +37,10 @@ def package(output):
         raise FileExistsError('Candidate exists; never overwrite a previous package')
     # Never walk the directory: runtime configs/keys placed beside these sources are excluded.
     files = {name: regular_path(ROOT / name).read_bytes() for name in FILES}
+    license_path = ROOT / 'LICENSE'
+    if not license_path.exists():
+        license_path = ROOT.parent / 'LICENSE'
+    files['LICENSE'] = regular_path(license_path).read_bytes()
     manifest = {
         'component': 'server', 'version': VERSION, 'delivery': 'source-only',
         'user_acceptance': 'pending', 'linux_sshd_validated': False,

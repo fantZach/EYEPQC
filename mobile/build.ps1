@@ -34,6 +34,8 @@ try{
     if($LASTEXITCODE -ne 0){throw 'APK build failed. No signing secrets should be included in diagnostic reports.'}
     $name=if($Variant -eq 'Debug'){'app-debug.apk'}elseif($signed){'app-release.apk'}else{'app-release-unsigned.apk'}
     $apk=Join-Path $PSScriptRoot ('app/build/outputs/apk/'+$Variant.ToLowerInvariant()+'/'+$name)
+    $projectLicense=Join-Path (Split-Path -Parent $PSScriptRoot) 'LICENSE'
+    Copy-Item -LiteralPath $projectLicense -Destination (Join-Path (Split-Path -Parent $apk) 'LICENSE')
     $signer=Join-Path $Sdk 'build-tools/35.0.0/apksigner.bat'
     $aapt=Join-Path $Sdk 'build-tools/35.0.0/aapt.exe'
     $badging=& $aapt dump badging $apk
@@ -60,6 +62,7 @@ try{
         $label=if($Variant -eq 'Debug'){'debug'}elseif($signed){'release-signed'}else{'release-unsigned'}
         $target=Join-Path $OutputDirectory ('EYEPQC-Android-'+$version+'-'+$label+'.apk')
         [IO.File]::Copy($apk,$target,$false)
+        [IO.File]::Copy($projectLicense,(Join-Path $OutputDirectory 'LICENSE'),$false)
         $metadata.apk=Split-Path -Leaf $target
         [IO.File]::WriteAllText((Join-Path $OutputDirectory 'manifest.json'),($metadata | ConvertTo-Json),[Text.UTF8Encoding]::new($false))
     }

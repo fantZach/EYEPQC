@@ -70,4 +70,4 @@ READY状态只查询核pin；只有WAIT真正装载时才读取身份，并保�
 - 本地 USB 开发初始化是明文，PC 知道板端身份/seed；不是对恶意 PC 的生产安全或前向保密。
 - PC 程序仍未商业代码签名，不承诺杀毒软件无告警；不关闭防护或弱化 TLS。
 - 密码、账号库、配对、TLS/SSH/板端私钥、CA 私钥及 seed 均不随包分发。
-- 保留 `THIRD_PARTY_NOTICES.md` 与 `licenses/`；项目自研部分未新增统一开源许可。
+- 保留根目录 `LICENSE`、`THIRD_PARTY_NOTICES.md` 与 `licenses/`；项目自研部分采用 MIT 许可证。

@@ -22,6 +22,7 @@ if ($InstallDependencies) {
     --distpath (Join-Path $buildRoot 'dist') --workpath (Join-Path $buildRoot 'work') `
     --specpath (Join-Path $buildRoot 'spec') (Join-Path $PSScriptRoot 'src/host/eyepqc.py')
 if ($LASTEXITCODE -ne 0) { throw 'EXE build failed.' }
+Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $buildRoot 'dist/LICENSE')
 $exe = Join-Path $buildRoot "dist/$Name.exe"
 & $exe --version
 if ($LASTEXITCODE -ne 0) { throw 'EXE smoke test failed.' }

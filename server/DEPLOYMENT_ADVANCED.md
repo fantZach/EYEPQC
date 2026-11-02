@@ -22,7 +22,7 @@ Linux 在解压目录执行 `sha256sum -c SHA256SUMS.txt`；Windows 用 `Get-Fil
 
 包内：`prepare_tunnel.py`、`eyepqc-tunnel.service`、`package_candidate.py`、本教程、两组离线测试、
 `manifest.json`、`SHA256SUMS.txt`。没有真正的 `sshd_config`、`authorized_keys` 或任何私钥。
-根目录未授予项目统一开源许可；此包不改变自研代码授权，不附 OpenSSH/Python 二进制。
+项目自研代码采用随包 `LICENSE` 中的 MIT 许可证；OpenSSH 和 Python 遵循各自许可，部署包只提供本项目源码。
 
 需要 Python 3.10+、systemd Linux、兼容这些固定指令的 OpenSSH，路径为 `/usr/sbin/sshd`、`/usr/bin/getent`，
 并有 `/usr/sbin/nologin`。先按发行版官方方式安装/更新 Python 与 OpenSSH Server；不同路径/非 systemd 系统应停止并适配，

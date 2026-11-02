@@ -46,6 +46,7 @@ SetupLogging=yes
 ChangesEnvironment=yes
 
 [Files]
+Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#AppExecutable}"; DestDir: "{app}"; DestName: "eyepqc.exe"; Flags: ignoreversion
 Source: "{#AppExecutable}"; DestName: "eyepqc-bootstrap.exe"; Flags: dontcopy
 

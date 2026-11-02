@@ -19,6 +19,7 @@ PROFILE = 'development_usb_bootstrap_secure_cleanup'
 SD_PROFILE = 'experimental_sd_local_identity'
 BOOT = 'g6_usb/boot/BOOT.BIN'
 LICENSES = {
+    'LICENSE': 'LICENSE',
     'licenses/secworks_aes.txt': 'board/src/rtl/crypto/secworks_aes/LICENSE',
     'licenses/mlkem_native.txt': 'board/src/third_party/mlkem/LICENSE',
     'licenses/tinycrypt.txt': 'board/src/third_party/tinycrypt/LICENSE',

@@ -25,7 +25,8 @@ class PackageTests(unittest.TestCase):
         self.assertFalse(summary['deployment_performed'])
         with ZipFile(self.output) as archive:
             self.assertIsNone(archive.testzip())
-            self.assertEqual(set(archive.namelist()), {*candidate.FILES, 'manifest.json', 'SHA256SUMS.txt'})
+            self.assertEqual(set(archive.namelist()), {*candidate.FILES, 'LICENSE', 'manifest.json', 'SHA256SUMS.txt'})
+            self.assertEqual(archive.read('LICENSE'), (candidate.ROOT.parent / 'LICENSE').read_bytes())
             self.assertIn('DEPLOYMENT_ADVANCED.md', archive.namelist())
             self.assertEqual(archive.read('DEPLOYMENT_ADVANCED.md'),
                              (candidate.ROOT / 'DEPLOYMENT_ADVANCED.md').read_bytes())
@@ -43,6 +44,7 @@ class PackageTests(unittest.TestCase):
     def test_unlisted_runtime_files_are_not_read_or_copied(self):
         sources = self.root / 'source'
         sources.mkdir()
+        (sources.parent / 'LICENSE').write_text('MIT license fixture')
         for name in candidate.FILES:
             path = sources / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,6 +86,16 @@ class PackageTests(unittest.TestCase):
         other = self.root / 'other.zip'
         candidate.package(other)
         self.assertEqual(self.output.read_bytes(), other.read_bytes())
+
+    def test_exported_source_can_be_packaged_with_its_bundled_license(self):
+        candidate.package(self.output)
+        sources = self.root / 'exported'
+        with ZipFile(self.output) as archive:
+            archive.extractall(sources)
+        with patch.object(candidate, 'ROOT', sources):
+            candidate.package(self.root / 'repacked.zip')
+        with ZipFile(self.root / 'repacked.zip') as archive:
+            self.assertEqual(archive.read('LICENSE'), (sources / 'LICENSE').read_bytes())
 
 
 if __name__ == '__main__':

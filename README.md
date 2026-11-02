@@ -59,4 +59,4 @@ git hook run pre-commit
 文档中的 `203.0.113.10` 和 SSH `22022` 都是示例，必须替换为实际部署值。
 
 [贡献说明](CONTRIBUTING.md) · [第三方许可](THIRD_PARTY_NOTICES.md) · [更新记录](CHANGELOG.md)
-自研部分尚未指定统一开源许可证，第三方许可不等于整个项目的授权。
+项目自研代码和文档采用 [MIT 许可证](LICENSE)，第三方组件保留各自的许可证与版权声明。
